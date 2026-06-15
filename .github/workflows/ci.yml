@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Install templ
+        run: go install github.com/a-h/templ/cmd/templ@v0.3.1020
+
+      - name: Verify generated templ code is up to date
+        run: |
+          templ generate
+          git diff --exit-code -- '*_templ.go' \
+            || (echo "::error::templ output is stale. Run 'make generate' and commit." && exit 1)
+
+      - name: Verify Tailwind CSS is up to date
+        run: |
+          curl -fsSL https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64 -o tailwindcss
+          chmod +x tailwindcss
+          ./tailwindcss -c tailwind.config.js -i internal/web/assets/input.css -o internal/web/assets/static/app.css --minify
+          git diff --exit-code -- internal/web/assets/static/app.css \
+            || (echo "::error::app.css is stale. Run 'make css' and commit." && exit 1)
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        run: CGO_ENABLED=0 go build ./...

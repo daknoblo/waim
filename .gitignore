@@ -1,0 +1,27 @@
+# Build output / local tooling binaries
+/bin/
+/out/
+/tailwindcss
+tailwindcss-*
+
+# Runtime data
+/appdata/
+*.db
+*.db-shm
+*.db-wal
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# OS / editor noise
+.DS_Store
+.idea/
+
+# Node (only if Tailwind is used via npm)
+node_modules/
+
+# Note: generated files (internal/web/*_templ.go and
+# internal/web/assets/static/app.css) ARE committed so the project builds
+# without the templ/tailwind toolchain.

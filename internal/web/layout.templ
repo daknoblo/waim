@@ -1,0 +1,71 @@
+package web
+
+import "github.com/daknoblo/waim/internal/i18n"
+
+templ navLink(t *i18n.Translator, href, id, active, label string) {
+	<a
+		href={ templ.SafeURL(href) }
+		class={ "nav-link", templ.KV("nav-link-active", id == active) }
+	>
+		{ label }
+	</a>
+}
+
+templ Page(l Layout, body templ.Component) {
+	<!DOCTYPE html>
+	<html lang={ l.T.Locale() } class="h-full">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="color-scheme" content="dark"/>
+			<title>{ l.T.T("app.title") } — { l.T.T("app.tagline") }</title>
+			<link rel="stylesheet" href="/static/app.css"/>
+			<script src="/static/htmx.min.js" defer></script>
+		</head>
+		<body class="min-h-full bg-slate-950 text-slate-100 antialiased">
+			<div class="mx-auto flex min-h-screen max-w-5xl flex-col px-4">
+				<header class="flex flex-wrap items-center justify-between gap-4 py-5">
+					<div class="flex items-baseline gap-3">
+						<span class="text-2xl font-bold tracking-tight text-indigo-400">{ l.T.T("app.title") }</span>
+						<span class="text-sm text-slate-400">{ l.T.T("app.tagline") }</span>
+					</div>
+					<nav class="flex items-center gap-1 text-sm">
+						@navLink(l.T, "/", NavDashboard, l.Active, l.T.T("nav.dashboard"))
+						@navLink(l.T, "/settings", NavSettings, l.Active, l.T.T("nav.settings"))
+						@navLink(l.T, "/about", NavAbout, l.Active, l.T.T("nav.about"))
+						@languageSwitcher(l)
+					</nav>
+				</header>
+				if l.MasterKeyMissing {
+					<div class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+						{ l.T.T("warning.noMasterKey") }
+					</div>
+				}
+				<main class="flex-1 pb-10">
+					@body
+				</main>
+				<footer class="border-t border-slate-800 py-4 text-xs text-slate-500">
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<span>{ l.T.T("app.title") } · { l.Version }</span>
+						<a class="hover:text-slate-300" href={ templ.SafeURL(l.Repo) } target="_blank" rel="noreferrer noopener">{ l.Repo }</a>
+					</div>
+				</footer>
+			</div>
+		</body>
+	</html>
+}
+
+templ languageSwitcher(l Layout) {
+	<form method="post" action="/locale" class="ml-2 flex items-center gap-1">
+		for _, lang := range l.Languages {
+			<button
+				type="submit"
+				name="locale"
+				value={ lang.Code }
+				class={ "lang-btn", templ.KV("lang-btn-active", lang.Active) }
+			>
+				{ lang.Code }
+			</button>
+		}
+	</form>
+}

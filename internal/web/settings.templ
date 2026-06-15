@@ -1,0 +1,114 @@
+package web
+
+import "strconv"
+import "github.com/daknoblo/waim/internal/i18n"
+
+templ Settings(d SettingsData) {
+	@Page(d.Layout, settingsBody(d))
+}
+
+templ settingsBody(d SettingsData) {
+	<form method="post" action="/settings" class="grid gap-4">
+		if d.Message != "" {
+			<div class={ "rounded-lg px-4 py-3 text-sm", templ.KV("bg-emerald-500/10 text-emerald-200", !d.IsError), templ.KV("bg-rose-500/10 text-rose-200", d.IsError) }>
+				{ d.Message }
+			</div>
+		}
+
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.jellyfin") }</h2>
+			@textField(d.Layout.T.T("settings.jellyfinUrl"), "jellyfin_url", "url", d.Settings.Jellyfin.URL, "https://jellyfin.example.com")
+			@secretField(d.Layout.T, "jellyfin_api_key", d.Layout.T.T("settings.jellyfinApiKey"), d.HasJellyfinKey)
+			@textField(d.Layout.T.T("settings.jellyfinUserId"), "jellyfin_user_id", "text", d.Settings.Jellyfin.UserID, "")
+		</div>
+
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdb") }</h2>
+			@secretField(d.Layout.T, "tmdb_api_key", d.Layout.T.T("settings.tmdbApiKey"), d.HasTMDBKey)
+			<div class="grid gap-3 sm:grid-cols-2">
+				@textField(d.Layout.T.T("settings.language"), "tmdb_language", "text", d.Settings.TMDB.Language, "en-US")
+				@textField(d.Layout.T.T("settings.region"), "tmdb_region", "text", d.Settings.TMDB.Region, "US")
+			</div>
+		</div>
+
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.scan") }</h2>
+			<div class="grid gap-3 sm:grid-cols-2">
+				@numberField(d.Layout.T.T("settings.interval"), "scan_interval", strconv.Itoa(d.Settings.Scan.IntervalMinutes), "1")
+				@numberField(d.Layout.T.T("settings.rateLimit"), "scan_rate", strconv.FormatFloat(d.Settings.Scan.TMDBRateLimitRPS, 'f', -1, 64), "0.1")
+			</div>
+			@checkboxField(d.Layout.T.T("settings.runOnStart"), "scan_run_on_start", d.Settings.Scan.RunOnStart)
+			@checkboxField(d.Layout.T.T("settings.includeSpecials"), "scan_include_specials", d.Settings.Scan.IncludeSpecials)
+		</div>
+
+		<div class="card grid gap-3">
+			<div class="flex items-center justify-between">
+				<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.libraries") }</h2>
+				<button type="submit" formaction="/settings/refresh-libraries" class="btn-ghost">
+					{ d.Layout.T.T("settings.refreshLibraries") }
+				</button>
+			</div>
+			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.librariesHint") }</p>
+			if len(d.Libraries) == 0 {
+				<p class="text-sm text-slate-500">{ d.Layout.T.T("settings.noLibraries") }</p>
+			} else {
+				<div class="grid gap-2 sm:grid-cols-2">
+					for _, lib := range d.Libraries {
+						<label class="flex items-center gap-2 rounded-lg bg-slate-900/60 px-3 py-2 text-sm">
+							<input type="checkbox" name="library" value={ lib.ID } checked?={ lib.Enabled } class="checkbox"/>
+							<span class="font-medium text-slate-200">{ lib.Name }</span>
+							if lib.Type != "" {
+								<span class="text-xs text-slate-500">({ lib.Type })</span>
+							}
+						</label>
+					}
+				</div>
+			}
+		</div>
+
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.uiLanguage") }</h2>
+			<select name="locale" class="input max-w-xs">
+				for _, lang := range d.Layout.Languages {
+					<option value={ lang.Code } selected?={ lang.Active }>{ lang.Label }</option>
+				}
+			</select>
+		</div>
+
+		<div class="flex justify-end">
+			<button type="submit" class="btn-primary">{ d.Layout.T.T("common.save") }</button>
+		</div>
+	</form>
+}
+
+templ textField(label, name, inputType, value, placeholder string) {
+	<label class="grid gap-1 text-sm">
+		<span class="text-slate-300">{ label }</span>
+		<input type={ inputType } name={ name } value={ value } placeholder={ placeholder } class="input" autocomplete="off"/>
+	</label>
+}
+
+templ numberField(label, name, value, step string) {
+	<label class="grid gap-1 text-sm">
+		<span class="text-slate-300">{ label }</span>
+		<input type="number" name={ name } value={ value } step={ step } min="0" class="input"/>
+	</label>
+}
+
+templ secretField(t *i18n.Translator, name, label string, hasValue bool) {
+	<label class="grid gap-1 text-sm">
+		<span class="text-slate-300">{ label }</span>
+		if hasValue {
+			<input type="password" name={ name } placeholder={ t.T("settings.keyPlaceholderSet") } class="input" autocomplete="new-password"/>
+		} else {
+			<input type="password" name={ name } class="input" autocomplete="new-password"/>
+		}
+	</label>
+}
+
+templ checkboxField(label, name string, checked bool) {
+	<label class="flex items-center gap-2 text-sm">
+		<input type="checkbox" name={ name } checked?={ checked } class="checkbox"/>
+		<span class="text-slate-300">{ label }</span>
+	</label>
+}

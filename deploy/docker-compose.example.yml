@@ -1,0 +1,35 @@
+# Example docker-compose setup for waim.
+#
+# 1. Copy this file to docker-compose.yml.
+# 2. Set a strong WAIM_MASTER_KEY (used to encrypt stored API keys).
+#    Prefer a Docker secret or an .env file that is NOT committed.
+# 3. Pick a tag: `stable` (from main) or `dev` (from develop).
+# 4. Configure Jellyfin and TMDB in the web UI at http://<host>:8080.
+
+services:
+  waim:
+    image: ghcr.io/daknoblo/waim:stable
+    container_name: waim
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Required: master key used to encrypt API keys at rest.
+      # Generate once, e.g.: openssl rand -base64 32
+      WAIM_MASTER_KEY: "${WAIM_MASTER_KEY:?set WAIM_MASTER_KEY in your .env}"
+      WAIM_ADDR: ":8080"
+      # WAIM_DEBUG: "false"
+    volumes:
+      - waim-data:/app/appdata
+    # Security hardening: run with a read-only root filesystem; only the
+    # mounted data volume (and an in-memory /tmp) are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  waim-data:
