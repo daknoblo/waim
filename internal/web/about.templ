@@ -1,0 +1,36 @@
+package web
+
+templ About(d AboutData) {
+	@Page(d.Layout, aboutBody(d))
+}
+
+templ aboutBody(d AboutData) {
+	<section class="grid gap-4">
+		<div class="card border-indigo-500/30">
+			<h2 class="mb-2 text-lg font-semibold text-indigo-300">{ d.Layout.T.T("about.disclaimerTitle") }</h2>
+			<p class="text-sm text-slate-300">{ d.Layout.T.T("about.disclaimer") }</p>
+		</div>
+		<div class="card grid gap-2 text-sm">
+			<div class="flex justify-between">
+				<span class="text-slate-400">{ d.Layout.T.T("about.version") }</span>
+				<span class="font-mono text-slate-200">{ d.Version }</span>
+			</div>
+			<div class="flex justify-between">
+				<span class="text-slate-400">Commit</span>
+				<span class="font-mono text-slate-200">{ d.Commit }</span>
+			</div>
+			<div class="flex justify-between">
+				<span class="text-slate-400">Build</span>
+				<span class="font-mono text-slate-200">{ d.BuildDate }</span>
+			</div>
+			<div class="flex justify-between">
+				<span class="text-slate-400">Go</span>
+				<span class="font-mono text-slate-200">{ d.GoVersion }</span>
+			</div>
+			<div class="flex justify-between">
+				<span class="text-slate-400">{ d.Layout.T.T("about.repo") }</span>
+				<a class="font-mono text-indigo-400 hover:underline" href={ templ.SafeURL(d.Repo) } target="_blank" rel="noreferrer noopener">{ d.Repo }</a>
+			</div>
+		</div>
+	</section>
+}

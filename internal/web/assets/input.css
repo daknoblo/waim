@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20;
+  }
+
+  .nav-link {
+    @apply rounded-md px-3 py-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100;
+  }
+  .nav-link-active {
+    @apply bg-slate-800 text-slate-100;
+  }
+
+  .lang-btn {
+    @apply rounded px-2 py-1 text-xs uppercase text-slate-500 transition hover:text-slate-200;
+  }
+  .lang-btn-active {
+    @apply text-indigo-400;
+  }
+
+  .btn-primary {
+    @apply rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white;
+  }
+
+  .input {
+    @apply rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500;
+  }
+  .checkbox {
+    @apply h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500;
+  }
+
+  .badge {
+    @apply inline-block rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-300;
+  }
+
+  .status-dot {
+    @apply inline-block h-3 w-3 rounded-full bg-emerald-500;
+  }
+  .status-dot-running {
+    @apply animate-pulse bg-amber-400;
+  }
+}
