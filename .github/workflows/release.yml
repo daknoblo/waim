@@ -1,4 +1,7 @@
-name: Release
+# Builds the multi-arch Docker image, publishes it to GitHub Container Registry
+# (main -> :stable, develop -> :dev, tags -> versioned) and scans it for
+# vulnerabilities.
+name: Publish Docker Image (ghcr.io)
 
 on:
   push:
@@ -15,26 +18,27 @@ permissions:
   security-events: write
 
 jobs:
-  image:
+  publish:
+    name: Build, Push & Scan Image
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: "\U0001F4E5 Check out repository"
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
+      - name: "\U0001F9F0 Set up QEMU (multi-arch emulation)"
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
+      - name: "\U0001F3D7\uFE0F Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: "\U0001F510 Log in to GitHub Container Registry"
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Derive image metadata
+      - name: "\U0001F3F7\uFE0F Determine image tags & labels"
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -46,7 +50,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
 
-      - name: Build and push
+      - name: "\U0001F433 Build & push multi-arch image (amd64 + arm64)"
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -64,7 +68,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Scan image with Trivy
+      - name: "\U0001F6E1\uFE0F Scan image for vulnerabilities (Trivy)"
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
@@ -73,7 +77,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
 
-      - name: Upload Trivy results
+      - name: "\U0001F4E4 Upload scan results to the Security tab"
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
