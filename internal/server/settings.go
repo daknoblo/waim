@@ -26,6 +26,7 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message 
 		Libraries:      cur.Libraries,
 		HasJellyfinKey: cur.Jellyfin.APIKey != "",
 		HasTMDBKey:     cur.TMDB.APIKey != "",
+		HasAIKey:       cur.AI.APIKey != "",
 		Message:        message,
 		IsError:        isErr,
 	}
@@ -124,6 +125,13 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	ns.TMDB.Region = strings.TrimSpace(r.FormValue("tmdb_region"))
 	if k := strings.TrimSpace(r.FormValue("tmdb_api_key")); k != "" {
 		ns.TMDB.APIKey = k
+	}
+
+	ns.AI.Enabled = r.FormValue("ai_enabled") != ""
+	ns.AI.Endpoint = strings.TrimSpace(r.FormValue("ai_endpoint"))
+	ns.AI.Model = strings.TrimSpace(r.FormValue("ai_model"))
+	if k := strings.TrimSpace(r.FormValue("ai_api_key")); k != "" {
+		ns.AI.APIKey = k
 	}
 
 	ns.Scan.IntervalMinutes = atoiDefault(r.FormValue("scan_interval"), cur.Scan.IntervalMinutes)

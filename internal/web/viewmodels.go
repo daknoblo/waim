@@ -6,15 +6,17 @@ import (
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
+	"github.com/daknoblo/waim/internal/suggest"
 )
 
 // Nav identifiers for highlighting the active page.
 const (
-	NavDashboard = "dashboard"
-	NavStats     = "stats"
-	NavLogs      = "logs"
-	NavSettings  = "settings"
-	NavAbout     = "about"
+	NavDashboard   = "dashboard"
+	NavStats       = "stats"
+	NavSuggestions = "suggestions"
+	NavLogs        = "logs"
+	NavSettings    = "settings"
+	NavAbout       = "about"
 )
 
 // LangOption is a selectable interface language.
@@ -91,6 +93,7 @@ type SettingsData struct {
 	Libraries      []config.Library
 	HasJellyfinKey bool
 	HasTMDBKey     bool
+	HasAIKey       bool
 	Message        string
 	IsError        bool
 	JellyfinCheck  ConnCheck
@@ -105,6 +108,14 @@ type AboutData struct {
 	BuildDate string
 	GoVersion string
 	Repo      string
+}
+
+// SuggestionsData is the model for the suggestions page.
+type SuggestionsData struct {
+	Layout     Layout
+	Running    bool
+	Configured bool
+	Result     *suggest.Result
 }
 
 // LogPageData is the model for the dedicated activity-log page.

@@ -32,6 +32,13 @@ type stored struct {
 		Region    string `json:"region"`
 	} `json:"tmdb"`
 
+	AI struct {
+		Enabled   bool   `json:"enabled"`
+		Endpoint  string `json:"endpoint"`
+		APIKeyEnc string `json:"apiKeyEnc"`
+		Model     string `json:"model"`
+	} `json:"ai"`
+
 	Scan      ScanSettings `json:"scan"`
 	Libraries []Library    `json:"libraries"`
 }
@@ -140,9 +147,14 @@ func (m *Manager) Save(s Settings) error {
 		if err != nil {
 			return fmt.Errorf("config: encrypt tmdb key: %w", err)
 		}
+		aEnc, err := m.cipher.Encrypt(s.AI.APIKey)
+		if err != nil {
+			return fmt.Errorf("config: encrypt ai key: %w", err)
+		}
 		st.Jellyfin.APIKeyEnc = jEnc
 		st.TMDB.APIKeyEnc = tEnc
-	} else if s.Jellyfin.APIKey != "" || s.TMDB.APIKey != "" {
+		st.AI.APIKeyEnc = aEnc
+	} else if s.Jellyfin.APIKey != "" || s.TMDB.APIKey != "" || s.AI.APIKey != "" {
 		return crypto.ErrNoKey
 	}
 
@@ -168,6 +180,9 @@ func (m *Manager) ExportStored() ([]byte, error) {
 		if tEnc, err := m.cipher.Encrypt(m.settings.TMDB.APIKey); err == nil {
 			st.TMDB.APIKeyEnc = tEnc
 		}
+		if aEnc, err := m.cipher.Encrypt(m.settings.AI.APIKey); err == nil {
+			st.AI.APIKeyEnc = aEnc
+		}
 	}
 	return json.MarshalIndent(st, "", "  ")
 }
@@ -186,6 +201,9 @@ func (m *Manager) decryptStored(st stored) Settings {
 	s.Jellyfin.UserID = st.Jellyfin.UserID
 	s.TMDB.Language = st.TMDB.Language
 	s.TMDB.Region = st.TMDB.Region
+	s.AI.Enabled = st.AI.Enabled
+	s.AI.Endpoint = st.AI.Endpoint
+	s.AI.Model = st.AI.Model
 
 	if m.cipher.Enabled() {
 		if v, err := m.cipher.Decrypt(st.Jellyfin.APIKeyEnc); err == nil {
@@ -193,6 +211,9 @@ func (m *Manager) decryptStored(st stored) Settings {
 		}
 		if v, err := m.cipher.Decrypt(st.TMDB.APIKeyEnc); err == nil {
 			s.TMDB.APIKey = v
+		}
+		if v, err := m.cipher.Decrypt(st.AI.APIKeyEnc); err == nil {
+			s.AI.APIKey = v
 		}
 	}
 
@@ -251,6 +272,9 @@ func storedFromSettings(s Settings) stored {
 	st.Jellyfin.UserID = s.Jellyfin.UserID
 	st.TMDB.Language = s.TMDB.Language
 	st.TMDB.Region = s.TMDB.Region
+	st.AI.Enabled = s.AI.Enabled
+	st.AI.Endpoint = s.AI.Endpoint
+	st.AI.Model = s.AI.Model
 	st.Scan = s.Scan
 	st.Libraries = append([]Library(nil), s.Libraries...)
 	return st

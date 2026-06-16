@@ -50,6 +50,15 @@ type TMDBSettings struct {
 	Region   string `json:"region"`
 }
 
+// AISettings holds an optional remote AI endpoint (OpenAI/Azure-compatible)
+// used to generate library-based suggestions.
+type AISettings struct {
+	Enabled  bool   `json:"enabled"`
+	Endpoint string `json:"endpoint"`
+	APIKey   string `json:"apiKey"` // plaintext in memory; encrypted on disk
+	Model    string `json:"model"`
+}
+
 // ScanSettings controls scan scheduling and TMDB request behaviour.
 type ScanSettings struct {
 	IntervalMinutes  int     `json:"intervalMinutes"`  // 0 disables periodic scans
@@ -64,6 +73,7 @@ type Settings struct {
 	LogLevel  string           `json:"logLevel"`
 	Jellyfin  JellyfinSettings `json:"jellyfin"`
 	TMDB      TMDBSettings     `json:"tmdb"`
+	AI        AISettings       `json:"ai"`
 	Scan      ScanSettings     `json:"scan"`
 	Libraries []Library        `json:"libraries"`
 }
@@ -103,6 +113,7 @@ func (s Settings) Redacted() Settings {
 	cp := s.Clone()
 	cp.Jellyfin.APIKey = ""
 	cp.TMDB.APIKey = ""
+	cp.AI.APIKey = ""
 	return cp
 }
 

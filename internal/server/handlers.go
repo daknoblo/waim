@@ -45,6 +45,37 @@ func (s *Server) statsData(r *http.Request) web.StatsData {
 	return d
 }
 
+func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, web.Suggestions(s.suggestionsData(r)))
+}
+
+func (s *Server) handleGenerateSuggestions(w http.ResponseWriter, r *http.Request) {
+	if s.suggestionsConfigured() {
+		s.suggest.Generate()
+	}
+	s.render(w, r, web.SuggestionsContent(s.suggestionsData(r)))
+}
+
+func (s *Server) handlePartialSuggestions(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, web.SuggestionsContent(s.suggestionsData(r)))
+}
+
+func (s *Server) suggestionsConfigured() bool {
+	settings := s.cfg.Get()
+	return settings.Jellyfin.URL != "" && settings.Jellyfin.APIKey != "" &&
+		settings.TMDB.APIKey != "" && s.cfg.CipherEnabled() && len(settings.EnabledLibraryIDs()) > 0
+}
+
+func (s *Server) suggestionsData(r *http.Request) web.SuggestionsData {
+	res, _ := s.suggest.Result()
+	return web.SuggestionsData{
+		Layout:     s.layout(r, web.NavSuggestions),
+		Running:    s.suggest.Running(),
+		Configured: s.suggestionsConfigured(),
+		Result:     res,
+	}
+}
+
 func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
 	d := web.AboutData{
 		Layout:    s.layout(r, web.NavAbout),

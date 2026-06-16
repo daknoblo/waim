@@ -16,6 +16,7 @@ import (
 	"github.com/daknoblo/waim/internal/logbuf"
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/store"
+	"github.com/daknoblo/waim/internal/suggest"
 	"github.com/daknoblo/waim/internal/version"
 	"github.com/daknoblo/waim/internal/web"
 )
@@ -30,6 +31,7 @@ type Server struct {
 	cfg      *config.Manager
 	store    *store.Store
 	sched    *scheduler.Scheduler
+	suggest  *suggest.Service
 	logs     *logbuf.Buffer
 	catalog  *i18n.Catalog
 	log      *slog.Logger
@@ -39,12 +41,13 @@ type Server struct {
 }
 
 // New constructs a Server.
-func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger, logLevel *slog.LevelVar) *Server {
+func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *suggest.Service, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger, logLevel *slog.LevelVar) *Server {
 	info := version.Get()
 	return &Server{
 		cfg:      cfg,
 		store:    st,
 		sched:    sched,
+		suggest:  sug,
 		logs:     logs,
 		catalog:  catalog,
 		log:      log,
@@ -78,6 +81,9 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /{$}", s.handleDashboard)
 	mux.HandleFunc("GET /stats", s.handleStats)
+	mux.HandleFunc("GET /suggestions", s.handleSuggestions)
+	mux.HandleFunc("POST /suggestions/generate", s.handleGenerateSuggestions)
+	mux.HandleFunc("GET /partials/suggestions", s.handlePartialSuggestions)
 	mux.HandleFunc("GET /logs", s.handleLogs)
 	mux.HandleFunc("GET /settings", s.handleSettings)
 	mux.HandleFunc("POST /settings", s.handleSaveSettings)
