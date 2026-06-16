@@ -3,12 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/scheduler"
+	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/web"
 )
 
@@ -22,6 +22,27 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		Logs:   web.BuildLogViews(s.logs.Entries()),
 	}
 	s.render(w, r, web.Logs(d))
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, web.Stats(s.statsData(r)))
+}
+
+func (s *Server) statsData(r *http.Request) web.StatsData {
+	t := s.translator(r)
+	ctx := r.Context()
+	run, _ := s.store.LatestSuccessfulRun(ctx)
+	var findings []store.Finding
+	if run != nil {
+		findings, _ = s.store.FindingsForRun(ctx, run.ID)
+	}
+	libTypes := map[string]string{}
+	for _, l := range s.cfg.Get().Libraries {
+		libTypes[l.ID] = l.Type
+	}
+	d := web.BuildStats(t, run, findings, libTypes)
+	d.Layout = s.layout(r, web.NavStats)
+	return d
 }
 
 func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +146,7 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 		prog := s.sched.Progress()
 		sv.CurrentItem = prog.Current
 		if !prog.StartedAt.IsZero() {
-			sv.Duration = formatDuration(time.Since(prog.StartedAt))
+			sv.Duration = web.FormatDuration(time.Since(prog.StartedAt))
 		}
 		sv.LibrariesScanned = len(prog.Libraries)
 		for _, l := range prog.Libraries {
@@ -143,7 +164,7 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 		sv.ItemsScanned = run.ItemsScanned
 		sv.LibrariesScanned = run.LibrariesScanned
 		sv.MissingTotal = run.MissingCount
-		sv.Duration = formatDuration(run.Duration())
+		sv.Duration = web.FormatDuration(run.Duration())
 		for _, l := range run.Libraries {
 			sv.Libraries = append(sv.Libraries, web.LibraryStatusView{
 				Name: l.Name, Color: web.LibraryColor(l.ID),
@@ -152,17 +173,6 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 		}
 	}
 	return sv
-}
-
-func formatDuration(d time.Duration) string {
-	if d <= 0 {
-		return ""
-	}
-	d = d.Round(time.Second)
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 }
 
 func (s *Server) handleExportSettings(w http.ResponseWriter, _ *http.Request) {
