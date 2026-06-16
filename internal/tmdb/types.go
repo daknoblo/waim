@@ -9,12 +9,20 @@ type CollectionRef struct {
 	Name string `json:"name"`
 }
 
+// Genre is a TMDB genre.
+type Genre struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 // Movie is a subset of the /movie/{id} response.
 type Movie struct {
 	ID                  int64          `json:"id"`
 	Title               string         `json:"title"`
 	ReleaseDate         string         `json:"release_date"`
 	VoteAverage         float64        `json:"vote_average"`
+	Runtime             int            `json:"runtime"`
+	Genres              []Genre        `json:"genres"`
 	BelongsToCollection *CollectionRef `json:"belongs_to_collection"`
 }
 
@@ -48,6 +56,9 @@ type TVShow struct {
 	NumberOfSeasons int             `json:"number_of_seasons"`
 	VoteAverage     float64         `json:"vote_average"`
 	PosterPath      string          `json:"poster_path"`
+	FirstAirDate    string          `json:"first_air_date"`
+	EpisodeRunTime  []int           `json:"episode_run_time"`
+	Genres          []Genre         `json:"genres"`
 	Seasons         []SeasonSummary `json:"seasons"`
 }
 

@@ -100,7 +100,7 @@ func run() error {
 	}
 
 	sched := scheduler.New(cfg, st, logger)
-	suggestSvc := suggest.New(cfg, logger)
+	suggestSvc := suggest.New(cfg, st, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

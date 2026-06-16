@@ -46,6 +46,9 @@ func (s *Server) statsData(r *http.Request) web.StatsData {
 }
 
 func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
+	if s.suggestionsConfigured() && !s.suggest.Running() && s.suggest.NeedsRefresh(r.Context()) {
+		s.suggest.Generate()
+	}
 	s.render(w, r, web.Suggestions(s.suggestionsData(r)))
 }
 

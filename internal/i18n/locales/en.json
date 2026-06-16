@@ -65,6 +65,12 @@
   "stats.missingEpisodes": "missing episodes",
   "stats.missingParts": "missing parts",
   "stats.noGaps": "No gaps \u2014 everything looks complete!",
+  "stats.topRated": "Top rated movies",
+  "stats.worstRated": "Lowest rated movies",
+  "stats.longest": "Longest movies",
+  "stats.byGenre": "Titles by genre",
+  "stats.byDecade": "Titles by release decade",
+  "stats.noMedia": "No media data yet. Run a scan first.",
 
   "finding.col.type": "Type",
   "finding.col.title": "Title",

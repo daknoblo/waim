@@ -18,6 +18,7 @@ import (
 	"github.com/daknoblo/waim/internal/ai"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/jellyfin"
+	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
 )
 
@@ -52,19 +53,21 @@ type AIItem struct {
 
 // Result is a cached set of suggestions.
 type Result struct {
-	Trending    []Item
-	Similar     []Item
-	AI          []AIItem
-	AIEnabled   bool
-	GeneratedAt time.Time
-	Errors      []string
+	Trending     []Item
+	Similar      []Item
+	AI           []AIItem
+	AIEnabled    bool
+	GeneratedAt  time.Time
+	BasedOnRunID int64
+	Errors       []string
 }
 
 // Service builds and caches suggestions.
 type Service struct {
-	cfg *config.Manager
-	log *slog.Logger
-	ttl time.Duration
+	cfg   *config.Manager
+	store *store.Store
+	log   *slog.Logger
+	ttl   time.Duration
 
 	mu      sync.RWMutex
 	result  *Result
@@ -72,11 +75,11 @@ type Service struct {
 }
 
 // New creates a suggestion service.
-func New(cfg *config.Manager, log *slog.Logger) *Service {
+func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Service {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Service{cfg: cfg, log: log, ttl: 6 * time.Hour}
+	return &Service{cfg: cfg, store: st, log: log, ttl: 6 * time.Hour}
 }
 
 // Running reports whether a generation is in progress.
@@ -90,6 +93,23 @@ func (s *Service) Result() (*Result, bool) {
 		return nil, false
 	}
 	return s.result, time.Since(s.result.GeneratedAt) < s.ttl
+}
+
+// NeedsRefresh reports whether suggestions should be (re)generated: when there
+// is no cached result yet, or a newer successful scan exists than the one the
+// cached suggestions were based on.
+func (s *Service) NeedsRefresh(ctx context.Context) bool {
+	s.mu.RLock()
+	res := s.result
+	s.mu.RUnlock()
+	if res == nil {
+		return true
+	}
+	var latest int64
+	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
+		latest = run.ID
+	}
+	return res.BasedOnRunID != latest
 }
 
 // Generate rebuilds suggestions in the background, ignoring overlapping calls.
@@ -111,6 +131,9 @@ func (s *Service) Generate() {
 
 func (s *Service) build(ctx context.Context) *Result {
 	res := &Result{GeneratedAt: time.Now()}
+	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
+		res.BasedOnRunID = run.ID
+	}
 	settings := s.cfg.Get()
 
 	if settings.Jellyfin.URL == "" || settings.Jellyfin.APIKey == "" || settings.TMDB.APIKey == "" {
