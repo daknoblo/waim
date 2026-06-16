@@ -150,6 +150,9 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 													if di.Rating != "" {
 														<span class="rounded bg-amber-500/15 px-1.5 text-xs text-amber-300">{ "\u2605 " + di.Rating }</span>
 													}
+													if di.SearchURL != "" {
+														<a class="link-search" href={ templ.SafeURL(di.SearchURL) } target="_blank" rel="noreferrer noopener">{ t.T("finding.search") }</a>
+													}
 												</li>
 											}
 										</ul>

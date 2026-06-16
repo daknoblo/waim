@@ -190,7 +190,8 @@ func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, d
 	if err != nil {
 		return nil
 	}
-	rows := web.BuildFindingRows(t, fs, s.cfg.Get().Jellyfin.URL)
+	cfg := s.cfg.Get()
+	rows := web.BuildFindingRows(t, fs, cfg.Jellyfin.URL, cfg.Search.URLTemplate)
 	web.SortFindingRows(rows, sortKey, dir)
 	return rows
 }

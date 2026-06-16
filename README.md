@@ -30,6 +30,8 @@ UI (templ + HTMX + Tailwind), built to run in Docker.
 - Per-library selection: choose exactly which Jellyfin libraries to scan.
 - Dashboard with grouped findings, sortable columns, a live search box and a
   per-library quick filter.
+- Per-finding **search links** that open a configurable provider in a new tab
+  (DuckDuckGo by default; any `{query}` URL such as Prowlarr or Jackett works).
 - **Statistics** page: completeness per library, most incomplete series and
   collections, top/lowest rated titles per library, and genre/decade breakdowns.
 - **Suggestions** page: what to watch next from TMDB trending and
