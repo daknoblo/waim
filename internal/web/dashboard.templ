@@ -30,8 +30,6 @@ templ dashboardBody(d DashboardData) {
 							}
 						</select>
 					}
-					<a class="btn-ghost" href="/export/settings">{ d.Layout.T.T("dashboard.exportSettings") }</a>
-					<a class="btn-ghost" href="/export/sync">{ d.Layout.T.T("dashboard.exportSync") }</a>
 				</div>
 			</div>
 			<input
@@ -68,7 +66,7 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				<span class="truncate font-medium text-slate-200">{ s.CurrentItem }</span>
 			</div>
 		}
-		<div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+		<div class="mt-4 grid grid-cols-2 gap-3 text-center text-sm sm:grid-cols-3 lg:grid-cols-6">
 			@stat(t.T("dashboard.lastScan"), s.LastScan)
 			@stat(t.T("dashboard.nextScan"), s.NextScan)
 			@stat(t.T("dashboard.duration"), orDash(s.Duration))
