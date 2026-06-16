@@ -160,13 +160,25 @@ func (s *Server) dashboardData(r *http.Request) web.DashboardData {
 	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
 	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
 	return web.DashboardData{
-		Layout:   s.layout(r, web.NavDashboard),
-		Status:   s.statusView(r.Context(), t),
-		Findings: s.findingRows(r.Context(), t, sortKey, dir),
-		Logs:     web.BuildLogViews(s.logs.Entries()),
-		Sort:     sortKey,
-		Dir:      dir,
+		Layout:    s.layout(r, web.NavDashboard),
+		Status:    s.statusView(r.Context(), t),
+		Findings:  s.findingRows(r.Context(), t, sortKey, dir),
+		Libraries: s.libraryFilters(),
+		Logs:      web.BuildLogViews(s.logs.Entries()),
+		Sort:      sortKey,
+		Dir:       dir,
 	}
+}
+
+// libraryFilters lists the enabled, configured libraries for the dashboard filter.
+func (s *Server) libraryFilters() []web.LibraryFilter {
+	var out []web.LibraryFilter
+	for _, l := range s.cfg.Get().Libraries {
+		if l.Enabled {
+			out = append(out, web.LibraryFilter{ID: l.ID, Name: l.Name})
+		}
+	}
+	return out
 }
 
 func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, dir string) []web.FindingRow {

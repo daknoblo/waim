@@ -39,6 +39,7 @@ type FindingRow struct {
 	MediaIcon    string
 	Title        string
 	Library      string
+	LibraryID    string
 	LibraryColor []string
 	Detail       string
 	DetailItems  []DetailItem
@@ -82,6 +83,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				MediaIcon:    mediaIcon(f.MediaType),
 				Title:        f.Title,
 				Library:      f.LibraryName,
+				LibraryID:    f.LibraryID,
 				LibraryColor: LibraryColor(f.LibraryID),
 				JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
 				PosterURL:    posterURL(d.PosterPath),
@@ -114,6 +116,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 					MediaIcon:    mediaIcon(store.MediaSeries),
 					Title:        f.Title,
 					Library:      f.LibraryName,
+					LibraryID:    f.LibraryID,
 					LibraryColor: LibraryColor(f.LibraryID),
 					JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
 					TMDBLink:     tmdbLink("tv", f.TMDBID),
