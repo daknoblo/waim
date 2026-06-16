@@ -102,6 +102,7 @@ type SettingsData struct {
 	HasJellyfinKey bool
 	HasTMDBKey     bool
 	HasAIKey       bool
+	HasSearchKey   bool
 	Message        string
 	IsError        bool
 	JellyfinCheck  ConnCheck

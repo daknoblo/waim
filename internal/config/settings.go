@@ -74,6 +74,7 @@ const DefaultSearchURLTemplate = "https://duckduckgo.com/?q={query}"
 // placeholder, which is replaced with the URL-encoded search string.
 type SearchSettings struct {
 	URLTemplate string `json:"urlTemplate"`
+	APIKey      string `json:"apiKey"` // plaintext in memory; encrypted on disk
 }
 
 // Settings is the full in-memory configuration with decrypted API keys.

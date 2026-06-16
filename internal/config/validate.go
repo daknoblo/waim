@@ -28,6 +28,9 @@ func validate(s Settings) error {
 		if !strings.Contains(t, "{query}") {
 			return fmt.Errorf("config: search url must contain the {query} placeholder")
 		}
+		if strings.Contains(t, "{key}") && strings.TrimSpace(s.Search.APIKey) == "" {
+			return fmt.Errorf("config: search url uses {key} but no api key is set")
+		}
 	}
 	return nil
 }

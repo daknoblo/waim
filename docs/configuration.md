@@ -37,7 +37,8 @@ encrypted** and never written in plaintext.
     "includeSpecials": false   // include season 0 / specials in comparisons
   },
   "search": {
-    "urlTemplate": "https://duckduckgo.com/?q={query}" // {query} = URL-encoded term
+    "urlTemplate": "https://duckduckgo.com/?q={query}", // {query} + optional {key}
+    "apiKeyEnc": "<base64>"    // AES-256-GCM ciphertext (never plaintext); for {key}
   },
   "libraries": [
     { "id": "...", "name": "Movies", "type": "movies", "enabled": true }
@@ -101,21 +102,23 @@ the ones you want included in scans. Only enabled libraries are scanned.
 Every missing season or movie in the findings table gets a small **Search** link
 that opens an external search provider in a new browser tab. The search term is
 built automatically: `Series Title S04` for a season, `Movie Title Year` for a
-movie.
+movie. waim assembles the final URL server-side and redirects, so the optional
+API key never appears in the page.
 
-| Field      | Description                                                                       |
-| ---------- | -------------------------------------------------------------------------------- |
-| Search URL | A URL template containing the `{query}` placeholder (replaced with the URL-encoded search term). Defaults to DuckDuckGo. |
+| Field      | Description                                                                                            |
+| ---------- | ----------------------------------------------------------------------------------------------------- |
+| Search URL | A URL template. `{query}` is replaced with the URL-encoded search term; the optional `{key}` is replaced with the API key below. Defaults to DuckDuckGo. |
+| API key    | Optional. Stored encrypted; only used when the URL contains `{key}` (e.g. a search API that authenticates via the query string). |
 
 Examples:
 
 - DuckDuckGo (default): `https://duckduckgo.com/?q={query}`
-- Prowlarr: `https://prowlarr.example.com/search?query={query}`
-- Jackett: `https://jackett.example.com/UI/Dashboard#search={query}`
+- A self-hosted search UI: `https://search.example.com/search?query={query}`
+- A search API needing a key: `https://indexer.example.com/api/v1/search?query={query}&apikey={key}`
 
-The template must be an `http`/`https` URL and contain `{query}`. The link opens
-in a new tab and relies on the provider's own session/authentication — no
-credentials are stored for it.
+The template must be an `http`/`https` URL and contain `{query}`. If it also
+contains `{key}`, the API key must be set, and storing it requires
+`WAIM_MASTER_KEY` (it is encrypted at rest).
 
 ### Interface language
 
