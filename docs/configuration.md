@@ -13,6 +13,7 @@ encrypted** and never written in plaintext.
   "schemaVersion": 1,
   "salt": "<base64>",          // non-secret salt for key derivation
   "locale": "en",              // default UI language: "en" or "de"
+  "logLevel": "info",          // log verbosity: "info", "warn" or "debug"
   "jellyfin": {
     "url": "https://jellyfin.example.com",
     "apiKeyEnc": "<base64>",   // AES-256-GCM ciphertext (never plaintext)
@@ -75,6 +76,20 @@ the ones you want included in scans. Only enabled libraries are scanned.
 
 Switch between English and German. The choice is stored per browser (cookie) and
 the default is taken from `config.json`.
+
+### Logging
+
+The **Log level** setting controls how verbose both the in-app activity log and
+the console (container) output are. It is applied immediately on save:
+
+| Level   | Shows                                              |
+| ------- | -------------------------------------------------- |
+| `info`  | Normal operation (default).                        |
+| `warn`  | Warnings and errors only.                          |
+| `debug` | Verbose, detailed diagnostics (per-request, etc.). |
+
+`WAIM_DEBUG=true` only sets the verbosity during early startup before the config
+is loaded; afterwards the value from `config.json` takes precedence.
 
 ## Matching logic
 

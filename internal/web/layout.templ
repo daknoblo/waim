@@ -19,11 +19,12 @@ templ Page(l Layout, body templ.Component) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="color-scheme" content="dark"/>
 			<title>{ l.T.T("app.title") } — { l.T.T("app.tagline") }</title>
-			<link rel="stylesheet" href="/static/app.css"/>
-			<script src="/static/htmx.min.js" defer></script>
+			<link rel="stylesheet" href={ "/static/app.css?v=" + l.AssetVersion }/>
+			<script src={ "/static/htmx.min.js?v=" + l.AssetVersion } defer></script>
+			<script src={ "/static/app.js?v=" + l.AssetVersion } defer></script>
 		</head>
 		<body class="min-h-full bg-slate-950 text-slate-100 antialiased">
-			<div class="mx-auto flex min-h-screen max-w-5xl flex-col px-4">
+			<div class="mx-auto flex min-h-screen w-2/3 flex-col px-4">
 				<header class="flex flex-wrap items-center justify-between gap-4 py-5">
 					<div class="flex items-baseline gap-3">
 						<span class="text-2xl font-bold tracking-tight text-indigo-400">{ l.T.T("app.title") }</span>
@@ -31,6 +32,9 @@ templ Page(l Layout, body templ.Component) {
 					</div>
 					<nav class="flex items-center gap-1 text-sm">
 						@navLink(l.T, "/", NavDashboard, l.Active, l.T.T("nav.dashboard"))
+						@navLink(l.T, "/suggestions", NavSuggestions, l.Active, l.T.T("nav.suggestions"))
+						@navLink(l.T, "/stats", NavStats, l.Active, l.T.T("nav.stats"))
+						@navLink(l.T, "/logs", NavLogs, l.Active, l.T.T("nav.logs"))
 						@navLink(l.T, "/settings", NavSettings, l.Active, l.T.T("nav.settings"))
 						@navLink(l.T, "/about", NavAbout, l.Active, l.T.T("nav.about"))
 						@languageSwitcher(l)
@@ -46,7 +50,7 @@ templ Page(l Layout, body templ.Component) {
 				</main>
 				<footer class="border-t border-slate-800 py-4 text-xs text-slate-500">
 					<div class="flex flex-wrap items-center justify-between gap-2">
-						<span>{ l.T.T("app.title") } · { l.Version }</span>
+						<span>{ l.T.T("app.title") } · { l.Channel } · { l.Version }</span>
 						<a class="hover:text-slate-300" href={ templ.SafeURL(l.Repo) } target="_blank" rel="noreferrer noopener">{ l.Repo }</a>
 					</div>
 				</footer>

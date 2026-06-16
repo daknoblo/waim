@@ -7,9 +7,11 @@ import "runtime/debug"
 //
 //	-X github.com/daknoblo/waim/internal/version.Version=1.2.3
 var (
-	// Version is the semantic version or channel name (e.g. "dev", "stable", "1.2.3").
+	// Version is the build version, formatted as vYYYYMMDD-HHMM at build time.
 	Version = "dev"
-	// Commit is the short git commit hash.
+	// Channel is the release channel: "stable", "dev" or "local".
+	Channel = "local"
+	// Commit is the git commit hash.
 	Commit = "unknown"
 	// Date is the build date in RFC3339 format.
 	Date = "unknown"
@@ -18,6 +20,7 @@ var (
 // Info bundles the build metadata for display in the UI and logs.
 type Info struct {
 	Version string `json:"version"`
+	Channel string `json:"channel"`
 	Commit  string `json:"commit"`
 	Date    string `json:"date"`
 	GoVer   string `json:"goVersion"`
@@ -31,6 +34,7 @@ func Get() Info {
 	}
 	return Info{
 		Version: Version,
+		Channel: Channel,
 		Commit:  Commit,
 		Date:    Date,
 		GoVer:   goVer,

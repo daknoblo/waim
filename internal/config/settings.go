@@ -4,6 +4,7 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,13 @@ const SchemaVersion = 1
 const (
 	LocaleEN = "en"
 	LocaleDE = "de"
+)
+
+// Supported log levels (UI-selectable verbosity).
+const (
+	LogLevelInfo  = "info"
+	LogLevelWarn  = "warn"
+	LogLevelDebug = "debug"
 )
 
 // Library represents a Jellyfin library (collection folder) and whether it is
@@ -42,6 +50,15 @@ type TMDBSettings struct {
 	Region   string `json:"region"`
 }
 
+// AISettings holds an optional remote AI endpoint (OpenAI/Azure-compatible)
+// used to generate library-based suggestions.
+type AISettings struct {
+	Enabled  bool   `json:"enabled"`
+	Endpoint string `json:"endpoint"`
+	APIKey   string `json:"apiKey"` // plaintext in memory; encrypted on disk
+	Model    string `json:"model"`
+}
+
 // ScanSettings controls scan scheduling and TMDB request behaviour.
 type ScanSettings struct {
 	IntervalMinutes  int     `json:"intervalMinutes"`  // 0 disables periodic scans
@@ -53,8 +70,10 @@ type ScanSettings struct {
 // Settings is the full in-memory configuration with decrypted API keys.
 type Settings struct {
 	Locale    string           `json:"locale"`
+	LogLevel  string           `json:"logLevel"`
 	Jellyfin  JellyfinSettings `json:"jellyfin"`
 	TMDB      TMDBSettings     `json:"tmdb"`
+	AI        AISettings       `json:"ai"`
 	Scan      ScanSettings     `json:"scan"`
 	Libraries []Library        `json:"libraries"`
 }
@@ -62,7 +81,8 @@ type Settings struct {
 // Defaults returns a Settings value with sensible defaults.
 func Defaults() Settings {
 	return Settings{
-		Locale: LocaleEN,
+		Locale:   LocaleEN,
+		LogLevel: LogLevelInfo,
 		Jellyfin: JellyfinSettings{
 			URL: "",
 		},
@@ -73,7 +93,7 @@ func Defaults() Settings {
 		Scan: ScanSettings{
 			IntervalMinutes:  60,
 			RunOnStart:       true,
-			TMDBRateLimitRPS: 4,
+			TMDBRateLimitRPS: 1,
 			IncludeSpecials:  false,
 		},
 		Libraries: []Library{},
@@ -93,6 +113,7 @@ func (s Settings) Redacted() Settings {
 	cp := s.Clone()
 	cp.Jellyfin.APIKey = ""
 	cp.TMDB.APIKey = ""
+	cp.AI.APIKey = ""
 	return cp
 }
 
@@ -114,6 +135,30 @@ func NormalizeLocale(loc string) string {
 		return LocaleDE
 	default:
 		return LocaleEN
+	}
+}
+
+// NormalizeLogLevel returns a supported log level string, defaulting to "info".
+func NormalizeLogLevel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case LogLevelWarn:
+		return LogLevelWarn
+	case LogLevelDebug:
+		return LogLevelDebug
+	default:
+		return LogLevelInfo
+	}
+}
+
+// ParseLogLevel maps a log level string to an slog.Level.
+func ParseLogLevel(level string) slog.Level {
+	switch NormalizeLogLevel(level) {
+	case LogLevelWarn:
+		return slog.LevelWarn
+	case LogLevelDebug:
+		return slog.LevelDebug
+	default:
+		return slog.LevelInfo
 	}
 }
 

@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/scheduler"
+	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/web"
 )
 
@@ -14,16 +17,100 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, web.Dashboard(s.dashboardData(r)))
 }
 
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	d := web.LogPageData{
+		Layout: s.layout(r, web.NavLogs),
+		Logs:   web.BuildLogViews(s.logs.Entries()),
+	}
+	s.render(w, r, web.Logs(d))
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, web.Stats(s.statsData(r)))
+}
+
+func (s *Server) statsData(r *http.Request) web.StatsData {
+	t := s.translator(r)
+	ctx := r.Context()
+	run, _ := s.store.LatestSuccessfulRun(ctx)
+	var findings []store.Finding
+	if run != nil {
+		findings, _ = s.store.FindingsForRun(ctx, run.ID)
+	}
+	libTypes := map[string]string{}
+	for _, l := range s.cfg.Get().Libraries {
+		libTypes[l.ID] = l.Type
+	}
+	d := web.BuildStats(t, run, findings, libTypes)
+	d.Layout = s.layout(r, web.NavStats)
+	return d
+}
+
+func (s *Server) handleSuggestions(w http.ResponseWriter, r *http.Request) {
+	if s.suggestionsConfigured() && !s.suggest.Running() && s.suggest.NeedsRefresh(r.Context()) {
+		s.suggest.Generate()
+	}
+	s.render(w, r, web.Suggestions(s.suggestionsData(r)))
+}
+
+func (s *Server) handleGenerateSuggestions(w http.ResponseWriter, r *http.Request) {
+	if s.suggestionsConfigured() {
+		s.suggest.Generate()
+	}
+	s.render(w, r, web.SuggestionsContent(s.suggestionsData(r)))
+}
+
+func (s *Server) handlePartialSuggestions(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, web.SuggestionsContent(s.suggestionsData(r)))
+}
+
+func (s *Server) suggestionsConfigured() bool {
+	settings := s.cfg.Get()
+	return settings.Jellyfin.URL != "" && settings.Jellyfin.APIKey != "" &&
+		settings.TMDB.APIKey != "" && s.cfg.CipherEnabled() && len(settings.EnabledLibraryIDs()) > 0
+}
+
+func (s *Server) suggestionsData(r *http.Request) web.SuggestionsData {
+	res, _ := s.suggest.Result()
+	return web.SuggestionsData{
+		Layout:     s.layout(r, web.NavSuggestions),
+		Running:    s.suggest.Running(),
+		Configured: s.suggestionsConfigured(),
+		Result:     res,
+	}
+}
+
 func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
+	commit := s.info.Commit
+	short := commit
+	if len(short) > 10 {
+		short = short[:10]
+	}
+	commitURL := ""
+	if commit != "" && commit != "unknown" {
+		commitURL = repoURL + "/commit/" + commit
+	}
+	dbPath := s.store.Path()
+	dbSize := fileSize(dbPath) + fileSize(dbPath+"-wal") + fileSize(dbPath+"-shm")
 	d := web.AboutData{
-		Layout:    s.layout(r, web.NavAbout),
-		Version:   s.info.Version,
-		Commit:    s.info.Commit,
-		BuildDate: s.info.Date,
-		GoVersion: s.info.GoVer,
-		Repo:      repoURL,
+		Layout:     s.layout(r, web.NavAbout),
+		Channel:    s.info.Channel,
+		Version:    s.info.Version,
+		Commit:     short,
+		CommitURL:  commitURL,
+		DBSize:     web.HumanSize(dbSize),
+		ConfigSize: web.HumanSize(fileSize(s.cfg.Path())),
+		GoVersion:  s.info.GoVer,
+		Repo:       repoURL,
 	}
 	s.render(w, r, web.About(d))
+}
+
+func fileSize(path string) int64 {
+	if fi, err := os.Stat(path); err == nil {
+		return fi.Size()
+	}
+	return 0
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +126,9 @@ func (s *Server) handlePartialStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePartialFindings(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
-	s.render(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t)))
+	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
+	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
+	s.render(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t, sortKey, dir), sortKey, dir))
 }
 
 func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
@@ -68,15 +157,19 @@ func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) dashboardData(r *http.Request) web.DashboardData {
 	t := s.translator(r)
+	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
+	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
 	return web.DashboardData{
 		Layout:   s.layout(r, web.NavDashboard),
 		Status:   s.statusView(r.Context(), t),
-		Findings: s.findingRows(r.Context(), t),
+		Findings: s.findingRows(r.Context(), t, sortKey, dir),
 		Logs:     web.BuildLogViews(s.logs.Entries()),
+		Sort:     sortKey,
+		Dir:      dir,
 	}
 }
 
-func (s *Server) findingRows(ctx context.Context, t *i18n.Translator) []web.FindingRow {
+func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, dir string) []web.FindingRow {
 	run, err := s.store.LatestSuccessfulRun(ctx)
 	if err != nil || run == nil {
 		return nil
@@ -85,7 +178,9 @@ func (s *Server) findingRows(ctx context.Context, t *i18n.Translator) []web.Find
 	if err != nil {
 		return nil
 	}
-	return web.BuildFindingRows(t, fs)
+	rows := web.BuildFindingRows(t, fs, s.cfg.Get().Jellyfin.URL)
+	web.SortFindingRows(rows, sortKey, dir)
+	return rows
 }
 
 func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusView {
@@ -102,10 +197,36 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 	} else {
 		sv.StateLabel = t.T("dashboard.state.idle")
 	}
+
+	if sv.Running {
+		prog := s.sched.Progress()
+		sv.CurrentItem = prog.Current
+		if !prog.StartedAt.IsZero() {
+			sv.Duration = web.FormatDuration(time.Since(prog.StartedAt))
+		}
+		sv.LibrariesScanned = len(prog.Libraries)
+		for _, l := range prog.Libraries {
+			sv.ItemsScanned += l.Scanned
+			sv.MissingTotal += l.Missing
+			sv.Libraries = append(sv.Libraries, web.LibraryStatusView{
+				Name: l.Name, Color: web.LibraryColor(l.ID),
+				Scanned: l.Scanned, Total: l.Total, Missing: l.Missing,
+			})
+		}
+		return sv
+	}
+
 	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
 		sv.ItemsScanned = run.ItemsScanned
 		sv.LibrariesScanned = run.LibrariesScanned
 		sv.MissingTotal = run.MissingCount
+		sv.Duration = web.FormatDuration(run.Duration())
+		for _, l := range run.Libraries {
+			sv.Libraries = append(sv.Libraries, web.LibraryStatusView{
+				Name: l.Name, Color: web.LibraryColor(l.ID),
+				Scanned: l.Scanned, Total: l.Total, Missing: l.Missing,
+			})
+		}
 	}
 	return sv
 }

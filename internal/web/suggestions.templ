@@ -1,0 +1,118 @@
+package web
+
+import "github.com/daknoblo/waim/internal/suggest"
+
+templ Suggestions(d SuggestionsData) {
+	@Page(d.Layout, suggestionsBody(d))
+}
+
+templ suggestionsBody(d SuggestionsData) {
+	<section class="grid gap-4">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<h1 class="text-lg font-semibold">{ d.Layout.T.T("nav.suggestions") }</h1>
+			<form hx-post="/suggestions/generate" hx-target="#suggestions" hx-swap="outerHTML">
+				<button type="submit" class="btn-primary" disabled?={ d.Running || !d.Configured }>
+					{ d.Layout.T.T("suggestions.generate") }
+				</button>
+			</form>
+		</div>
+		if !d.Configured {
+			<p class="rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{ d.Layout.T.T("suggestions.notConfigured") }</p>
+		}
+		@SuggestionsContent(d)
+	</section>
+}
+
+templ SuggestionsContent(d SuggestionsData) {
+	if d.Running {
+		<div id="suggestions" hx-get="/partials/suggestions" hx-trigger="every 3s" hx-swap="outerHTML" class="card flex items-center gap-3 text-sm text-slate-300">
+			<span class="status-dot status-dot-running"></span>
+			{ d.Layout.T.T("suggestions.generating") }
+		</div>
+	} else {
+		<div id="suggestions" class="grid gap-4">
+			if d.Result == nil {
+				<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("suggestions.empty") }</p>
+			} else {
+				if len(d.Result.Errors) > 0 {
+					<div class="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+						for _, e := range d.Result.Errors {
+							<div>{ e }</div>
+						}
+					</div>
+				}
+				@suggestionSection(d.Layout.T.T("suggestions.similar"), d.Result.Similar, d.Layout.T.T("suggestions.none"))
+				@suggestionSection(d.Layout.T.T("suggestions.trending"), d.Result.Trending, d.Layout.T.T("suggestions.none"))
+				if d.Result.AIEnabled {
+					@aiSection(d, d.Result.AI)
+				}
+				<p class="text-xs text-slate-500">{ d.Layout.T.T("suggestions.generatedAt") }: { FormatTimeValue(d.Result.GeneratedAt) }</p>
+			}
+		</div>
+	}
+}
+
+templ suggestionSection(title string, items []suggest.Item, empty string) {
+	<div class="card">
+		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
+		if len(items) == 0 {
+			<p class="text-sm text-slate-500">{ empty }</p>
+		} else {
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+				for _, it := range items {
+					<a href={ templ.SafeURL(it.TMDBLink) } target="_blank" rel="noreferrer noopener" class="group flex gap-3 rounded-lg bg-slate-900/60 p-2 transition hover:bg-slate-800/60">
+						if it.PosterURL != "" {
+							<img src={ it.PosterURL } alt="" loading="lazy" class="h-24 w-16 shrink-0 rounded object-cover"/>
+						} else {
+							<div class="flex h-24 w-16 shrink-0 items-center justify-center rounded bg-slate-800 text-2xl">{ mediaIcon(it.MediaType) }</div>
+						}
+						<div class="min-w-0">
+							<div class="flex items-center gap-1.5 text-sm font-medium text-slate-100">
+								<span aria-hidden="true">{ mediaIcon(it.MediaType) }</span>
+								<span class="truncate group-hover:underline">{ it.Title }</span>
+							</div>
+							<div class="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+								if it.Year != "" {
+									<span>{ it.Year }</span>
+								}
+								if it.Rating != "" {
+									<span class="text-amber-300">{ "\u2605 " + it.Rating }</span>
+								}
+							</div>
+							if it.Overview != "" {
+								<p class="mt-1 line-clamp-3 text-xs text-slate-400">{ it.Overview }</p>
+							}
+						</div>
+					</a>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ aiSection(d SuggestionsData, items []suggest.AIItem) {
+	<div class="card border-indigo-500/30">
+		<h2 class="mb-3 text-lg font-semibold text-indigo-300">{ d.Layout.T.T("suggestions.ai") }</h2>
+		if len(items) == 0 {
+			<p class="text-sm text-slate-500">{ d.Layout.T.T("suggestions.none") }</p>
+		} else {
+			<ul class="grid gap-2 text-sm sm:grid-cols-2">
+				for _, it := range items {
+					<li class="rounded-lg bg-slate-900/60 p-3">
+						<div class="flex items-center justify-between gap-2">
+							<a href={ templ.SafeURL(it.SearchLink) } target="_blank" rel="noreferrer noopener" class="font-medium text-slate-100 hover:underline">{ it.Title }</a>
+							<span class="whitespace-nowrap text-xs text-slate-500">
+								if it.Year != "" {
+									{ it.Year }
+								}
+							</span>
+						</div>
+						if it.Reason != "" {
+							<p class="mt-1 text-xs text-slate-400">{ it.Reason }</p>
+						}
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}

@@ -83,18 +83,39 @@ func (c *Client) Users(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
-// ResolveUserID returns the configured user ID, or the first available user's
-// ID when none is configured.
+// ResolveUserID resolves the configured user value to a Jellyfin user ID.
+// The configured value may be an actual user ID (GUID) or a username; usernames
+// are matched case-insensitively. When nothing is configured (or no match is
+// found), the first available user is used.
 func (c *Client) ResolveUserID(ctx context.Context, configured string) (string, error) {
-	if strings.TrimSpace(configured) != "" {
-		return configured, nil
-	}
+	configured = strings.TrimSpace(configured)
 	users, err := c.Users(ctx)
 	if err != nil {
+		// If we cannot list users but have a configured value, use it as-is.
+		if configured != "" {
+			return configured, nil
+		}
 		return "", err
 	}
 	if len(users) == 0 {
+		if configured != "" {
+			return configured, nil
+		}
 		return "", fmt.Errorf("jellyfin: no users available")
+	}
+	if configured != "" {
+		for _, u := range users {
+			if u.ID == configured {
+				return u.ID, nil
+			}
+		}
+		for _, u := range users {
+			if strings.EqualFold(u.Name, configured) {
+				return u.ID, nil
+			}
+		}
+		// Configured value matched neither an ID nor a username; fall back to
+		// the first available user below.
 	}
 	return users[0].ID, nil
 }
