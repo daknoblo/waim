@@ -57,6 +57,7 @@ docker compose up -d
 | `WAIM_MASTER_KEY` | *(unset)*      | **Required** to store/decrypt API keys (AES-256-GCM). |
 | `WAIM_DATA_DIR`   | `/app/appdata` | Directory for `config.json` and the SQLite database.  |
 | `WAIM_ADDR`       | `:8080`        | Listen address.                                       |
+| `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
 | `WAIM_DEBUG`      | `false`        | Enable debug logging.                                 |
 
 ## Persistence

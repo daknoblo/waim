@@ -143,6 +143,56 @@ func MetadataLanguages(current string) []LangChoice {
 	return append([]LangChoice{{Code: current, Label: current}}, metadataLanguages...)
 }
 
+// regionChoices is the curated list of common TMDB regions (ISO 3166-1).
+var regionChoices = []LangChoice{
+	{"US", "United States"},
+	{"GB", "United Kingdom"},
+	{"DE", "Germany"},
+	{"AT", "Austria"},
+	{"CH", "Switzerland"},
+	{"FR", "France"},
+	{"ES", "Spain"},
+	{"IT", "Italy"},
+	{"NL", "Netherlands"},
+	{"BE", "Belgium"},
+	{"PT", "Portugal"},
+	{"BR", "Brazil"},
+	{"RU", "Russia"},
+	{"JP", "Japan"},
+	{"KR", "South Korea"},
+	{"CN", "China"},
+	{"PL", "Poland"},
+	{"SE", "Sweden"},
+	{"DK", "Denmark"},
+	{"FI", "Finland"},
+	{"NO", "Norway"},
+	{"CZ", "Czechia"},
+	{"HU", "Hungary"},
+	{"TR", "Turkey"},
+	{"CA", "Canada"},
+	{"AU", "Australia"},
+	{"IE", "Ireland"},
+	{"NZ", "New Zealand"},
+	{"MX", "Mexico"},
+}
+
+// Regions returns the curated region list with a leading "none" option,
+// ensuring the current value is present.
+func Regions(current string) []LangChoice {
+	current = strings.TrimSpace(current)
+	out := []LangChoice{{Code: "", Label: "\u2014"}}
+	found := current == ""
+	for _, r := range regionChoices {
+		if r.Code == current {
+			found = true
+		}
+	}
+	if !found {
+		out = append(out, LangChoice{Code: current, Label: current})
+	}
+	return append(out, regionChoices...)
+}
+
 // BuildLogViews converts buffered log entries (newest first) into view models.
 func BuildLogViews(entries []logbuf.Entry) []LogEntryView {
 	out := make([]LogEntryView, 0, len(entries))
