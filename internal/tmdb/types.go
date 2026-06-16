@@ -14,14 +14,16 @@ type Movie struct {
 	ID                  int64          `json:"id"`
 	Title               string         `json:"title"`
 	ReleaseDate         string         `json:"release_date"`
+	VoteAverage         float64        `json:"vote_average"`
 	BelongsToCollection *CollectionRef `json:"belongs_to_collection"`
 }
 
 // CollectionPart is a single entry within a collection.
 type CollectionPart struct {
-	ID          int64  `json:"id"`
-	Title       string `json:"title"`
-	ReleaseDate string `json:"release_date"`
+	ID          int64   `json:"id"`
+	Title       string  `json:"title"`
+	ReleaseDate string  `json:"release_date"`
+	VoteAverage float64 `json:"vote_average"`
 }
 
 // Collection is a subset of the /collection/{id} response.
@@ -43,6 +45,7 @@ type TVShow struct {
 	ID              int64           `json:"id"`
 	Name            string          `json:"name"`
 	NumberOfSeasons int             `json:"number_of_seasons"`
+	VoteAverage     float64         `json:"vote_average"`
 	Seasons         []SeasonSummary `json:"seasons"`
 }
 

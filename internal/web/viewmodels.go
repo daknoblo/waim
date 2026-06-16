@@ -40,10 +40,22 @@ type StatusView struct {
 	Running          bool
 	LastScan         string
 	NextScan         string
+	Duration         string
+	CurrentItem      string
 	ItemsScanned     int
 	LibrariesScanned int
 	MissingTotal     int
 	LastError        string
+	Libraries        []LibraryStatusView
+}
+
+// LibraryStatusView is a per-library row in the scan status card.
+type LibraryStatusView struct {
+	Name    string
+	Color   []string
+	Scanned int
+	Total   int
+	Missing int
 }
 
 // LogEntryView is a display model for a single log line.

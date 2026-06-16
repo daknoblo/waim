@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -144,12 +145,18 @@ func (s *Store) StartScanRun(ctx context.Context) (int64, error) {
 }
 
 // FinishScanRun marks a run as completed (success or error) with summary counts.
-func (s *Store) FinishScanRun(ctx context.Context, id int64, status, errMsg string, libs, items, missing int) error {
+func (s *Store) FinishScanRun(ctx context.Context, id int64, status, errMsg string, libs, items, missing int, summaries []LibrarySummary) error {
+	var libsJSON any
+	if len(summaries) > 0 {
+		if b, err := json.Marshal(summaries); err == nil {
+			libsJSON = string(b)
+		}
+	}
 	_, err := s.db.ExecContext(ctx, `
         UPDATE scan_runs
-        SET finished_at = ?, status = ?, error = ?, libraries_scanned = ?, items_scanned = ?, missing_count = ?
+        SET finished_at = ?, status = ?, error = ?, libraries_scanned = ?, items_scanned = ?, missing_count = ?, libraries_json = ?
         WHERE id = ?`,
-		time.Now().UTC().Format(timeLayout), status, nullString(errMsg), libs, items, missing, id)
+		time.Now().UTC().Format(timeLayout), status, nullString(errMsg), libs, items, missing, libsJSON, id)
 	if err != nil {
 		return fmt.Errorf("store: finish scan run: %w", err)
 	}
@@ -192,14 +199,14 @@ func (s *Store) AddFindings(ctx context.Context, runID int64, fs []Finding) erro
 // LatestRun returns the most recent scan run regardless of status.
 func (s *Store) LatestRun(ctx context.Context) (*ScanRun, error) {
 	return s.queryRun(ctx, `SELECT id, started_at, finished_at, status, error,
-        libraries_scanned, items_scanned, missing_count
+        libraries_scanned, items_scanned, missing_count, libraries_json
         FROM scan_runs ORDER BY id DESC LIMIT 1`)
 }
 
 // LatestSuccessfulRun returns the most recent successfully completed run.
 func (s *Store) LatestSuccessfulRun(ctx context.Context) (*ScanRun, error) {
 	return s.queryRun(ctx, `SELECT id, started_at, finished_at, status, error,
-        libraries_scanned, items_scanned, missing_count
+        libraries_scanned, items_scanned, missing_count, libraries_json
         FROM scan_runs WHERE status = 'success' ORDER BY id DESC LIMIT 1`)
 }
 
@@ -267,7 +274,7 @@ func (s *Store) FindingsForRun(ctx context.Context, runID int64) ([]Finding, err
 func (s *Store) RecentRuns(ctx context.Context, limit int) ([]ScanRun, error) {
 	rows, err := s.db.QueryContext(ctx, `
         SELECT id, started_at, finished_at, status, error,
-            libraries_scanned, items_scanned, missing_count
+            libraries_scanned, items_scanned, missing_count, libraries_json
         FROM scan_runs ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: recent runs: %w", err)
@@ -324,13 +331,14 @@ type rowScanner interface {
 
 func scanRunRow(row rowScanner) (*ScanRun, error) {
 	var (
-		run        ScanRun
-		startedAt  string
-		finishedAt sql.NullString
-		errMsg     sql.NullString
+		run           ScanRun
+		startedAt     string
+		finishedAt    sql.NullString
+		errMsg        sql.NullString
+		librariesJSON sql.NullString
 	)
 	if err := row.Scan(&run.ID, &startedAt, &finishedAt, &run.Status, &errMsg,
-		&run.LibrariesScanned, &run.ItemsScanned, &run.MissingCount); err != nil {
+		&run.LibrariesScanned, &run.ItemsScanned, &run.MissingCount, &librariesJSON); err != nil {
 		return nil, err
 	}
 	if t, err := time.Parse(timeLayout, startedAt); err == nil {
@@ -343,6 +351,9 @@ func scanRunRow(row rowScanner) (*ScanRun, error) {
 	}
 	if errMsg.Valid {
 		run.Error = errMsg.String
+	}
+	if librariesJSON.Valid && librariesJSON.String != "" {
+		_ = json.Unmarshal([]byte(librariesJSON.String), &run.Libraries)
 	}
 	return &run, nil
 }

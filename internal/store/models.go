@@ -2,6 +2,15 @@ package store
 
 import "time"
 
+// LibrarySummary captures per-library scan counts.
+type LibrarySummary struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Scanned int    `json:"scanned"`
+	Total   int    `json:"total"`
+	Missing int    `json:"missing"`
+}
+
 // Finding kinds.
 const (
 	KindMissingSeason     = "missing_season"
@@ -24,14 +33,23 @@ const (
 
 // ScanRun records the lifecycle and summary of a single scan.
 type ScanRun struct {
-	ID               int64      `json:"id"`
-	StartedAt        time.Time  `json:"startedAt"`
-	FinishedAt       *time.Time `json:"finishedAt,omitempty"`
-	Status           string     `json:"status"`
-	Error            string     `json:"error,omitempty"`
-	LibrariesScanned int        `json:"librariesScanned"`
-	ItemsScanned     int        `json:"itemsScanned"`
-	MissingCount     int        `json:"missingCount"`
+	ID               int64            `json:"id"`
+	StartedAt        time.Time        `json:"startedAt"`
+	FinishedAt       *time.Time       `json:"finishedAt,omitempty"`
+	Status           string           `json:"status"`
+	Error            string           `json:"error,omitempty"`
+	LibrariesScanned int              `json:"librariesScanned"`
+	ItemsScanned     int              `json:"itemsScanned"`
+	MissingCount     int              `json:"missingCount"`
+	Libraries        []LibrarySummary `json:"libraries,omitempty"`
+}
+
+// Duration returns the run duration, or 0 if it has not finished.
+func (r ScanRun) Duration() time.Duration {
+	if r.FinishedAt == nil {
+		return 0
+	}
+	return r.FinishedAt.Sub(r.StartedAt)
 }
 
 // Finding describes a single gap discovered during a scan.

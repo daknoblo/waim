@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/scheduler"
@@ -93,7 +95,7 @@ func (s *Server) findingRows(ctx context.Context, t *i18n.Translator) []web.Find
 	if err != nil {
 		return nil
 	}
-	return web.BuildFindingRows(t, fs)
+	return web.BuildFindingRows(t, fs, s.cfg.Get().Jellyfin.URL)
 }
 
 func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusView {
@@ -110,12 +112,49 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 	} else {
 		sv.StateLabel = t.T("dashboard.state.idle")
 	}
+
+	if sv.Running {
+		prog := s.sched.Progress()
+		sv.CurrentItem = prog.Current
+		if !prog.StartedAt.IsZero() {
+			sv.Duration = formatDuration(time.Since(prog.StartedAt))
+		}
+		sv.LibrariesScanned = len(prog.Libraries)
+		for _, l := range prog.Libraries {
+			sv.ItemsScanned += l.Scanned
+			sv.MissingTotal += l.Missing
+			sv.Libraries = append(sv.Libraries, web.LibraryStatusView{
+				Name: l.Name, Color: web.LibraryColor(l.ID),
+				Scanned: l.Scanned, Total: l.Total, Missing: l.Missing,
+			})
+		}
+		return sv
+	}
+
 	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
 		sv.ItemsScanned = run.ItemsScanned
 		sv.LibrariesScanned = run.LibrariesScanned
 		sv.MissingTotal = run.MissingCount
+		sv.Duration = formatDuration(run.Duration())
+		for _, l := range run.Libraries {
+			sv.Libraries = append(sv.Libraries, web.LibraryStatusView{
+				Name: l.Name, Color: web.LibraryColor(l.ID),
+				Scanned: l.Scanned, Total: l.Total, Missing: l.Missing,
+			})
+		}
 	}
 	return sv
+}
+
+func formatDuration(d time.Duration) string {
+	if d <= 0 {
+		return ""
+	}
+	d = d.Round(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 }
 
 func (s *Server) handleExportSettings(w http.ResponseWriter, _ *http.Request) {
