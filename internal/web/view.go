@@ -253,6 +253,45 @@ func FormatTime(t *i18n.Translator, ts *time.Time) string {
 	return ts.Local().Format("2006-01-02 15:04:05")
 }
 
+// FormatRelative renders a time relative to now, e.g. "5 minutes ago" or
+// "in 1 hour". Zero times yield a localised "never" placeholder.
+func FormatRelative(t *i18n.Translator, ts *time.Time) string {
+	if ts == nil || ts.IsZero() {
+		return t.T("common.never")
+	}
+	d := time.Until(*ts)
+	future := d >= 0
+	if d < 0 {
+		d = -d
+	}
+	if d < time.Minute {
+		if future {
+			return t.T("relative.soon")
+		}
+		return t.T("relative.now")
+	}
+	var phrase string
+	switch {
+	case d < time.Hour:
+		phrase = relUnit(t, int(d/time.Minute), "relative.minute", "relative.minutes")
+	case d < 24*time.Hour:
+		phrase = relUnit(t, int(d/time.Hour), "relative.hour", "relative.hours")
+	default:
+		phrase = relUnit(t, int(d/(24*time.Hour)), "relative.day", "relative.days")
+	}
+	if future {
+		return t.T("relative.in", phrase)
+	}
+	return t.T("relative.ago", phrase)
+}
+
+func relUnit(t *i18n.Translator, n int, singular, plural string) string {
+	if n == 1 {
+		return t.T(singular, n)
+	}
+	return t.T(plural, n)
+}
+
 // FormatDuration renders a duration like "1h 5m 12s", "2m 35s" or "12s"; empty for zero.
 func FormatDuration(d time.Duration) string {
 	if d <= 0 {

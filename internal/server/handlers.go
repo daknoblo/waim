@@ -215,8 +215,8 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 		State:     st.State,
 		Running:   st.State == scheduler.StateRunning,
 		LastError: st.LastError,
-		LastScan:  web.FormatTime(t, st.LastFinished),
-		NextScan:  web.FormatTime(t, st.NextRun),
+		LastScan:  web.FormatRelative(t, st.LastFinished),
+		NextScan:  web.FormatRelative(t, st.NextRun),
 	}
 	if sv.Running {
 		sv.StateLabel = t.T("dashboard.state.running")
