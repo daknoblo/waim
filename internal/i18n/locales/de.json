@@ -77,6 +77,8 @@
   "finding.kind.missing_season": "Fehlende Staffel",
   "finding.kind.missing_episodes": "Fehlende Folgen",
   "finding.kind.missing_collection": "Fehlender Sammlungsteil",
+  "finding.kind.series": "Serien-Lücken",
+  "finding.seriesGaps": "%d Staffel(n) mit Lücken",
 
   "settings.title": "Einstellungen",
   "settings.uiLanguage": "Oberflächensprache",

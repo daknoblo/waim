@@ -77,6 +77,8 @@
   "finding.kind.missing_season": "Missing season",
   "finding.kind.missing_episodes": "Missing episodes",
   "finding.kind.missing_collection": "Missing collection part",
+  "finding.kind.series": "Series gaps",
+  "finding.seriesGaps": "%d season(s) with gaps",
 
   "settings.title": "Settings",
   "settings.uiLanguage": "Interface language",

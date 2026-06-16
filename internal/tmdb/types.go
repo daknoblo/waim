@@ -28,9 +28,10 @@ type CollectionPart struct {
 
 // Collection is a subset of the /collection/{id} response.
 type Collection struct {
-	ID    int64            `json:"id"`
-	Name  string           `json:"name"`
-	Parts []CollectionPart `json:"parts"`
+	ID         int64            `json:"id"`
+	Name       string           `json:"name"`
+	PosterPath string           `json:"poster_path"`
+	Parts      []CollectionPart `json:"parts"`
 }
 
 // SeasonSummary is the per-season summary embedded in a TV show.
@@ -46,6 +47,7 @@ type TVShow struct {
 	Name            string          `json:"name"`
 	NumberOfSeasons int             `json:"number_of_seasons"`
 	VoteAverage     float64         `json:"vote_average"`
+	PosterPath      string          `json:"poster_path"`
 	Seasons         []SeasonSummary `json:"seasons"`
 }
 

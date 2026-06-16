@@ -86,9 +86,10 @@ func (s *Scanner) SetReporter(r Reporter) {
 // missingEpisodesDetail / missingCollectionDetail are serialised into the
 // finding's Details field.
 type missingEpisodesDetail struct {
-	SeasonNumber    int   `json:"seasonNumber"`
-	EpisodeCount    int   `json:"episodeCount"`
-	MissingEpisodes []int `json:"missingEpisodes"`
+	SeasonNumber    int    `json:"seasonNumber"`
+	EpisodeCount    int    `json:"episodeCount"`
+	MissingEpisodes []int  `json:"missingEpisodes"`
+	PosterPath      string `json:"posterPath,omitempty"`
 }
 
 type missingPart struct {
@@ -101,6 +102,7 @@ type missingPart struct {
 type missingCollectionDetail struct {
 	CollectionID   int64         `json:"collectionId"`
 	CollectionName string        `json:"collectionName"`
+	PosterPath     string        `json:"posterPath,omitempty"`
 	MissingParts   []missingPart `json:"missingParts"`
 }
 
@@ -255,6 +257,7 @@ func (s *Scanner) scanMovieCollection(ctx context.Context, libID, libName string
 	detail, _ := json.Marshal(missingCollectionDetail{
 		CollectionID:   col.ID,
 		CollectionName: col.Name,
+		PosterPath:     col.PosterPath,
 		MissingParts:   missing,
 	})
 	res.Findings = append(res.Findings, store.Finding{
@@ -318,6 +321,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 				SeasonNumber:    season.SeasonNumber,
 				EpisodeCount:    season.EpisodeCount,
 				MissingEpisodes: aired,
+				PosterPath:      tv.PosterPath,
 			})
 			sn := season.SeasonNumber
 			res.Findings = append(res.Findings, store.Finding{
@@ -354,6 +358,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 			SeasonNumber:    season.SeasonNumber,
 			EpisodeCount:    season.EpisodeCount,
 			MissingEpisodes: missing,
+			PosterPath:      tv.PosterPath,
 		})
 		sn := season.SeasonNumber
 		res.Findings = append(res.Findings, store.Finding{
