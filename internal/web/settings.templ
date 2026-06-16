@@ -59,6 +59,15 @@ templ settingsBody(d SettingsData) {
 		</div>
 
 		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.ai") }</h2>
+			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.aiHint") }</p>
+			@checkboxField(d.Layout.T.T("settings.aiEnabled"), "ai_enabled", d.Settings.AI.Enabled)
+			@textField(d.Layout.T.T("settings.aiEndpoint"), "ai_endpoint", "url", d.Settings.AI.Endpoint, "https://<resource>.services.ai.azure.com/...")
+			@secretField(d.Layout.T, "ai_api_key", d.Layout.T.T("settings.aiApiKey"), d.HasAIKey)
+			@textField(d.Layout.T.T("settings.aiModel"), "ai_model", "text", d.Settings.AI.Model, "gpt-4o")
+		</div>
+
+		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.scan") }</h2>
 			<div class="grid gap-3 sm:grid-cols-2">
 				@numberField(d.Layout.T.T("settings.interval"), "scan_interval", strconv.Itoa(d.Settings.Scan.IntervalMinutes), "1")

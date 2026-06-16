@@ -201,3 +201,11 @@ func FormatDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 }
+
+// FormatTimeValue renders a non-pointer time for display, or empty when zero.
+func FormatTimeValue(ts time.Time) string {
+	if ts.IsZero() {
+		return ""
+	}
+	return ts.Local().Format("2006-01-02 15:04:05")
+}

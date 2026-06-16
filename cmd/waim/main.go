@@ -23,6 +23,7 @@ import (
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/server"
 	"github.com/daknoblo/waim/internal/store"
+	"github.com/daknoblo/waim/internal/suggest"
 	"github.com/daknoblo/waim/internal/version"
 )
 
@@ -99,13 +100,14 @@ func run() error {
 	}
 
 	sched := scheduler.New(cfg, st, logger)
+	suggestSvc := suggest.New(cfg, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go sched.Run(ctx)
 
-	srv := server.New(cfg, st, sched, logBuf, catalog, logger, levelVar)
+	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar)
 	httpServer := &http.Server{
 		Addr:              envDefault("WAIM_ADDR", ":8080"),
 		Handler:           srv.Handler(),

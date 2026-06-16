@@ -83,3 +83,42 @@ type movieSearchResponse struct {
 type tvSearchResponse struct {
 	Results []TVSearchResult `json:"results"`
 }
+
+// MediaResult is a unified result item from trending/recommendation endpoints,
+// covering both movies and TV shows.
+type MediaResult struct {
+	ID           int64   `json:"id"`
+	MediaType    string  `json:"media_type"`
+	Title        string  `json:"title"`
+	Name         string  `json:"name"`
+	ReleaseDate  string  `json:"release_date"`
+	FirstAirDate string  `json:"first_air_date"`
+	VoteAverage  float64 `json:"vote_average"`
+	Popularity   float64 `json:"popularity"`
+	Overview     string  `json:"overview"`
+	PosterPath   string  `json:"poster_path"`
+}
+
+type mediaResponse struct {
+	Results []MediaResult `json:"results"`
+}
+
+// DisplayTitle returns the movie title or TV name.
+func (m MediaResult) DisplayTitle() string {
+	if m.Name != "" {
+		return m.Name
+	}
+	return m.Title
+}
+
+// Year returns the 4-digit release/first-air year, if available.
+func (m MediaResult) Year() string {
+	d := m.ReleaseDate
+	if d == "" {
+		d = m.FirstAirDate
+	}
+	if len(d) >= 4 {
+		return d[:4]
+	}
+	return ""
+}
