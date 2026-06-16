@@ -28,6 +28,8 @@ type StatsData struct {
 	TopCollections []StatsTop
 	LibraryRatings []StatsLibraryRatings
 	LongestMovies  []StatsRuntime
+	ShortestMovies []StatsRuntime
+	Niches         []StatsNiche
 	Genres         []StatsBar
 	Years          []StatsBar
 }
@@ -79,6 +81,13 @@ type StatsRuntime struct {
 	Title   string
 	Year    int
 	Runtime string
+}
+
+// StatsNiche is a niche or classic title with the reason it qualifies.
+type StatsNiche struct {
+	Title  string
+	Year   int
+	Reason string
 }
 
 // StatsBar is a labelled count with a relative bar percentage.
@@ -178,12 +187,12 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 	sd.TopSeries = topN(sd.TopSeries, 5)
 	sd.TopCollections = topN(collections, 5)
 
-	computeMediaStats(&sd, run)
+	computeMediaStats(&sd, run, t)
 
 	return sd
 }
 
-func computeMediaStats(sd *StatsData, run *store.ScanRun) {
+func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 	media := run.Media
 	var movies []store.MediaStat
 	genreCounts := map[string]int{}
@@ -223,19 +232,49 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun) {
 		})
 	}
 
-	// Longest movies by runtime.
-	long := make([]store.MediaStat, 0, len(movies))
+	// Longest / shortest movies by runtime.
+	withRuntime := make([]store.MediaStat, 0, len(movies))
 	for _, m := range movies {
 		if m.Runtime > 0 {
-			long = append(long, m)
+			withRuntime = append(withRuntime, m)
 		}
 	}
+	long := append([]store.MediaStat(nil), withRuntime...)
 	sort.SliceStable(long, func(i, j int) bool { return long[i].Runtime > long[j].Runtime })
-	if len(long) > 10 {
-		long = long[:10]
+	sd.LongestMovies = toRuntime(long, 10)
+	short := append([]store.MediaStat(nil), withRuntime...)
+	sort.SliceStable(short, func(i, j int) bool { return short[i].Runtime < short[j].Runtime })
+	sd.ShortestMovies = toRuntime(short, 10)
+
+	// Niche & classic movies: golden-age classics (pre-1960, the black-and-white
+	// era) and niche genres.
+	nicheGenres := map[string]bool{
+		"Documentary": true, "Western": true, "War": true,
+		"History": true, "Music": true, "Film-Noir": true,
 	}
-	for _, m := range long {
-		sd.LongestMovies = append(sd.LongestMovies, StatsRuntime{Title: m.Title, Year: m.Year, Runtime: formatRuntime(m.Runtime)})
+	classic := t.T("stats.nicheClassic")
+	seenNiche := map[string]bool{}
+	for _, m := range movies {
+		reason := ""
+		if m.Year > 0 && m.Year < 1960 {
+			reason = classic
+		} else {
+			for _, g := range m.Genres {
+				if nicheGenres[g] {
+					reason = g
+					break
+				}
+			}
+		}
+		if reason == "" || seenNiche[m.Title] {
+			continue
+		}
+		seenNiche[m.Title] = true
+		sd.Niches = append(sd.Niches, StatsNiche{Title: m.Title, Year: m.Year, Reason: reason})
+	}
+	sort.SliceStable(sd.Niches, func(i, j int) bool { return sd.Niches[i].Year < sd.Niches[j].Year })
+	if len(sd.Niches) > 12 {
+		sd.Niches = sd.Niches[:12]
 	}
 
 	// Genre distribution (top 12).
@@ -256,6 +295,17 @@ func toRated(ms []store.MediaStat, n int) []StatsRated {
 	out := make([]StatsRated, 0, len(ms))
 	for _, m := range ms {
 		out = append(out, StatsRated{Title: m.Title, Year: m.Year, Rating: fmt.Sprintf("%.1f", m.Rating)})
+	}
+	return out
+}
+
+func toRuntime(ms []store.MediaStat, n int) []StatsRuntime {
+	if len(ms) > n {
+		ms = ms[:n]
+	}
+	out := make([]StatsRuntime, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, StatsRuntime{Title: m.Title, Year: m.Year, Runtime: formatRuntime(m.Runtime)})
 	}
 	return out
 }

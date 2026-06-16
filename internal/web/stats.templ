@@ -85,10 +85,15 @@ templ statsBody(d StatsData) {
 
 			<div class="grid gap-4 lg:grid-cols-2">
 				@runtimeList(d.Layout.T.T("stats.longest"), d.LongestMovies, d.Layout.T.T("stats.noMedia"))
-				@barList(d.Layout.T.T("stats.byGenre"), d.Genres, d.Layout.T.T("stats.noMedia"))
+				@runtimeList(d.Layout.T.T("stats.shortest"), d.ShortestMovies, d.Layout.T.T("stats.noMedia"))
 			</div>
 
-			@barList(d.Layout.T.T("stats.byDecade"), d.Years, d.Layout.T.T("stats.noMedia"))
+			<div class="grid gap-4 lg:grid-cols-2">
+				@barList(d.Layout.T.T("stats.byGenre"), d.Genres, d.Layout.T.T("stats.noMedia"))
+				@barList(d.Layout.T.T("stats.byDecade"), d.Years, d.Layout.T.T("stats.noMedia"))
+			</div>
+
+			@nicheList(d.Layout.T.T("stats.niches"), d.Layout.T.T("stats.nichesHint"), d.Niches, d.Layout.T.T("stats.noMedia"))
 		}
 	</section>
 }
@@ -159,6 +164,28 @@ templ barList(title string, items []StatsBar, empty string) {
 						</div>
 						<span class="w-8 shrink-0 text-right text-xs text-slate-400">{ strconv.Itoa(b.Count) }</span>
 					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ nicheList(title, hint string, items []StatsNiche, empty string) {
+	<div class="card">
+		<h2 class="mb-1 text-lg font-semibold">{ title }</h2>
+		<p class="mb-3 text-sm text-slate-400">{ hint }</p>
+		if len(items) == 0 {
+			<p class="text-sm text-slate-500">{ empty }</p>
+		} else {
+			<div class="flex flex-wrap gap-2">
+				for _, it := range items {
+					<span class="flex items-center gap-2 rounded-lg bg-slate-900/60 px-3 py-1.5 text-sm">
+						<span class="font-medium text-slate-100">{ it.Title }</span>
+						if it.Year > 0 {
+							<span class="text-xs text-slate-500">{ strconv.Itoa(it.Year) }</span>
+						}
+						<span class="badge">{ it.Reason }</span>
+					</span>
 				}
 			</div>
 		}
