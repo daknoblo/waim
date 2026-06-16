@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 
 	"github.com/daknoblo/waim/internal/i18n"
@@ -25,6 +26,11 @@ type StatsData struct {
 	ByKind         StatsByKind
 	TopSeries      []StatsTop
 	TopCollections []StatsTop
+	TopRatedMovies []StatsRated
+	WorstRated     []StatsRated
+	LongestMovies  []StatsRuntime
+	Genres         []StatsBar
+	Years          []StatsBar
 }
 
 // StatsLibrary is a per-library statistics row.
@@ -52,6 +58,27 @@ type StatsTop struct {
 	Library string
 	Color   []string
 	Missing int
+}
+
+// StatsRated is a movie ranked by rating.
+type StatsRated struct {
+	Title  string
+	Year   int
+	Rating string
+}
+
+// StatsRuntime is a movie ranked by runtime.
+type StatsRuntime struct {
+	Title   string
+	Year    int
+	Runtime string
+}
+
+// StatsBar is a labelled count with a relative bar percentage.
+type StatsBar struct {
+	Label string
+	Count int
+	Pct   int
 }
 
 // BuildStats computes the statistics view from the latest run and its findings.
@@ -144,7 +171,119 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 	sd.TopSeries = topN(sd.TopSeries, 5)
 	sd.TopCollections = topN(collections, 5)
 
+	computeMediaStats(&sd, run.Media)
+
 	return sd
+}
+
+func computeMediaStats(sd *StatsData, media []store.MediaStat) {
+	var movies []store.MediaStat
+	genreCounts := map[string]int{}
+	decadeCounts := map[int]int{}
+
+	for _, m := range media {
+		if m.Type == store.MediaMovie {
+			movies = append(movies, m)
+		}
+		for _, g := range m.Genres {
+			genreCounts[g]++
+		}
+		if m.Year > 0 {
+			decadeCounts[(m.Year/10)*10]++
+		}
+	}
+
+	// Top / worst rated movies.
+	rated := make([]store.MediaStat, 0, len(movies))
+	for _, m := range movies {
+		if m.Rating > 0 {
+			rated = append(rated, m)
+		}
+	}
+	sort.SliceStable(rated, func(i, j int) bool { return rated[i].Rating > rated[j].Rating })
+	sd.TopRatedMovies = toRated(rated, 10)
+	worst := append([]store.MediaStat(nil), rated...)
+	sort.SliceStable(worst, func(i, j int) bool { return worst[i].Rating < worst[j].Rating })
+	sd.WorstRated = toRated(worst, 10)
+
+	// Longest movies by runtime.
+	long := make([]store.MediaStat, 0, len(movies))
+	for _, m := range movies {
+		if m.Runtime > 0 {
+			long = append(long, m)
+		}
+	}
+	sort.SliceStable(long, func(i, j int) bool { return long[i].Runtime > long[j].Runtime })
+	if len(long) > 10 {
+		long = long[:10]
+	}
+	for _, m := range long {
+		sd.LongestMovies = append(sd.LongestMovies, StatsRuntime{Title: m.Title, Year: m.Year, Runtime: formatRuntime(m.Runtime)})
+	}
+
+	// Genre distribution (top 12).
+	sd.Genres = topBars(genreCounts, 12, sortByCountDesc)
+
+	// Release decade distribution (sorted ascending).
+	decLabels := map[string]int{}
+	for dec, c := range decadeCounts {
+		decLabels[fmt.Sprintf("%ds", dec)] = c
+	}
+	sd.Years = topBars(decLabels, 0, sortByLabelAsc)
+}
+
+func toRated(ms []store.MediaStat, n int) []StatsRated {
+	if len(ms) > n {
+		ms = ms[:n]
+	}
+	out := make([]StatsRated, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, StatsRated{Title: m.Title, Year: m.Year, Rating: fmt.Sprintf("%.1f", m.Rating)})
+	}
+	return out
+}
+
+const (
+	sortByCountDesc = iota
+	sortByLabelAsc
+)
+
+func topBars(counts map[string]int, limit, mode int) []StatsBar {
+	bars := make([]StatsBar, 0, len(counts))
+	max := 0
+	for k, c := range counts {
+		bars = append(bars, StatsBar{Label: k, Count: c})
+		if c > max {
+			max = c
+		}
+	}
+	switch mode {
+	case sortByLabelAsc:
+		sort.SliceStable(bars, func(i, j int) bool { return bars[i].Label < bars[j].Label })
+	default:
+		sort.SliceStable(bars, func(i, j int) bool { return bars[i].Count > bars[j].Count })
+	}
+	if limit > 0 && len(bars) > limit {
+		bars = bars[:limit]
+	}
+	for i := range bars {
+		if max > 0 {
+			bars[i].Pct = bars[i].Count * 100 / max
+		}
+	}
+	return bars
+}
+
+func formatRuntime(min int) string {
+	if min <= 0 {
+		return ""
+	}
+	h := min / 60
+	m := min % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
 }
 
 func findingMissing(f store.Finding) (kind string, count int, title string) {

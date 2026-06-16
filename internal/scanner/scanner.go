@@ -39,6 +39,7 @@ type Result struct {
 	LibrariesScanned int
 	ItemsScanned     int
 	Libraries        []store.LibrarySummary
+	Media            []store.MediaStat
 }
 
 // Reporter receives live progress updates during a scan.
@@ -182,7 +183,13 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 
 		missingCount := 0
 		if id := movieTMDB[m.item.ID]; id != 0 {
-			missingCount = s.scanMovieCollection(ctx, m.libID, libNames[m.libID], m.item, id, ownedMovie, processedCollections, &res)
+			movie, err := s.td.Movie(ctx, id)
+			if err != nil {
+				s.log.Warn("tmdb movie lookup failed", "title", m.item.Name, "tmdbId", id, "err", err)
+			} else {
+				res.Media = append(res.Media, movieStat(movie))
+				missingCount = s.evalCollection(ctx, m.libID, libNames[m.libID], m.item, movie, ownedMovie, processedCollections, &res)
+			}
 		}
 		if sum := summaries[m.libID]; sum != nil {
 			sum.Missing += missingCount
@@ -216,12 +223,10 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 
 // scanMovieCollection evaluates a movie's TMDB collection and appends a finding
 // for any missing, released parts. It returns the number of missing parts.
-func (s *Scanner) scanMovieCollection(ctx context.Context, libID, libName string, item jellyfin.Item, tmdbID int64, ownedMovie, processed map[int64]bool, res *Result) int {
-	movie, err := s.td.Movie(ctx, tmdbID)
-	if err != nil {
-		s.log.Warn("tmdb movie lookup failed", "title", item.Name, "tmdbId", tmdbID, "err", err)
-		return 0
-	}
+// evalCollection evaluates an already-fetched movie's TMDB collection and
+// appends a finding for any missing, released parts. It returns the number of
+// missing parts.
+func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, item jellyfin.Item, movie tmdb.Movie, ownedMovie, processed map[int64]bool, res *Result) int {
 	if movie.BelongsToCollection == nil {
 		return 0
 	}
@@ -284,6 +289,14 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		s.log.Warn("tmdb tv lookup failed", "title", item.Name, "tmdbId", id, "err", err)
 		return 0
 	}
+	res.Media = append(res.Media, store.MediaStat{
+		Type:    store.MediaSeries,
+		Title:   item.Name,
+		Year:    yearInt(tv.FirstAirDate),
+		Rating:  tv.VoteAverage,
+		Runtime: firstInt(tv.EpisodeRunTime),
+		Genres:  genreNames(tv.Genres),
+	})
 	eps, err := s.jf.Episodes(ctx, userID, item.ID)
 	if err != nil {
 		s.log.Warn("jellyfin episodes failed", "title", item.Name, "err", err)
@@ -452,4 +465,42 @@ func yearOf(date string) string {
 		return d[:4]
 	}
 	return ""
+}
+
+func movieStat(m tmdb.Movie) store.MediaStat {
+	return store.MediaStat{
+		Type:    store.MediaMovie,
+		Title:   m.Title,
+		Year:    yearInt(m.ReleaseDate),
+		Rating:  m.VoteAverage,
+		Runtime: m.Runtime,
+		Genres:  genreNames(m.Genres),
+	}
+}
+
+func genreNames(gs []tmdb.Genre) []string {
+	out := make([]string, 0, len(gs))
+	for _, g := range gs {
+		if g.Name != "" {
+			out = append(out, g.Name)
+		}
+	}
+	return out
+}
+
+func yearInt(date string) int {
+	d := strings.TrimSpace(date)
+	if len(d) >= 4 {
+		if n, err := strconv.Atoi(d[:4]); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func firstInt(xs []int) int {
+	if len(xs) > 0 {
+		return xs[0]
+	}
+	return 0
 }

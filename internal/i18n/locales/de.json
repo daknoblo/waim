@@ -65,6 +65,12 @@
   "stats.missingEpisodes": "fehlende Folgen",
   "stats.missingParts": "fehlende Teile",
   "stats.noGaps": "Keine L\u00fccken \u2014 alles vollst\u00e4ndig!",
+  "stats.topRated": "Bestbewertete Filme",
+  "stats.worstRated": "Schlechtbewertete Filme",
+  "stats.longest": "L\u00e4ngste Filme",
+  "stats.byGenre": "Titel nach Genre",
+  "stats.byDecade": "Titel nach Jahrzehnt",
+  "stats.noMedia": "Noch keine Mediendaten. F\u00fchre zuerst einen Scan aus.",
 
   "finding.col.type": "Typ",
   "finding.col.title": "Titel",

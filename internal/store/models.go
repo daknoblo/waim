@@ -11,6 +11,16 @@ type LibrarySummary struct {
 	Missing int    `json:"missing"`
 }
 
+// MediaStat captures TMDB metadata of an owned title for statistics.
+type MediaStat struct {
+	Type    string   `json:"type"` // movie | series
+	Title   string   `json:"title"`
+	Year    int      `json:"year"`
+	Rating  float64  `json:"rating"`
+	Runtime int      `json:"runtime"` // minutes (movies)
+	Genres  []string `json:"genres"`
+}
+
 // Finding kinds.
 const (
 	KindMissingSeason     = "missing_season"
@@ -42,6 +52,7 @@ type ScanRun struct {
 	ItemsScanned     int              `json:"itemsScanned"`
 	MissingCount     int              `json:"missingCount"`
 	Libraries        []LibrarySummary `json:"libraries,omitempty"`
+	Media            []MediaStat      `json:"media,omitempty"`
 }
 
 // Duration returns the run duration, or 0 if it has not finished.
