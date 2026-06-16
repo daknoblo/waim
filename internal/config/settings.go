@@ -83,7 +83,7 @@ func Defaults() Settings {
 		Scan: ScanSettings{
 			IntervalMinutes:  60,
 			RunOnStart:       true,
-			TMDBRateLimitRPS: 4,
+			TMDBRateLimitRPS: 1,
 			IncludeSpecials:  false,
 		},
 		Libraries: []Library{},

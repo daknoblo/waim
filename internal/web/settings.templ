@@ -52,8 +52,8 @@ templ settingsBody(d SettingsData) {
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdb") }</h2>
 			@secretField(d.Layout.T, "tmdb_api_key", d.Layout.T.T("settings.tmdbApiKey"), d.HasTMDBKey)
 			<div class="grid gap-3 sm:grid-cols-2">
-				@languageSelectField(d.Layout.T.T("settings.language"), "tmdb_language", d.Settings.TMDB.Language)
-				@textField(d.Layout.T.T("settings.region"), "tmdb_region", "text", d.Settings.TMDB.Region, "US")
+				@choiceSelectField(d.Layout.T.T("settings.language"), "tmdb_language", d.Settings.TMDB.Language, MetadataLanguages(d.Settings.TMDB.Language))
+				@choiceSelectField(d.Layout.T.T("settings.region"), "tmdb_region", d.Settings.TMDB.Region, Regions(d.Settings.TMDB.Region))
 			</div>
 			@connStatus(d.TMDBCheck)
 		</div>
@@ -132,12 +132,12 @@ templ logLevelOption(t *i18n.Translator, value, current string) {
 	<option value={ value } selected?={ value == current }>{ t.T("log." + value) }</option>
 }
 
-templ languageSelectField(label, name, current string) {
+templ choiceSelectField(label, name, current string, options []LangChoice) {
 	<label class="grid gap-1 text-sm">
 		<span class="text-slate-300">{ label }</span>
 		<select name={ name } class="input">
-			for _, lc := range MetadataLanguages(current) {
-				<option value={ lc.Code } selected?={ lc.Code == current }>{ lc.Label }</option>
+			for _, o := range options {
+				<option value={ o.Code } selected?={ o.Code == current }>{ o.Label }</option>
 			}
 		</select>
 	</label>

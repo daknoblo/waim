@@ -53,7 +53,7 @@
   "settings.jellyfin": "Jellyfin",
   "settings.jellyfinUrl": "Server-URL",
   "settings.jellyfinApiKey": "API-Schlüssel",
-  "settings.jellyfinUserId": "Benutzer-ID (optional)",
+  "settings.jellyfinUserId": "Benutzername oder -ID (optional)",
   "settings.tmdb": "TMDB",
   "settings.tmdbApiKey": "API-Schlüssel oder Read-Access-Token",
   "settings.language": "Metadaten-Sprache",
