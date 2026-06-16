@@ -99,6 +99,15 @@ templ settingsBody(d SettingsData) {
 			</select>
 		</div>
 
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.exports") }</h2>
+			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.exportsHint") }</p>
+			<div class="flex flex-wrap gap-2">
+				<a class="btn-ghost" href="/export/settings">{ d.Layout.T.T("settings.exportSettings") }</a>
+				<a class="btn-ghost" href="/export/sync">{ d.Layout.T.T("settings.exportSync") }</a>
+			</div>
+		</div>
+
 		<div class="flex justify-end">
 			<button type="submit" class="btn-primary">{ d.Layout.T.T("common.save") }</button>
 		</div>

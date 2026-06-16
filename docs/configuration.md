@@ -24,10 +24,16 @@ encrypted** and never written in plaintext.
     "language": "en-US",
     "region": "US"
   },
+  "ai": {
+    "enabled": false,          // enable AI-generated suggestions
+    "endpoint": "",            // full chat-completions URL (OpenAI/Azure-compatible)
+    "apiKeyEnc": "<base64>",   // AES-256-GCM ciphertext (never plaintext)
+    "model": ""                // model / deployment name
+  },
   "scan": {
     "intervalMinutes": 60,     // 0 disables periodic scans (manual only)
     "runOnStart": true,        // scan once on container startup
-    "tmdbRateLimitRps": 4,     // TMDB requests per second
+    "tmdbRateLimitRps": 1,     // TMDB requests per second
     "includeSpecials": false   // include season 0 / specials in comparisons
   },
   "libraries": [
@@ -37,6 +43,8 @@ encrypted** and never written in plaintext.
 ```
 
 ## Settings reference
+
+![Settings page](images/settings.png)
 
 ### Jellyfin
 
@@ -57,6 +65,19 @@ encrypted** and never written in plaintext.
 > **Token format detection:** a credential starting with `eyJ` (a JWT) is sent
 > as a `Bearer` token (v4); anything else is sent as the `api_key` query
 > parameter (v3). You only ever need to paste the single key TMDB gives you.
+
+### AI suggestions (optional)
+
+On the **Suggestions** page waim can ask an OpenAI/Azure-compatible chat endpoint
+for extra recommendations based on your library. This is entirely optional and
+turned off by default.
+
+| Field                 | Description                                                       |
+| --------------------- | ---------------------------------------------------------------- |
+| Enable AI suggestions | Master switch for the AI integration.                            |
+| Endpoint URL          | The full chat-completions URL (e.g. an Azure AI Foundry deployment). |
+| API key               | Stored encrypted, like the Jellyfin and TMDB keys.               |
+| Model                 | Model / deployment name to request.                              |
 
 ### Scanning
 
@@ -88,8 +109,8 @@ the console (container) output are. It is applied immediately on save:
 | `warn`  | Warnings and errors only.                          |
 | `debug` | Verbose, detailed diagnostics (per-request, etc.). |
 
-`WAIM_DEBUG=true` only sets the verbosity during early startup before the config
-is loaded; afterwards the value from `config.json` takes precedence.
+The log level is configured only here — there is no environment variable for it.
+Until `config.json` is loaded at startup, waim logs at `info` level.
 
 ## Matching logic
 

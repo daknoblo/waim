@@ -160,13 +160,25 @@ func (s *Server) dashboardData(r *http.Request) web.DashboardData {
 	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
 	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
 	return web.DashboardData{
-		Layout:   s.layout(r, web.NavDashboard),
-		Status:   s.statusView(r.Context(), t),
-		Findings: s.findingRows(r.Context(), t, sortKey, dir),
-		Logs:     web.BuildLogViews(s.logs.Entries()),
-		Sort:     sortKey,
-		Dir:      dir,
+		Layout:    s.layout(r, web.NavDashboard),
+		Status:    s.statusView(r.Context(), t),
+		Findings:  s.findingRows(r.Context(), t, sortKey, dir),
+		Libraries: s.libraryFilters(),
+		Logs:      web.BuildLogViews(s.logs.Entries()),
+		Sort:      sortKey,
+		Dir:       dir,
 	}
+}
+
+// libraryFilters lists the enabled, configured libraries for the dashboard filter.
+func (s *Server) libraryFilters() []web.LibraryFilter {
+	var out []web.LibraryFilter
+	for _, l := range s.cfg.Get().Libraries {
+		if l.Enabled {
+			out = append(out, web.LibraryFilter{ID: l.ID, Name: l.Name})
+		}
+	}
+	return out
 }
 
 func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, dir string) []web.FindingRow {
@@ -189,8 +201,8 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 		State:     st.State,
 		Running:   st.State == scheduler.StateRunning,
 		LastError: st.LastError,
-		LastScan:  web.FormatTime(t, st.LastFinished),
-		NextScan:  web.FormatTime(t, st.NextRun),
+		LastScan:  web.FormatRelative(t, st.LastFinished),
+		NextScan:  web.FormatRelative(t, st.NextRun),
 	}
 	if sv.Running {
 		sv.StateLabel = t.T("dashboard.state.running")

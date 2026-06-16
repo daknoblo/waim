@@ -43,8 +43,7 @@ WORKDIR /app
 COPY --from=builder /out/waim /app/waim
 COPY --from=builder --chown=65532:65532 /out/appdata /app/appdata
 
-ENV WAIM_DATA_DIR=/app/appdata \
-    WAIM_ADDR=:8080
+ENV WAIM_ADDR=:8080
 
 EXPOSE 8080
 VOLUME ["/app/appdata"]
