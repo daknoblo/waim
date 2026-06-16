@@ -30,13 +30,6 @@ templ dashboardBody(d DashboardData) {
 				@FindingsTable(d.Layout.T, d.Findings)
 			</div>
 		</div>
-
-		<div class="card">
-			<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("dashboard.log") }</h2>
-			<div id="log" hx-get="/partials/log" hx-trigger="every 3s" hx-swap="innerHTML">
-				@LogPanel(d.Layout.T, d.Logs)
-			</div>
-		</div>
 	</section>
 }
 
@@ -116,12 +109,12 @@ templ LogPanel(t *i18n.Translator, logs []LogEntryView) {
 	if len(logs) == 0 {
 		<p class="text-sm text-slate-500">{ t.T("dashboard.noLog") }</p>
 	} else {
-		<div class="max-h-64 overflow-y-auto rounded-lg bg-slate-950/60 p-3 font-mono text-xs">
+		<div class="font-mono text-xs leading-relaxed">
 			for _, e := range logs {
 				<div class="flex gap-2 py-0.5">
-					<span class="text-slate-600">{ e.Time }</span>
-					<span class={ logLevelClass(e.Level) }>{ e.Level }</span>
-					<span class="text-slate-300">{ e.Message }</span>
+					<span class="shrink-0 text-slate-600">{ e.Time }</span>
+					<span class={ "shrink-0", logLevelClass(e.Level) }>{ e.Level }</span>
+					<span class="break-all text-slate-300">{ e.Message }</span>
 				</div>
 			}
 		</div>

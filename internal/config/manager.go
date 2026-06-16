@@ -18,6 +18,7 @@ type stored struct {
 	SchemaVersion int    `json:"schemaVersion"`
 	Salt          string `json:"salt"` // base64, not secret
 	Locale        string `json:"locale"`
+	LogLevel      string `json:"logLevel"`
 
 	Jellyfin struct {
 		URL       string `json:"url"`
@@ -177,6 +178,7 @@ func (m *Manager) ExportStored() ([]byte, error) {
 func (m *Manager) decryptStored(st stored) Settings {
 	s := Settings{
 		Locale:    NormalizeLocale(st.Locale),
+		LogLevel:  NormalizeLogLevel(st.LogLevel),
 		Libraries: append([]Library(nil), st.Libraries...),
 		Scan:      st.Scan,
 	}
@@ -244,6 +246,7 @@ func storedFromSettings(s Settings) stored {
 	var st stored
 	st.SchemaVersion = SchemaVersion
 	st.Locale = s.Locale
+	st.LogLevel = s.LogLevel
 	st.Jellyfin.URL = s.Jellyfin.URL
 	st.Jellyfin.UserID = s.Jellyfin.UserID
 	st.TMDB.Language = s.TMDB.Language
