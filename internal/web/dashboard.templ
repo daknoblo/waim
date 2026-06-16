@@ -130,7 +130,16 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 										<span class="badge">{ r.KindLabel }</span>
 									</span>
 								</td>
-								<td class="px-3 py-2 font-medium text-slate-100">{ r.Title }</td>
+								<td class="px-3 py-2">
+								<div class="flex items-center gap-2">
+									if r.PosterURL != "" {
+										<img src={ r.PosterURL } alt="" loading="lazy" class="h-12 w-8 shrink-0 rounded object-cover"/>
+									} else {
+										<div class="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-slate-800 text-sm">{ r.MediaIcon }</div>
+									}
+									<span class="font-medium text-slate-100">{ r.Title }</span>
+								</div>
+							</td>
 								<td class="px-3 py-2"><span class={ "badge", r.LibraryColor }>{ r.Library }</span></td>
 								<td class="px-3 py-2 text-slate-300">
 									<div class="font-bold text-slate-100">{ r.Detail }</div>

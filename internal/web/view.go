@@ -28,8 +28,9 @@ const (
 
 // DetailItem is a single missing part/episode line, with an optional rating.
 type DetailItem struct {
-	Text   string
-	Rating string
+	Text    string
+	Rating  string
+	sortKey int
 }
 
 // FindingRow is a display-ready representation of a store.Finding.
@@ -42,14 +43,16 @@ type FindingRow struct {
 	Detail       string
 	DetailItems  []DetailItem
 	MissingCount int
+	PosterURL    string
 	TMDBLink     string
 	JellyfinLink string
 }
 
 type detailPayload struct {
-	SeasonNumber    int   `json:"seasonNumber"`
-	EpisodeCount    int   `json:"episodeCount"`
-	MissingEpisodes []int `json:"missingEpisodes"`
+	SeasonNumber    int    `json:"seasonNumber"`
+	EpisodeCount    int    `json:"episodeCount"`
+	MissingEpisodes []int  `json:"missingEpisodes"`
+	PosterPath      string `json:"posterPath"`
 	MissingParts    []struct {
 		TMDBID int64   `json:"tmdbId"`
 		Title  string  `json:"title"`
@@ -58,36 +61,34 @@ type detailPayload struct {
 	} `json:"missingParts"`
 }
 
-// BuildFindingRows converts findings into localised rows for the UI. jellyfinURL
-// is used to build deep links to the originating Jellyfin item.
+// BuildFindingRows converts findings into localised rows for the UI. Series
+// findings are grouped so each series appears once with its season gaps listed.
+// jellyfinURL is used to build deep links to the originating Jellyfin item.
 func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL string) []FindingRow {
-	rows := make([]FindingRow, 0, len(findings))
+	var rows []FindingRow
+	groups := map[string]*FindingRow{}
+	var groupOrder []string
+
 	for _, f := range findings {
 		var d detailPayload
 		if f.Details != "" {
 			_ = json.Unmarshal([]byte(f.Details), &d)
 		}
-		row := FindingRow{
-			KindLabel:    t.T("finding.kind." + f.Kind),
-			MediaIcon:    mediaIcon(f.MediaType),
-			Title:        f.Title,
-			Library:      f.LibraryName,
-			LibraryColor: LibraryColor(f.LibraryID),
-			JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
-		}
+
 		switch f.Kind {
-		case store.KindMissingSeason:
-			row.Detail = t.T("finding.missingSeason", d.SeasonNumber, len(d.MissingEpisodes))
-			row.MissingCount = len(d.MissingEpisodes)
-			row.TMDBLink = tmdbLink("tv", f.TMDBID)
-		case store.KindMissingEpisodes:
-			row.Detail = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
-			row.MissingCount = len(d.MissingEpisodes)
-			row.TMDBLink = tmdbLink("tv", f.TMDBID)
 		case store.KindMissingCollection:
-			row.Detail = t.T("finding.missingCollection", len(d.MissingParts))
-			row.MissingCount = len(d.MissingParts)
-			// Sort the missing parts by release year (unknown years last).
+			row := FindingRow{
+				KindLabel:    t.T("finding.kind." + f.Kind),
+				MediaIcon:    mediaIcon(f.MediaType),
+				Title:        f.Title,
+				Library:      f.LibraryName,
+				LibraryColor: LibraryColor(f.LibraryID),
+				JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
+				PosterURL:    posterURL(d.PosterPath),
+				Detail:       t.T("finding.missingCollection", len(d.MissingParts)),
+				MissingCount: len(d.MissingParts),
+				TMDBLink:     tmdbLink("collection", f.TMDBID),
+			}
 			sort.SliceStable(d.MissingParts, func(i, j int) bool {
 				return yearValue(d.MissingParts[i].Year) < yearValue(d.MissingParts[j].Year)
 			})
@@ -102,11 +103,61 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				}
 				row.DetailItems = append(row.DetailItems, item)
 			}
-			row.TMDBLink = tmdbLink("collection", f.TMDBID)
+			rows = append(rows, row)
+
+		case store.KindMissingSeason, store.KindMissingEpisodes:
+			key := seriesKey(f)
+			g := groups[key]
+			if g == nil {
+				g = &FindingRow{
+					KindLabel:    t.T("finding.kind.series"),
+					MediaIcon:    mediaIcon(store.MediaSeries),
+					Title:        f.Title,
+					Library:      f.LibraryName,
+					LibraryColor: LibraryColor(f.LibraryID),
+					JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
+					TMDBLink:     tmdbLink("tv", f.TMDBID),
+				}
+				groups[key] = g
+				groupOrder = append(groupOrder, key)
+			}
+			if g.PosterURL == "" {
+				g.PosterURL = posterURL(d.PosterPath)
+			}
+			var text string
+			if f.Kind == store.KindMissingSeason {
+				text = t.T("finding.missingSeason", d.SeasonNumber, len(d.MissingEpisodes))
+			} else {
+				text = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
+			}
+			g.DetailItems = append(g.DetailItems, DetailItem{Text: text, sortKey: d.SeasonNumber})
+			g.MissingCount += len(d.MissingEpisodes)
 		}
-		rows = append(rows, row)
+	}
+
+	for _, key := range groupOrder {
+		g := groups[key]
+		sort.SliceStable(g.DetailItems, func(i, j int) bool {
+			return g.DetailItems[i].sortKey < g.DetailItems[j].sortKey
+		})
+		g.Detail = t.T("finding.seriesGaps", len(g.DetailItems))
+		rows = append(rows, *g)
 	}
 	return rows
+}
+
+func seriesKey(f store.Finding) string {
+	if f.JellyfinID != "" {
+		return "j:" + f.JellyfinID
+	}
+	return "t:" + strconv.FormatInt(f.TMDBID, 10) + ":" + f.Title
+}
+
+func posterURL(path string) string {
+	if path == "" {
+		return ""
+	}
+	return "https://image.tmdb.org/t/p/w92" + path
 }
 
 // SortFindingRows sorts rows in place by the given key and direction.
