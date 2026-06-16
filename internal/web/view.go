@@ -7,12 +7,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/store"
+)
+
+// Finding sort keys and directions.
+const (
+	SortLibrary = "library"
+	SortTitle   = "title"
+	SortType    = "type"
+	SortMissing = "missing"
+	DirAsc      = "asc"
+	DirDesc     = "desc"
 )
 
 // DetailItem is a single missing part/episode line, with an optional rating.
@@ -30,6 +41,7 @@ type FindingRow struct {
 	LibraryColor []string
 	Detail       string
 	DetailItems  []DetailItem
+	MissingCount int
 	TMDBLink     string
 	JellyfinLink string
 }
@@ -66,12 +78,19 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 		switch f.Kind {
 		case store.KindMissingSeason:
 			row.Detail = t.T("finding.missingSeason", d.SeasonNumber, len(d.MissingEpisodes))
+			row.MissingCount = len(d.MissingEpisodes)
 			row.TMDBLink = tmdbLink("tv", f.TMDBID)
 		case store.KindMissingEpisodes:
 			row.Detail = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
+			row.MissingCount = len(d.MissingEpisodes)
 			row.TMDBLink = tmdbLink("tv", f.TMDBID)
 		case store.KindMissingCollection:
 			row.Detail = t.T("finding.missingCollection", len(d.MissingParts))
+			row.MissingCount = len(d.MissingParts)
+			// Sort the missing parts by release year (unknown years last).
+			sort.SliceStable(d.MissingParts, func(i, j int) bool {
+				return yearValue(d.MissingParts[i].Year) < yearValue(d.MissingParts[j].Year)
+			})
 			for _, p := range d.MissingParts {
 				text := p.Title
 				if p.Year != "" {
@@ -88,6 +107,53 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// SortFindingRows sorts rows in place by the given key and direction.
+func SortFindingRows(rows []FindingRow, key, dir string) {
+	less := func(a, b FindingRow) bool {
+		switch key {
+		case SortTitle:
+			return strings.ToLower(a.Title) < strings.ToLower(b.Title)
+		case SortType:
+			return a.KindLabel < b.KindLabel
+		case SortMissing:
+			return a.MissingCount < b.MissingCount
+		default: // SortLibrary
+			return strings.ToLower(a.Library) < strings.ToLower(b.Library)
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return less(rows[i], rows[j]) })
+	if dir == DirDesc {
+		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+			rows[i], rows[j] = rows[j], rows[i]
+		}
+	}
+}
+
+// NormalizeSort returns a supported sort key, defaulting to library.
+func NormalizeSort(key string) string {
+	switch key {
+	case SortTitle, SortType, SortMissing, SortLibrary:
+		return key
+	default:
+		return SortLibrary
+	}
+}
+
+// NormalizeDir returns a supported sort direction, defaulting to ascending.
+func NormalizeDir(dir string) string {
+	if dir == DirDesc {
+		return DirDesc
+	}
+	return DirAsc
+}
+
+func yearValue(y string) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(y)); err == nil && n > 0 {
+		return n
+	}
+	return 1<<31 - 1
 }
 
 func mediaIcon(mediaType string) string {

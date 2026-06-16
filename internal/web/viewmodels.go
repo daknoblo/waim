@@ -71,6 +71,8 @@ type DashboardData struct {
 	Status   StatusView
 	Findings []FindingRow
 	Logs     []LogEntryView
+	Sort     string
+	Dir      string
 }
 
 // ConnCheck is the result of testing a connection (Jellyfin or TMDB).
