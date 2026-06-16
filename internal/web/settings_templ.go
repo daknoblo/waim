@@ -66,7 +66,7 @@ func settingsBody(d SettingsData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if d.Message != "" {
-			var templ_7745c5c3_Var3 = []any{"rounded-lg px-4 py-3 text-sm", templ.KV("bg-emerald-500/10 text-emerald-200", !d.IsError), templ.KV("bg-rose-500/10 text-rose-200", d.IsError)}
+			var templ_7745c5c3_Var3 = []any{"rounded-lg px-4 py-3 text-sm", templ.KV("alert-ok", !d.IsError), templ.KV("alert-error", d.IsError)}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var3...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1054,7 +1054,7 @@ func connStatus(c ConnCheck) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if c.Checked {
-			var templ_7745c5c3_Var53 = []any{"rounded-md px-3 py-2 text-sm", templ.KV("bg-emerald-500/10 text-emerald-200", c.OK), templ.KV("bg-rose-500/10 text-rose-200", !c.OK)}
+			var templ_7745c5c3_Var53 = []any{"rounded-md px-3 py-2 text-sm", templ.KV("alert-ok", c.OK), templ.KV("alert-error", !c.OK)}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var53...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

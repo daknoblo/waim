@@ -10,7 +10,7 @@ templ Settings(d SettingsData) {
 templ settingsBody(d SettingsData) {
 	<form method="post" action="/settings" class="grid gap-4">
 		if d.Message != "" {
-			<div class={ "rounded-lg px-4 py-3 text-sm", templ.KV("bg-emerald-500/10 text-emerald-200", !d.IsError), templ.KV("bg-rose-500/10 text-rose-200", d.IsError) }>
+			<div class={ "rounded-lg px-4 py-3 text-sm", templ.KV("alert-ok", !d.IsError), templ.KV("alert-error", d.IsError) }>
 				{ d.Message }
 			</div>
 		}
@@ -154,7 +154,7 @@ templ choiceSelectField(label, name, current string, options []LangChoice) {
 
 templ connStatus(c ConnCheck) {
 	if c.Checked {
-		<div class={ "rounded-md px-3 py-2 text-sm", templ.KV("bg-emerald-500/10 text-emerald-200", c.OK), templ.KV("bg-rose-500/10 text-rose-200", !c.OK) }>
+		<div class={ "rounded-md px-3 py-2 text-sm", templ.KV("alert-ok", c.OK), templ.KV("alert-error", !c.OK) }>
 			{ c.Message }
 		</div>
 	}

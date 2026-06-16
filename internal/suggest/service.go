@@ -362,8 +362,9 @@ func providerTMDB(it jellyfin.Item) int64 {
 
 func truncate(s string, n int) string {
 	s = strings.TrimSpace(s)
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return strings.TrimSpace(s[:n]) + "\u2026"
+	return strings.TrimSpace(string(r[:n])) + "\u2026"
 }

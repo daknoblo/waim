@@ -241,7 +241,7 @@ func FormatTime(t *i18n.Translator, ts *time.Time) string {
 	return ts.Local().Format("2006-01-02 15:04:05")
 }
 
-// FormatDuration renders a duration like "2m 35s" or "12s", or empty for zero.
+// FormatDuration renders a duration like "1h 5m 12s", "2m 35s" or "12s"; empty for zero.
 func FormatDuration(d time.Duration) string {
 	if d <= 0 {
 		return ""
@@ -250,7 +250,10 @@ func FormatDuration(d time.Duration) string {
 	if d < time.Minute {
 		return fmt.Sprintf("%ds", int(d.Seconds()))
 	}
-	return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
+	if d < time.Hour {
+		return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	return fmt.Sprintf("%dh %dm %ds", int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60)
 }
 
 // FormatTimeValue renders a non-pointer time for display, or empty when zero.
