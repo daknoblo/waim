@@ -114,7 +114,6 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 				<table class="w-full text-left text-sm">
 					<thead class="text-xs uppercase tracking-wide text-slate-500">
 						<tr>
-							@sortHeader(t.T("finding.col.type"), SortType, sortKey, dir)
 							@sortHeader(t.T("finding.col.title"), SortTitle, sortKey, dir)
 							@sortHeader(t.T("finding.col.library"), SortLibrary, sortKey, dir)
 							@sortHeader(t.T("finding.col.detail"), SortMissing, sortKey, dir)
@@ -124,12 +123,6 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 					<tbody class="divide-y divide-slate-800 align-top">
 						for _, r := range rows {
 							<tr class="hover:bg-slate-900/40">
-								<td class="px-3 py-2">
-									<span class="inline-flex items-center gap-1.5 whitespace-nowrap">
-										<span aria-hidden="true">{ r.MediaIcon }</span>
-										<span class="badge">{ r.KindLabel }</span>
-									</span>
-								</td>
 								<td class="px-3 py-2">
 								<div class="flex items-center gap-2">
 									if r.PosterURL != "" {
