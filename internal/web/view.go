@@ -6,6 +6,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -14,13 +15,23 @@ import (
 	"github.com/daknoblo/waim/internal/store"
 )
 
+// DetailItem is a single missing part/episode line, with an optional rating.
+type DetailItem struct {
+	Text   string
+	Rating string
+}
+
 // FindingRow is a display-ready representation of a store.Finding.
 type FindingRow struct {
-	KindLabel string
-	Title     string
-	Library   string
-	Detail    string
-	TMDBLink  string
+	KindLabel    string
+	MediaIcon    string
+	Title        string
+	Library      string
+	LibraryColor []string
+	Detail       string
+	DetailItems  []DetailItem
+	TMDBLink     string
+	JellyfinLink string
 }
 
 type detailPayload struct {
@@ -28,14 +39,16 @@ type detailPayload struct {
 	EpisodeCount    int   `json:"episodeCount"`
 	MissingEpisodes []int `json:"missingEpisodes"`
 	MissingParts    []struct {
-		TMDBID int64  `json:"tmdbId"`
-		Title  string `json:"title"`
-		Year   string `json:"year"`
+		TMDBID int64   `json:"tmdbId"`
+		Title  string  `json:"title"`
+		Year   string  `json:"year"`
+		Rating float64 `json:"rating"`
 	} `json:"missingParts"`
 }
 
-// BuildFindingRows converts findings into localised rows for the UI.
-func BuildFindingRows(t *i18n.Translator, findings []store.Finding) []FindingRow {
+// BuildFindingRows converts findings into localised rows for the UI. jellyfinURL
+// is used to build deep links to the originating Jellyfin item.
+func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL string) []FindingRow {
 	rows := make([]FindingRow, 0, len(findings))
 	for _, f := range findings {
 		var d detailPayload
@@ -43,9 +56,12 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding) []FindingRow
 			_ = json.Unmarshal([]byte(f.Details), &d)
 		}
 		row := FindingRow{
-			KindLabel: t.T("finding.kind." + f.Kind),
-			Title:     f.Title,
-			Library:   f.LibraryName,
+			KindLabel:    t.T("finding.kind." + f.Kind),
+			MediaIcon:    mediaIcon(f.MediaType),
+			Title:        f.Title,
+			Library:      f.LibraryName,
+			LibraryColor: LibraryColor(f.LibraryID),
+			JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
 		}
 		switch f.Kind {
 		case store.KindMissingSeason:
@@ -56,8 +72,16 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding) []FindingRow
 			row.TMDBLink = tmdbLink("tv", f.TMDBID)
 		case store.KindMissingCollection:
 			row.Detail = t.T("finding.missingCollection", len(d.MissingParts))
-			if names := partNames(d); names != "" {
-				row.Detail += " — " + names
+			for _, p := range d.MissingParts {
+				text := p.Title
+				if p.Year != "" {
+					text += " (" + p.Year + ")"
+				}
+				item := DetailItem{Text: text}
+				if p.Rating > 0 {
+					item.Rating = fmt.Sprintf("%.1f", p.Rating)
+				}
+				row.DetailItems = append(row.DetailItems, item)
 			}
 			row.TMDBLink = tmdbLink("collection", f.TMDBID)
 		}
@@ -66,16 +90,23 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding) []FindingRow
 	return rows
 }
 
-func partNames(d detailPayload) string {
-	parts := make([]string, 0, len(d.MissingParts))
-	for _, p := range d.MissingParts {
-		if p.Year != "" {
-			parts = append(parts, fmt.Sprintf("%s (%s)", p.Title, p.Year))
-		} else {
-			parts = append(parts, p.Title)
-		}
+func mediaIcon(mediaType string) string {
+	switch mediaType {
+	case store.MediaSeries:
+		return "\U0001F4FA" // television
+	case store.MediaMovie:
+		return "\U0001F3AC" // clapper board
+	default:
+		return ""
 	}
-	return strings.Join(parts, ", ")
+}
+
+func jellyfinItemURL(base, itemID string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if base == "" || itemID == "" {
+		return ""
+	}
+	return base + "/web/#/details?id=" + url.QueryEscape(itemID)
 }
 
 func tmdbLink(kind string, id int64) string {

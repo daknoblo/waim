@@ -143,7 +143,7 @@ func Page(l Layout, body templ.Component) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</title><link rel=\"stylesheet\" href=\"/static/app.css\"><script src=\"/static/htmx.min.js\" defer></script></head><body class=\"min-h-full bg-slate-950 text-slate-100 antialiased\"><div class=\"mx-auto flex min-h-screen max-w-5xl flex-col px-4\"><header class=\"flex flex-wrap items-center justify-between gap-4 py-5\"><div class=\"flex items-baseline gap-3\"><span class=\"text-2xl font-bold tracking-tight text-indigo-400\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</title><link rel=\"stylesheet\" href=\"/static/app.css\"><script src=\"/static/htmx.min.js\" defer></script></head><body class=\"min-h-full bg-slate-950 text-slate-100 antialiased\"><div class=\"mx-auto flex min-h-screen w-[75%] flex-col px-4\"><header class=\"flex flex-wrap items-center justify-between gap-4 py-5\"><div class=\"flex items-baseline gap-3\"><span class=\"text-2xl font-bold tracking-tight text-indigo-400\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
