@@ -28,6 +28,9 @@
   .input {
     @apply rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500;
   }
+  .select-filter {
+    @apply rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm text-slate-300 outline-none transition hover:border-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500;
+  }
   .checkbox {
     @apply h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500;
   }

@@ -187,7 +187,7 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			if err != nil {
 				s.log.Warn("tmdb movie lookup failed", "title", m.item.Name, "tmdbId", id, "err", err)
 			} else {
-				res.Media = append(res.Media, movieStat(movie))
+				res.Media = append(res.Media, movieStat(movie, m.libID, libNames[m.libID]))
 				missingCount = s.evalCollection(ctx, m.libID, libNames[m.libID], m.item, movie, ownedMovie, processedCollections, &res)
 			}
 		}
@@ -290,12 +290,14 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		return 0
 	}
 	res.Media = append(res.Media, store.MediaStat{
-		Type:    store.MediaSeries,
-		Title:   item.Name,
-		Year:    yearInt(tv.FirstAirDate),
-		Rating:  tv.VoteAverage,
-		Runtime: firstInt(tv.EpisodeRunTime),
-		Genres:  genreNames(tv.Genres),
+		Type:        store.MediaSeries,
+		Title:       item.Name,
+		Year:        yearInt(tv.FirstAirDate),
+		Rating:      tv.VoteAverage,
+		Runtime:     firstInt(tv.EpisodeRunTime),
+		Genres:      genreNames(tv.Genres),
+		LibraryID:   libID,
+		LibraryName: libName,
 	})
 	eps, err := s.jf.Episodes(ctx, userID, item.ID)
 	if err != nil {
@@ -467,14 +469,16 @@ func yearOf(date string) string {
 	return ""
 }
 
-func movieStat(m tmdb.Movie) store.MediaStat {
+func movieStat(m tmdb.Movie, libID, libName string) store.MediaStat {
 	return store.MediaStat{
-		Type:    store.MediaMovie,
-		Title:   m.Title,
-		Year:    yearInt(m.ReleaseDate),
-		Rating:  m.VoteAverage,
-		Runtime: m.Runtime,
-		Genres:  genreNames(m.Genres),
+		Type:        store.MediaMovie,
+		Title:       m.Title,
+		Year:        yearInt(m.ReleaseDate),
+		Rating:      m.VoteAverage,
+		Runtime:     m.Runtime,
+		Genres:      genreNames(m.Genres),
+		LibraryID:   libID,
+		LibraryName: libName,
 	}
 }
 

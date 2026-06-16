@@ -72,12 +72,19 @@ type LogEntryView struct {
 
 // DashboardData is the full model for the dashboard page.
 type DashboardData struct {
-	Layout   Layout
-	Status   StatusView
-	Findings []FindingRow
-	Logs     []LogEntryView
-	Sort     string
-	Dir      string
+	Layout    Layout
+	Status    StatusView
+	Findings  []FindingRow
+	Libraries []LibraryFilter
+	Logs      []LogEntryView
+	Sort      string
+	Dir       string
+}
+
+// LibraryFilter is a selectable library for the dashboard findings filter.
+type LibraryFilter struct {
+	ID   string
+	Name string
 }
 
 // ConnCheck is the result of testing a connection (Jellyfin or TMDB).

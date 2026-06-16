@@ -26,8 +26,7 @@ type StatsData struct {
 	ByKind         StatsByKind
 	TopSeries      []StatsTop
 	TopCollections []StatsTop
-	TopRatedMovies []StatsRated
-	WorstRated     []StatsRated
+	LibraryRatings []StatsLibraryRatings
 	LongestMovies  []StatsRuntime
 	Genres         []StatsBar
 	Years          []StatsBar
@@ -65,6 +64,14 @@ type StatsRated struct {
 	Title  string
 	Year   int
 	Rating string
+}
+
+// StatsLibraryRatings holds the top and lowest rated titles of a single library.
+type StatsLibraryRatings struct {
+	Name   string
+	Color  []string
+	Top    []StatsRated
+	Lowest []StatsRated
 }
 
 // StatsRuntime is a movie ranked by runtime.
@@ -171,20 +178,23 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 	sd.TopSeries = topN(sd.TopSeries, 5)
 	sd.TopCollections = topN(collections, 5)
 
-	computeMediaStats(&sd, run.Media)
+	computeMediaStats(&sd, run)
 
 	return sd
 }
 
-func computeMediaStats(sd *StatsData, media []store.MediaStat) {
+func computeMediaStats(sd *StatsData, run *store.ScanRun) {
+	media := run.Media
 	var movies []store.MediaStat
 	genreCounts := map[string]int{}
 	decadeCounts := map[int]int{}
+	byLib := map[string][]store.MediaStat{}
 
 	for _, m := range media {
 		if m.Type == store.MediaMovie {
 			movies = append(movies, m)
 		}
+		byLib[m.LibraryID] = append(byLib[m.LibraryID], m)
 		for _, g := range m.Genres {
 			genreCounts[g]++
 		}
@@ -193,18 +203,25 @@ func computeMediaStats(sd *StatsData, media []store.MediaStat) {
 		}
 	}
 
-	// Top / worst rated movies.
-	rated := make([]store.MediaStat, 0, len(movies))
-	for _, m := range movies {
-		if m.Rating > 0 {
-			rated = append(rated, m)
+	// Top / lowest rated per library (movies and series alike).
+	for _, l := range run.Libraries {
+		rated := make([]store.MediaStat, 0, len(byLib[l.ID]))
+		for _, m := range byLib[l.ID] {
+			if m.Rating > 0 {
+				rated = append(rated, m)
+			}
 		}
+		top := append([]store.MediaStat(nil), rated...)
+		sort.SliceStable(top, func(i, j int) bool { return top[i].Rating > top[j].Rating })
+		low := append([]store.MediaStat(nil), rated...)
+		sort.SliceStable(low, func(i, j int) bool { return low[i].Rating < low[j].Rating })
+		sd.LibraryRatings = append(sd.LibraryRatings, StatsLibraryRatings{
+			Name:   l.Name,
+			Color:  LibraryColor(l.ID),
+			Top:    toRated(top, 10),
+			Lowest: toRated(low, 10),
+		})
 	}
-	sort.SliceStable(rated, func(i, j int) bool { return rated[i].Rating > rated[j].Rating })
-	sd.TopRatedMovies = toRated(rated, 10)
-	worst := append([]store.MediaStat(nil), rated...)
-	sort.SliceStable(worst, func(i, j int) bool { return worst[i].Rating < worst[j].Rating })
-	sd.WorstRated = toRated(worst, 10)
 
 	// Longest movies by runtime.
 	long := make([]store.MediaStat, 0, len(movies))

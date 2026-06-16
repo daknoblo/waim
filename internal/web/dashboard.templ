@@ -21,7 +21,15 @@ templ dashboardBody(d DashboardData) {
 		<div class="card">
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="text-lg font-semibold">{ d.Layout.T.T("dashboard.findings") }</h2>
-				<div class="flex gap-2">
+				<div class="flex items-center gap-2">
+					if len(d.Libraries) > 0 {
+						<select id="finding-lib-filter" class="select-filter" aria-label={ d.Layout.T.T("dashboard.filterLibrary") }>
+							<option value="">{ d.Layout.T.T("dashboard.allLibraries") }</option>
+							for _, l := range d.Libraries {
+								<option value={ l.ID }>{ l.Name }</option>
+							}
+						</select>
+					}
 					<a class="btn-ghost" href="/export/settings">{ d.Layout.T.T("dashboard.exportSettings") }</a>
 					<a class="btn-ghost" href="/export/sync">{ d.Layout.T.T("dashboard.exportSync") }</a>
 				</div>
@@ -122,7 +130,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 					</thead>
 					<tbody class="divide-y divide-slate-800 align-top">
 						for _, r := range rows {
-							<tr class="hover:bg-slate-900/40">
+							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID }>
 								<td class="px-3 py-2">
 								<div class="flex items-center gap-2">
 									if r.PosterURL != "" {
