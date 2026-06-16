@@ -21,9 +21,15 @@ templ dashboardBody(d DashboardData) {
 		<div class="card">
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="text-lg font-semibold">{ d.Layout.T.T("dashboard.findings") }</h2>
-				<div class="flex gap-2">
-					<a class="btn-ghost" href="/export/settings">{ d.Layout.T.T("dashboard.exportSettings") }</a>
-					<a class="btn-ghost" href="/export/sync">{ d.Layout.T.T("dashboard.exportSync") }</a>
+				<div class="flex items-center gap-2">
+					if len(d.Libraries) > 0 {
+						<select id="finding-lib-filter" class="select-filter" aria-label={ d.Layout.T.T("dashboard.filterLibrary") }>
+							<option value="">{ d.Layout.T.T("dashboard.allLibraries") }</option>
+							for _, l := range d.Libraries {
+								<option value={ l.ID }>{ l.Name }</option>
+							}
+						</select>
+					}
 				</div>
 			</div>
 			<input
@@ -60,7 +66,7 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				<span class="truncate font-medium text-slate-200">{ s.CurrentItem }</span>
 			</div>
 		}
-		<div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+		<div class="mt-4 grid grid-cols-2 gap-3 text-center text-sm sm:grid-cols-3 lg:grid-cols-6">
 			@stat(t.T("dashboard.lastScan"), s.LastScan)
 			@stat(t.T("dashboard.nextScan"), s.NextScan)
 			@stat(t.T("dashboard.duration"), orDash(s.Duration))
@@ -114,7 +120,6 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 				<table class="w-full text-left text-sm">
 					<thead class="text-xs uppercase tracking-wide text-slate-500">
 						<tr>
-							@sortHeader(t.T("finding.col.type"), SortType, sortKey, dir)
 							@sortHeader(t.T("finding.col.title"), SortTitle, sortKey, dir)
 							@sortHeader(t.T("finding.col.library"), SortLibrary, sortKey, dir)
 							@sortHeader(t.T("finding.col.detail"), SortMissing, sortKey, dir)
@@ -123,13 +128,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 					</thead>
 					<tbody class="divide-y divide-slate-800 align-top">
 						for _, r := range rows {
-							<tr class="hover:bg-slate-900/40">
-								<td class="px-3 py-2">
-									<span class="inline-flex items-center gap-1.5 whitespace-nowrap">
-										<span aria-hidden="true">{ r.MediaIcon }</span>
-										<span class="badge">{ r.KindLabel }</span>
-									</span>
-								</td>
+							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID }>
 								<td class="px-3 py-2">
 								<div class="flex items-center gap-2">
 									if r.PosterURL != "" {
@@ -147,9 +146,16 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 										<ul class="mt-1 space-y-0.5 text-slate-400">
 											for _, di := range r.DetailItems {
 												<li class="flex items-center gap-2">
-													<span>{ di.Text }</span>
+													if di.CopyText != "" {
+														<button type="button" class="copy-name" data-copy={ di.CopyText } title={ t.T("finding.copyHint") }>{ di.Text }</button>
+													} else {
+														<span>{ di.Text }</span>
+													}
 													if di.Rating != "" {
 														<span class="rounded bg-amber-500/15 px-1.5 text-xs text-amber-300">{ "\u2605 " + di.Rating }</span>
+													}
+													if di.IMDbURL != "" {
+														<a class="link-imdb" href={ templ.SafeURL(di.IMDbURL) } target="_blank" rel="noreferrer noopener" title="IMDb">IMDb</a>
 													}
 												</li>
 											}

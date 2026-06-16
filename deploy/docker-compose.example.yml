@@ -20,7 +20,6 @@ services:
       WAIM_ADDR: ":8080"
       # Timezone for the database timestamps and log display (IANA name).
       TZ: "${TZ:-Etc/UTC}"
-      # WAIM_DEBUG: "false"
     volumes:
       - waim-data:/app/appdata
     # Security hardening: run with a read-only root filesystem; only the

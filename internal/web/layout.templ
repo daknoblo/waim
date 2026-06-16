@@ -60,16 +60,16 @@ templ Page(l Layout, body templ.Component) {
 }
 
 templ languageSwitcher(l Layout) {
-	<form method="post" action="/locale" class="ml-2 flex items-center gap-1">
-		for _, lang := range l.Languages {
-			<button
-				type="submit"
-				name="locale"
-				value={ lang.Code }
-				class={ "lang-btn", templ.KV("lang-btn-active", lang.Active) }
-			>
-				{ lang.Code }
-			</button>
-		}
+	<form method="post" action="/locale" class="ml-2">
+		<select
+			name="locale"
+			aria-label={ l.T.T("settings.uiLanguage") }
+			onchange="this.form.submit()"
+			class="lang-select"
+		>
+			for _, lang := range l.Languages {
+				<option value={ lang.Code } selected?={ lang.Active }>{ lang.Label }</option>
+			}
+		</select>
 	</form>
 }

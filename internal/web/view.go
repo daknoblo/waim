@@ -28,9 +28,11 @@ const (
 
 // DetailItem is a single missing part/episode line, with an optional rating.
 type DetailItem struct {
-	Text    string
-	Rating  string
-	sortKey int
+	Text     string
+	Rating   string
+	CopyText string
+	IMDbURL  string
+	sortKey  int
 }
 
 // FindingRow is a display-ready representation of a store.Finding.
@@ -39,6 +41,7 @@ type FindingRow struct {
 	MediaIcon    string
 	Title        string
 	Library      string
+	LibraryID    string
 	LibraryColor []string
 	Detail       string
 	DetailItems  []DetailItem
@@ -53,11 +56,13 @@ type detailPayload struct {
 	EpisodeCount    int    `json:"episodeCount"`
 	MissingEpisodes []int  `json:"missingEpisodes"`
 	PosterPath      string `json:"posterPath"`
+	IMDbID          string `json:"imdbId"`
 	MissingParts    []struct {
 		TMDBID int64   `json:"tmdbId"`
 		Title  string  `json:"title"`
 		Year   string  `json:"year"`
 		Rating float64 `json:"rating"`
+		IMDbID string  `json:"imdbId"`
 	} `json:"missingParts"`
 }
 
@@ -82,6 +87,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				MediaIcon:    mediaIcon(f.MediaType),
 				Title:        f.Title,
 				Library:      f.LibraryName,
+				LibraryID:    f.LibraryID,
 				LibraryColor: LibraryColor(f.LibraryID),
 				JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
 				PosterURL:    posterURL(d.PosterPath),
@@ -101,6 +107,11 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				if p.Rating > 0 {
 					item.Rating = fmt.Sprintf("%.1f", p.Rating)
 				}
+				item.CopyText = p.Title
+				if p.Year != "" {
+					item.CopyText += " " + p.Year
+				}
+				item.IMDbURL = imdbURL(p.IMDbID)
 				row.DetailItems = append(row.DetailItems, item)
 			}
 			rows = append(rows, row)
@@ -114,6 +125,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 					MediaIcon:    mediaIcon(store.MediaSeries),
 					Title:        f.Title,
 					Library:      f.LibraryName,
+					LibraryID:    f.LibraryID,
 					LibraryColor: LibraryColor(f.LibraryID),
 					JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
 					TMDBLink:     tmdbLink("tv", f.TMDBID),
@@ -130,7 +142,12 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			} else {
 				text = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
 			}
-			g.DetailItems = append(g.DetailItems, DetailItem{Text: text, sortKey: d.SeasonNumber})
+			g.DetailItems = append(g.DetailItems, DetailItem{
+				Text:     text,
+				sortKey:  d.SeasonNumber,
+				CopyText: fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber),
+				IMDbURL:  imdbSeasonURL(d.IMDbID, d.SeasonNumber),
+			})
 			g.MissingCount += len(d.MissingEpisodes)
 		}
 	}
@@ -233,12 +250,67 @@ func tmdbLink(kind string, id int64) string {
 	return "https://www.themoviedb.org/" + kind + "/" + strconv.FormatInt(id, 10)
 }
 
+func imdbURL(id string) string {
+	id = strings.TrimSpace(id)
+	if !strings.HasPrefix(id, "tt") {
+		return ""
+	}
+	return "https://www.imdb.com/title/" + id + "/"
+}
+
+func imdbSeasonURL(id string, season int) string {
+	id = strings.TrimSpace(id)
+	if !strings.HasPrefix(id, "tt") {
+		return ""
+	}
+	return fmt.Sprintf("https://www.imdb.com/title/%s/episodes/?season=%d", id, season)
+}
+
 // FormatTime renders a time for display, or a localised "never" placeholder.
 func FormatTime(t *i18n.Translator, ts *time.Time) string {
 	if ts == nil || ts.IsZero() {
 		return t.T("common.never")
 	}
 	return ts.Local().Format("2006-01-02 15:04:05")
+}
+
+// FormatRelative renders a time relative to now, e.g. "5 minutes ago" or
+// "in 1 hour". Zero times yield a localised "never" placeholder.
+func FormatRelative(t *i18n.Translator, ts *time.Time) string {
+	if ts == nil || ts.IsZero() {
+		return t.T("common.never")
+	}
+	d := time.Until(*ts)
+	future := d >= 0
+	if d < 0 {
+		d = -d
+	}
+	if d < time.Minute {
+		if future {
+			return t.T("relative.soon")
+		}
+		return t.T("relative.now")
+	}
+	var phrase string
+	switch {
+	case d < time.Hour:
+		phrase = relUnit(t, int(d/time.Minute), "relative.minute", "relative.minutes")
+	case d < 24*time.Hour:
+		phrase = relUnit(t, int(d/time.Hour), "relative.hour", "relative.hours")
+	default:
+		phrase = relUnit(t, int(d/(24*time.Hour)), "relative.day", "relative.days")
+	}
+	if future {
+		return t.T("relative.in", phrase)
+	}
+	return t.T("relative.ago", phrase)
+}
+
+func relUnit(t *i18n.Translator, n int, singular, plural string) string {
+	if n == 1 {
+		return t.T(singular, n)
+	}
+	return t.T(plural, n)
 }
 
 // FormatDuration renders a duration like "1h 5m 12s", "2m 35s" or "12s"; empty for zero.

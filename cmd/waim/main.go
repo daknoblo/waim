@@ -65,9 +65,6 @@ func run() error {
 	logBuf := logbuf.New(300)
 	levelVar := new(slog.LevelVar)
 	levelVar.Set(slog.LevelInfo)
-	if envBool("WAIM_DEBUG") {
-		levelVar.Set(slog.LevelDebug)
-	}
 	base := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: levelVar})
 	logger := slog.New(logbuf.NewHandler(base, logBuf))
 	slog.SetDefault(logger)
@@ -142,13 +139,4 @@ func envDefault(key, def string) string {
 		return v
 	}
 	return def
-}
-
-func envBool(key string) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
 }

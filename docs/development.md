@@ -44,10 +44,11 @@ make docker     # build the Docker image locally
 Run locally:
 
 ```bash
-WAIM_MASTER_KEY=dev-secret WAIM_DATA_DIR=./appdata WAIM_ADDR=:8080 make run
+WAIM_MASTER_KEY=dev-secret WAIM_ADDR=:8080 make run
 ```
 
-Then open <http://localhost:8080>.
+Locally, waim stores its data in `./appdata` (gitignored) in the working
+directory. Then open <http://localhost:8080>.
 
 ## Editing the UI
 

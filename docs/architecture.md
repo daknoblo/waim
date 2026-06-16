@@ -43,8 +43,10 @@ server and the TMDB API.
 | `internal/store`      | SQLite persistence (scan runs, findings, key/value) + migrations.     |
 | `internal/jellyfin`   | Read-only Jellyfin API client (libraries, items, episodes).           |
 | `internal/tmdb`       | TMDB API client with a client-side rate limiter.                      |
+| `internal/ai`         | OpenAI/Azure-compatible chat client for AI suggestions.               |
 | `internal/scanner`    | Core comparison logic producing findings.                             |
 | `internal/scheduler`  | Runs scans on start / interval / on demand; tracks status.            |
+| `internal/suggest`    | Builds watch suggestions from TMDB and the AI client.                 |
 | `internal/server`     | HTTP routing, localisation, rendering.                                |
 | `internal/web`        | templ templates, embedded static assets, view models.                 |
 | `internal/i18n`       | Embedded message catalogs (en/de) and translator.                     |
@@ -65,12 +67,17 @@ server and the TMDB API.
 6. The **dashboard** displays the latest run's findings, status and log,
    refreshed via HTMX polling.
 
+The **statistics** and **suggestions** pages are derived from the same persisted
+scan data. Suggestions additionally query TMDB (trending and recommendations)
+and, when enabled, the configured AI endpoint, building the "owned" set live from
+Jellyfin so already-present titles are filtered out.
+
 ## Encryption model
 
 - A non-secret random `salt` is stored in `config.json`.
 - `Argon2id(WAIM_MASTER_KEY, salt)` derives a 32-byte key.
-- API keys are encrypted with AES-256-GCM (random nonce per value) and stored as
-  base64(`nonce` + ciphertext).
+- The Jellyfin, TMDB and AI API keys are each encrypted with AES-256-GCM (random
+  nonce per value) and stored as base64(`nonce` + ciphertext).
 - Without `WAIM_MASTER_KEY`, encryption is disabled: existing keys cannot be
   read and new keys cannot be saved. The UI surfaces a warning.
 

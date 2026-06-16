@@ -13,12 +13,14 @@ type LibrarySummary struct {
 
 // MediaStat captures TMDB metadata of an owned title for statistics.
 type MediaStat struct {
-	Type    string   `json:"type"` // movie | series
-	Title   string   `json:"title"`
-	Year    int      `json:"year"`
-	Rating  float64  `json:"rating"`
-	Runtime int      `json:"runtime"` // minutes (movies)
-	Genres  []string `json:"genres"`
+	Type        string   `json:"type"` // movie | series
+	Title       string   `json:"title"`
+	Year        int      `json:"year"`
+	Rating      float64  `json:"rating"`
+	Runtime     int      `json:"runtime"` // minutes (movies)
+	Genres      []string `json:"genres"`
+	LibraryID   string   `json:"libraryId"`
+	LibraryName string   `json:"libraryName"`
 }
 
 // Finding kinds.

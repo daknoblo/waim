@@ -3,10 +3,12 @@
 package server
 
 import (
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/a-h/templ"
@@ -153,7 +155,39 @@ func cacheControl(next http.Handler) http.Handler {
 
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r)
-		log.Debug("http", "method", r.Method, "path", r.URL.Path)
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		if skipRequestLog(r.URL.Path) {
+			return
+		}
+		log.Debug(fmt.Sprintf("%s %s \u2192 %d (%s)",
+			r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond)))
 	})
+}
+
+// skipRequestLog suppresses high-frequency, low-value requests (static assets,
+// the HTMX polling partials and the health check) from the activity log.
+func skipRequestLog(path string) bool {
+	switch {
+	case path == "/healthz":
+		return true
+	case strings.HasPrefix(path, "/static/"):
+		return true
+	case strings.HasPrefix(path, "/partials/"):
+		return true
+	default:
+		return false
+	}
+}
+
+// statusRecorder wraps http.ResponseWriter to capture the response status code.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
 }
