@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
@@ -80,15 +81,36 @@ func (s *Server) suggestionsData(r *http.Request) web.SuggestionsData {
 }
 
 func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
+	commit := s.info.Commit
+	short := commit
+	if len(short) > 10 {
+		short = short[:10]
+	}
+	commitURL := ""
+	if commit != "" && commit != "unknown" {
+		commitURL = repoURL + "/commit/" + commit
+	}
+	dbPath := s.store.Path()
+	dbSize := fileSize(dbPath) + fileSize(dbPath+"-wal") + fileSize(dbPath+"-shm")
 	d := web.AboutData{
-		Layout:    s.layout(r, web.NavAbout),
-		Version:   s.info.Version,
-		Commit:    s.info.Commit,
-		BuildDate: s.info.Date,
-		GoVersion: s.info.GoVer,
-		Repo:      repoURL,
+		Layout:     s.layout(r, web.NavAbout),
+		Channel:    s.info.Channel,
+		Version:    s.info.Version,
+		Commit:     short,
+		CommitURL:  commitURL,
+		DBSize:     web.HumanSize(dbSize),
+		ConfigSize: web.HumanSize(fileSize(s.cfg.Path())),
+		GoVersion:  s.info.GoVer,
+		Repo:       repoURL,
 	}
 	s.render(w, r, web.About(d))
+}
+
+func fileSize(path string) int64 {
+	if fi, err := os.Stat(path); err == nil {
+		return fi.Size()
+	}
+	return 0
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {

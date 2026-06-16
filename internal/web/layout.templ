@@ -50,7 +50,7 @@ templ Page(l Layout, body templ.Component) {
 				</main>
 				<footer class="border-t border-slate-800 py-4 text-xs text-slate-500">
 					<div class="flex flex-wrap items-center justify-between gap-2">
-						<span>{ l.T.T("app.title") } · { l.Version }</span>
+						<span>{ l.T.T("app.title") } · { l.Channel } · { l.Version }</span>
 						<a class="hover:text-slate-300" href={ templ.SafeURL(l.Repo) } target="_blank" rel="noreferrer noopener">{ l.Repo }</a>
 					</div>
 				</footer>

@@ -22,7 +22,8 @@ const timeLayout = time.RFC3339Nano
 
 // Store wraps a SQLite database connection.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	path string
 }
 
 // Open opens (creating if needed) the SQLite database at path, applies pending
@@ -34,13 +35,16 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}
 	db.SetMaxOpenConns(1) // SQLite: serialise writes to avoid lock contention
-	s := &Store{db: db}
+	s := &Store{db: db, path: path}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
 }
+
+// Path returns the database file path.
+func (s *Store) Path() string { return s.path }
 
 // Close releases the database connection.
 func (s *Store) Close() error { return s.db.Close() }
