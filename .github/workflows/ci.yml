@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "\U0001F4E5 Check out repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: "\U0001F527 Set up Go 1.25 (with module cache)"
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache: true
@@ -46,7 +46,7 @@ jobs:
         run: go vet ./...
 
       - name: "\U0001F9F9 Lint (golangci-lint)"
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
 

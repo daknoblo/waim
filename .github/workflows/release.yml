@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "\U0001F4E5 Check out repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: "\U0001F9F0 Set up QEMU (multi-arch emulation)"
         uses: docker/setup-qemu-action@v3
