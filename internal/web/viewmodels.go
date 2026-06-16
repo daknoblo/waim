@@ -11,6 +11,7 @@ import (
 // Nav identifiers for highlighting the active page.
 const (
 	NavDashboard = "dashboard"
+	NavStats     = "stats"
 	NavLogs      = "logs"
 	NavSettings  = "settings"
 	NavAbout     = "about"
@@ -28,6 +29,7 @@ type Layout struct {
 	T                *i18n.Translator
 	Active           string
 	Version          string
+	AssetVersion     string
 	Repo             string
 	MasterKeyMissing bool
 	Languages        []LangOption

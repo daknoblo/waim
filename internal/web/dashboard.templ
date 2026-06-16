@@ -26,6 +26,13 @@ templ dashboardBody(d DashboardData) {
 					<a class="btn-ghost" href="/export/sync">{ d.Layout.T.T("dashboard.exportSync") }</a>
 				</div>
 			</div>
+			<input
+				id="finding-search"
+				type="search"
+				placeholder={ d.Layout.T.T("dashboard.searchPlaceholder") }
+				autocomplete="off"
+				class="input mb-3 w-full"
+			/>
 			@FindingsTable(d.Layout.T, d.Findings, d.Sort, d.Dir)
 		</div>
 	</section>

@@ -1,0 +1,117 @@
+package web
+
+import "strconv"
+
+templ Stats(d StatsData) {
+	@Page(d.Layout, statsBody(d))
+}
+
+templ statsBody(d StatsData) {
+	<section class="grid gap-4">
+		<h1 class="text-lg font-semibold">{ d.Layout.T.T("stats.title") }</h1>
+		if !d.HasData {
+			<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("stats.noData") }</p>
+		} else {
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+				@statCard(d.Layout.T.T("stats.itemsScanned"), strconv.Itoa(d.ItemsScanned))
+				@statCard(d.Layout.T.T("stats.libraries"), strconv.Itoa(d.LibrariesCount))
+				@statCard(d.Layout.T.T("stats.completeness"), strconv.Itoa(d.Completeness)+"%")
+				@statCard(d.Layout.T.T("stats.totalGaps"), strconv.Itoa(d.TotalGaps))
+				@statCard(d.Layout.T.T("stats.missingUnits"), strconv.Itoa(d.MissingUnits))
+				@statCard(d.Layout.T.T("stats.lastScan"), d.LastScan)
+			</div>
+
+			<div class="grid gap-4 lg:grid-cols-2">
+				<div class="card">
+					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.mediaSplit") }</h2>
+					<div class="grid grid-cols-2 gap-3">
+						@statCard("\U0001F3AC "+d.Layout.T.T("stats.movies"), strconv.Itoa(d.MoviesScanned))
+						@statCard("\U0001F4FA "+d.Layout.T.T("stats.series"), strconv.Itoa(d.SeriesScanned))
+					</div>
+				</div>
+				<div class="card">
+					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.byKind") }</h2>
+					<div class="grid grid-cols-3 gap-3">
+						@statCard(d.Layout.T.T("finding.kind.missing_season"), strconv.Itoa(d.ByKind.MissingSeasons))
+						@statCard(d.Layout.T.T("finding.kind.missing_episodes"), strconv.Itoa(d.ByKind.MissingEpisodes))
+						@statCard(d.Layout.T.T("finding.kind.missing_collection"), strconv.Itoa(d.ByKind.MissingCollections))
+					</div>
+				</div>
+			</div>
+
+			<div class="card">
+				<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.perLibrary") }</h2>
+				<div class="overflow-x-auto">
+					<table class="w-full text-left text-sm">
+						<thead class="text-xs uppercase tracking-wide text-slate-500">
+							<tr>
+								<th class="px-3 py-2">{ d.Layout.T.T("dashboard.library") }</th>
+								<th class="px-3 py-2">{ d.Layout.T.T("stats.type") }</th>
+								<th class="px-3 py-2">{ d.Layout.T.T("dashboard.scanned") }</th>
+								<th class="px-3 py-2">{ d.Layout.T.T("stats.withGaps") }</th>
+								<th class="px-3 py-2">{ d.Layout.T.T("dashboard.missing") }</th>
+								<th class="px-3 py-2">{ d.Layout.T.T("stats.completeness") }</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-slate-800">
+							for _, l := range d.Libraries {
+								<tr>
+									<td class="px-3 py-2"><span class={ "badge", l.Color }>{ l.Name }</span></td>
+									<td class="px-3 py-2 text-slate-400">{ orDash(l.Type) }</td>
+									<td class="px-3 py-2 text-slate-300">{ strconv.Itoa(l.Scanned) } / { strconv.Itoa(l.Total) }</td>
+									<td class="px-3 py-2 text-slate-300">{ strconv.Itoa(l.ItemsWithGaps) }</td>
+									<td class="px-3 py-2 text-slate-300">{ strconv.Itoa(l.MissingUnits) }</td>
+									<td class="px-3 py-2">
+										@completenessBar(l.Completeness)
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</div>
+
+			<div class="grid gap-4 lg:grid-cols-2">
+				@topList(d.Layout.T.T("stats.topSeries"), d.Layout.T.T("stats.missingEpisodes"), d.TopSeries, d.Layout.T.T("stats.noGaps"))
+				@topList(d.Layout.T.T("stats.topCollections"), d.Layout.T.T("stats.missingParts"), d.TopCollections, d.Layout.T.T("stats.noGaps"))
+			</div>
+		}
+	</section>
+}
+
+templ statCard(label, value string) {
+	<div class="rounded-lg bg-slate-900/60 px-3 py-2">
+		<div class="text-xs uppercase tracking-wide text-slate-500">{ label }</div>
+		<div class="mt-1 text-lg font-semibold text-slate-100">{ value }</div>
+	</div>
+}
+
+templ completenessBar(pct int) {
+	<div class="flex items-center gap-2">
+		<div class="h-2 w-24 overflow-hidden rounded-full bg-slate-800">
+			<div class="h-full bg-emerald-500" style={ "width:" + strconv.Itoa(pct) + "%" }></div>
+		</div>
+		<span class="text-xs text-slate-400">{ strconv.Itoa(pct) }%</span>
+	</div>
+}
+
+templ topList(title, metric string, items []StatsTop, empty string) {
+	<div class="card">
+		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
+		if len(items) == 0 {
+			<p class="text-sm text-slate-500">{ empty }</p>
+		} else {
+			<ul class="grid gap-2 text-sm">
+				for _, it := range items {
+					<li class="flex items-center justify-between gap-2">
+						<span class="flex items-center gap-2">
+							<span class="font-medium text-slate-100">{ it.Title }</span>
+							<span class={ "badge", it.Color }>{ it.Library }</span>
+						</span>
+						<span class="whitespace-nowrap text-slate-400">{ strconv.Itoa(it.Missing) } { metric }</span>
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}
