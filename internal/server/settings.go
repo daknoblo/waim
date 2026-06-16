@@ -134,6 +134,11 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 		ns.AI.APIKey = k
 	}
 
+	ns.Search.URLTemplate = strings.TrimSpace(r.FormValue("search_url"))
+	if ns.Search.URLTemplate == "" {
+		ns.Search.URLTemplate = config.DefaultSearchURLTemplate
+	}
+
 	ns.Scan.IntervalMinutes = atoiDefault(r.FormValue("scan_interval"), cur.Scan.IntervalMinutes)
 	ns.Scan.TMDBRateLimitRPS = atofDefault(r.FormValue("scan_rate"), cur.Scan.TMDBRateLimitRPS)
 	ns.Scan.RunOnStart = r.FormValue("scan_run_on_start") != ""

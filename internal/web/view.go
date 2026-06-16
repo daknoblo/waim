@@ -28,9 +28,10 @@ const (
 
 // DetailItem is a single missing part/episode line, with an optional rating.
 type DetailItem struct {
-	Text    string
-	Rating  string
-	sortKey int
+	Text      string
+	Rating    string
+	SearchURL string
+	sortKey   int
 }
 
 // FindingRow is a display-ready representation of a store.Finding.
@@ -64,8 +65,9 @@ type detailPayload struct {
 
 // BuildFindingRows converts findings into localised rows for the UI. Series
 // findings are grouped so each series appears once with its season gaps listed.
-// jellyfinURL is used to build deep links to the originating Jellyfin item.
-func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL string) []FindingRow {
+// jellyfinURL is used to build deep links to the originating Jellyfin item;
+// searchTemplate is the external search URL template ({query} placeholder).
+func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL, searchTemplate string) []FindingRow {
 	var rows []FindingRow
 	groups := map[string]*FindingRow{}
 	var groupOrder []string
@@ -103,6 +105,11 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				if p.Rating > 0 {
 					item.Rating = fmt.Sprintf("%.1f", p.Rating)
 				}
+				query := p.Title
+				if p.Year != "" {
+					query += " " + p.Year
+				}
+				item.SearchURL = BuildSearchURL(searchTemplate, query)
 				row.DetailItems = append(row.DetailItems, item)
 			}
 			rows = append(rows, row)
@@ -133,7 +140,9 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			} else {
 				text = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
 			}
-			g.DetailItems = append(g.DetailItems, DetailItem{Text: text, sortKey: d.SeasonNumber})
+			item := DetailItem{Text: text, sortKey: d.SeasonNumber}
+			item.SearchURL = BuildSearchURL(searchTemplate, fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber))
+			g.DetailItems = append(g.DetailItems, item)
 			g.MissingCount += len(d.MissingEpisodes)
 		}
 	}

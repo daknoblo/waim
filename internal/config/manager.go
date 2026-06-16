@@ -39,8 +39,13 @@ type stored struct {
 		Model     string `json:"model"`
 	} `json:"ai"`
 
-	Scan      ScanSettings `json:"scan"`
-	Libraries []Library    `json:"libraries"`
+	Scan ScanSettings `json:"scan"`
+
+	Search struct {
+		URLTemplate string `json:"urlTemplate"`
+	} `json:"search"`
+
+	Libraries []Library `json:"libraries"`
 }
 
 // Manager loads and persists the configuration and transparently handles
@@ -207,6 +212,7 @@ func (m *Manager) decryptStored(st stored) Settings {
 	s.AI.Enabled = st.AI.Enabled
 	s.AI.Endpoint = st.AI.Endpoint
 	s.AI.Model = st.AI.Model
+	s.Search.URLTemplate = st.Search.URLTemplate
 
 	if m.cipher.Enabled() {
 		if v, err := m.cipher.Decrypt(st.Jellyfin.APIKeyEnc); err == nil {
@@ -233,6 +239,9 @@ func (m *Manager) decryptStored(st stored) Settings {
 	}
 	if s.Libraries == nil {
 		s.Libraries = []Library{}
+	}
+	if s.Search.URLTemplate == "" {
+		s.Search.URLTemplate = def.Search.URLTemplate
 	}
 	return s
 }
@@ -279,6 +288,7 @@ func storedFromSettings(s Settings) stored {
 	st.AI.Endpoint = s.AI.Endpoint
 	st.AI.Model = s.AI.Model
 	st.Scan = s.Scan
+	st.Search.URLTemplate = s.Search.URLTemplate
 	st.Libraries = append([]Library(nil), s.Libraries...)
 	return st
 }

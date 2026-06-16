@@ -20,5 +20,14 @@ func validate(s Settings) error {
 	if s.Scan.TMDBRateLimitRPS < 0 {
 		return fmt.Errorf("config: tmdb rate limit must be >= 0")
 	}
+	if t := strings.TrimSpace(s.Search.URLTemplate); t != "" {
+		u, err := url.Parse(t)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("config: invalid search url %q", s.Search.URLTemplate)
+		}
+		if !strings.Contains(t, "{query}") {
+			return fmt.Errorf("config: search url must contain the {query} placeholder")
+		}
+	}
 	return nil
 }
