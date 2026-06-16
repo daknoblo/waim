@@ -122,6 +122,7 @@ func (s *Server) layout(r *http.Request, active string) web.Layout {
 		T:                t,
 		Active:           active,
 		Version:          s.info.Version,
+		Channel:          s.info.Channel,
 		AssetVersion:     s.assetVer,
 		Repo:             repoURL,
 		MasterKeyMissing: !s.cfg.CipherEnabled(),

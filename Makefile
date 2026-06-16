@@ -10,12 +10,14 @@ TAILWIND_VERSION := v3.4.17
 CSS_INPUT   := internal/web/assets/input.css
 CSS_OUTPUT  := internal/web/assets/static/app.css
 
-VERSION ?= dev
+VERSION ?= $(shell date -u +v%Y%m%d-%H%M)
+CHANNEL ?= local
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Version=$(VERSION) \
+	-X github.com/daknoblo/waim/internal/version.Channel=$(CHANNEL) \
 	-X github.com/daknoblo/waim/internal/version.Commit=$(COMMIT) \
 	-X github.com/daknoblo/waim/internal/version.Date=$(DATE)
 
@@ -59,6 +61,7 @@ tidy:
 docker:
 	docker build \
 		--build-arg VERSION=$(VERSION) \
+		--build-arg CHANNEL=$(CHANNEL) \
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg DATE=$(DATE) \
 		-t waim:$(VERSION) .

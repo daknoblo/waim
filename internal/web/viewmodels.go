@@ -31,6 +31,7 @@ type Layout struct {
 	T                *i18n.Translator
 	Active           string
 	Version          string
+	Channel          string
 	AssetVersion     string
 	Repo             string
 	MasterKeyMissing bool
@@ -102,12 +103,15 @@ type SettingsData struct {
 
 // AboutData is the model for the about page.
 type AboutData struct {
-	Layout    Layout
-	Version   string
-	Commit    string
-	BuildDate string
-	GoVersion string
-	Repo      string
+	Layout     Layout
+	Channel    string
+	Version    string
+	Commit     string
+	CommitURL  string
+	DBSize     string
+	ConfigSize string
+	GoVersion  string
+	Repo       string
 }
 
 // SuggestionsData is the model for the suggestions page.

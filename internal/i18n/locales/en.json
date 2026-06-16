@@ -138,6 +138,11 @@
   "suggestions.generatedAt": "Generated",
 
   "about.title": "About",
+  "about.channel": "Channel",
+  "about.commit": "Commit",
+  "about.database": "Database size",
+  "about.config": "Config size",
+  "about.goVersion": "Go",
   "about.disclaimerTitle": "Vibe-coded project",
   "about.disclaimer": "This project is entirely \"vibe-coded\" (AI-assisted, without formal QA guarantees). Use at your own risk.",
   "about.version": "Version",

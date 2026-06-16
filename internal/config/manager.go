@@ -119,6 +119,9 @@ func (m *Manager) CipherEnabled() bool {
 	return m.cipher.Enabled()
 }
 
+// Path returns the config file path.
+func (m *Manager) Path() string { return m.path }
+
 // Get returns a copy of the current settings with decrypted API keys.
 func (m *Manager) Get() Settings {
 	m.mu.RLock()

@@ -17,6 +17,7 @@ RUN go mod download
 COPY . .
 
 ARG VERSION=dev
+ARG CHANNEL=local
 ARG COMMIT=unknown
 ARG DATE=unknown
 
@@ -25,6 +26,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
     -ldflags="-s -w \
       -X github.com/daknoblo/waim/internal/version.Version=${VERSION} \
+      -X github.com/daknoblo/waim/internal/version.Channel=${CHANNEL} \
       -X github.com/daknoblo/waim/internal/version.Commit=${COMMIT} \
       -X github.com/daknoblo/waim/internal/version.Date=${DATE}" \
     -o /out/waim ./cmd/waim
