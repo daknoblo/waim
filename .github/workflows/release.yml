@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "\U0001F4E5 Check out repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: "\U0001F9F0 Set up QEMU (multi-arch emulation)"
         uses: docker/setup-qemu-action@v3
@@ -37,6 +37,16 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "\U0001F551 Compute build version and channel"
+        id: buildmeta
+        run: |
+          echo "version=$(date -u +v%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=dev" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: "\U0001F3F7\uFE0F Determine image tags & labels"
         id: meta
@@ -62,7 +72,8 @@ jobs:
           provenance: true
           sbom: true
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ steps.buildmeta.outputs.version }}
+            CHANNEL=${{ steps.buildmeta.outputs.channel }}
             COMMIT=${{ github.sha }}
             DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha

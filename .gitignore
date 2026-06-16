@@ -10,6 +10,11 @@ tailwindcss-*
 *.db-shm
 *.db-wal
 
+# Security scan output (e.g. Trivy)
+results.json
+trivy-results.*
+*.sarif
+
 # Local environment
 .env
 .env.*

@@ -1,0 +1,22 @@
+package web
+
+templ Logs(d LogPageData) {
+	@Page(d.Layout, logsBody(d))
+}
+
+templ logsBody(d LogPageData) {
+	<section class="flex h-full min-h-[70vh] flex-col gap-3">
+		<div class="flex items-center justify-between">
+			<h1 class="text-lg font-semibold">{ d.Layout.T.T("nav.logs") }</h1>
+		</div>
+		<div
+			id="log"
+			hx-get="/partials/log"
+			hx-trigger="every 3s"
+			hx-swap="innerHTML"
+			class="card flex-1 overflow-y-auto bg-slate-950/60"
+		>
+			@LogPanel(d.Layout.T, d.Logs)
+		</div>
+	</section>
+}

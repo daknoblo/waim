@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed the timezone database so TZ works on any base image
 
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
@@ -22,6 +23,7 @@ import (
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/server"
 	"github.com/daknoblo/waim/internal/store"
+	"github.com/daknoblo/waim/internal/suggest"
 	"github.com/daknoblo/waim/internal/version"
 )
 
@@ -58,12 +60,15 @@ func healthcheck() int {
 
 func run() error {
 	// Logging: structured stdout output plus an in-memory ring buffer for the UI.
+	// The level is held in an slog.LevelVar so it can be changed at runtime from
+	// the settings page.
 	logBuf := logbuf.New(300)
-	level := slog.LevelInfo
+	levelVar := new(slog.LevelVar)
+	levelVar.Set(slog.LevelInfo)
 	if envBool("WAIM_DEBUG") {
-		level = slog.LevelDebug
+		levelVar.Set(slog.LevelDebug)
 	}
-	base := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	base := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: levelVar})
 	logger := slog.New(logbuf.NewHandler(base, logBuf))
 	slog.SetDefault(logger)
 
@@ -79,7 +84,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	logger.Info("configuration loaded", "dataDir", dataDir, "encryption", cfg.CipherEnabled())
+	// Apply the configured log level (overrides the startup default).
+	levelVar.Set(config.ParseLogLevel(cfg.Get().LogLevel))
+	logger.Info("configuration loaded", "dataDir", dataDir, "encryption", cfg.CipherEnabled(), "logLevel", cfg.Get().LogLevel)
 
 	st, err := store.Open(filepath.Join(dataDir, "waim.db"))
 	if err != nil {
@@ -93,13 +100,14 @@ func run() error {
 	}
 
 	sched := scheduler.New(cfg, st, logger)
+	suggestSvc := suggest.New(cfg, st, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go sched.Run(ctx)
 
-	srv := server.New(cfg, st, sched, logBuf, catalog, logger)
+	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar)
 	httpServer := &http.Server{
 		Addr:              envDefault("WAIM_ADDR", ":8080"),
 		Handler:           srv.Handler(),

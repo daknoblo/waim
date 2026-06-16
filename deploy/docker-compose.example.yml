@@ -18,6 +18,8 @@ services:
       # Generate once, e.g.: openssl rand -base64 32
       WAIM_MASTER_KEY: "${WAIM_MASTER_KEY:?set WAIM_MASTER_KEY in your .env}"
       WAIM_ADDR: ":8080"
+      # Timezone for the database timestamps and log display (IANA name).
+      TZ: "${TZ:-Etc/UTC}"
       # WAIM_DEBUG: "false"
     volumes:
       - waim-data:/app/appdata

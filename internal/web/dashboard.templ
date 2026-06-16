@@ -26,16 +26,14 @@ templ dashboardBody(d DashboardData) {
 					<a class="btn-ghost" href="/export/sync">{ d.Layout.T.T("dashboard.exportSync") }</a>
 				</div>
 			</div>
-			<div id="findings" hx-get="/partials/findings" hx-trigger="every 5s" hx-swap="innerHTML">
-				@FindingsTable(d.Layout.T, d.Findings)
-			</div>
-		</div>
-
-		<div class="card">
-			<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("dashboard.log") }</h2>
-			<div id="log" hx-get="/partials/log" hx-trigger="every 3s" hx-swap="innerHTML">
-				@LogPanel(d.Layout.T, d.Logs)
-			</div>
+			<input
+				id="finding-search"
+				type="search"
+				placeholder={ d.Layout.T.T("dashboard.searchPlaceholder") }
+				autocomplete="off"
+				class="input mb-3 w-full"
+			/>
+			@FindingsTable(d.Layout.T, d.Findings, d.Sort, d.Dir)
 		</div>
 	</section>
 }
@@ -56,12 +54,42 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				</button>
 			</form>
 		</div>
-		<div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+		if s.Running && s.CurrentItem != "" {
+			<div class="mt-3 flex items-center gap-2 rounded-lg bg-slate-900/60 px-3 py-2 text-sm">
+				<span class="shrink-0 text-slate-500">{ t.T("dashboard.current") }:</span>
+				<span class="truncate font-medium text-slate-200">{ s.CurrentItem }</span>
+			</div>
+		}
+		<div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
 			@stat(t.T("dashboard.lastScan"), s.LastScan)
 			@stat(t.T("dashboard.nextScan"), s.NextScan)
+			@stat(t.T("dashboard.duration"), orDash(s.Duration))
+			@stat(t.T("dashboard.itemsScanned"), strconv.Itoa(s.ItemsScanned))
 			@stat(t.T("dashboard.librariesScanned"), strconv.Itoa(s.LibrariesScanned))
 			@stat(t.T("dashboard.missingTotal"), strconv.Itoa(s.MissingTotal))
 		</div>
+		if len(s.Libraries) > 0 {
+			<div class="mt-4 overflow-x-auto">
+				<table class="w-full text-left text-sm">
+					<thead class="text-xs uppercase tracking-wide text-slate-500">
+						<tr>
+							<th class="px-3 py-1.5">{ t.T("dashboard.library") }</th>
+							<th class="px-3 py-1.5">{ t.T("dashboard.scanned") }</th>
+							<th class="px-3 py-1.5">{ t.T("dashboard.missing") }</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-slate-800">
+						for _, l := range s.Libraries {
+							<tr>
+								<td class="px-3 py-1.5"><span class={ "badge", l.Color }>{ l.Name }</span></td>
+								<td class="px-3 py-1.5 text-slate-300">{ strconv.Itoa(l.Scanned) } / { strconv.Itoa(l.Total) }</td>
+								<td class="px-3 py-1.5 text-slate-300">{ strconv.Itoa(l.Missing) }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
 		if s.LastError != "" {
 			<div class="mt-3 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
 				<span class="font-medium">{ t.T("dashboard.lastError") }:</span> { s.LastError }
@@ -77,51 +105,103 @@ templ stat(label, value string) {
 	</div>
 }
 
-templ FindingsTable(t *i18n.Translator, rows []FindingRow) {
-	if len(rows) == 0 {
-		<p class="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{ t.T("dashboard.noFindings") }</p>
-	} else {
-		<div class="overflow-x-auto">
-			<table class="w-full text-left text-sm">
-				<thead class="text-xs uppercase tracking-wide text-slate-500">
-					<tr>
-						<th class="px-3 py-2">{ t.T("finding.col.type") }</th>
-						<th class="px-3 py-2">{ t.T("finding.col.title") }</th>
-						<th class="px-3 py-2">{ t.T("finding.col.library") }</th>
-						<th class="px-3 py-2">{ t.T("finding.col.detail") }</th>
-					</tr>
-				</thead>
-				<tbody class="divide-y divide-slate-800">
-					for _, r := range rows {
-						<tr class="hover:bg-slate-900/40">
-							<td class="px-3 py-2"><span class="badge">{ r.KindLabel }</span></td>
-							<td class="px-3 py-2 font-medium text-slate-100">
-								if r.TMDBLink != "" {
-									<a class="text-indigo-400 hover:underline" href={ templ.SafeURL(r.TMDBLink) } target="_blank" rel="noreferrer noopener">{ r.Title }</a>
-								} else {
-									{ r.Title }
-								}
-							</td>
-							<td class="px-3 py-2 text-slate-400">{ r.Library }</td>
-							<td class="px-3 py-2 text-slate-300">{ r.Detail }</td>
+templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) {
+	<div id="findings" hx-get={ "/partials/findings?sort=" + sortKey + "&dir=" + dir } hx-trigger="every 5s" hx-swap="outerHTML">
+		if len(rows) == 0 {
+			<p class="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{ t.T("dashboard.noFindings") }</p>
+		} else {
+			<div class="overflow-x-auto">
+				<table class="w-full text-left text-sm">
+					<thead class="text-xs uppercase tracking-wide text-slate-500">
+						<tr>
+							@sortHeader(t.T("finding.col.type"), SortType, sortKey, dir)
+							@sortHeader(t.T("finding.col.title"), SortTitle, sortKey, dir)
+							@sortHeader(t.T("finding.col.library"), SortLibrary, sortKey, dir)
+							@sortHeader(t.T("finding.col.detail"), SortMissing, sortKey, dir)
+							<th class="px-3 py-2 text-right">{ t.T("finding.col.links") }</th>
 						</tr>
-					}
-				</tbody>
-			</table>
-		</div>
-	}
+					</thead>
+					<tbody class="divide-y divide-slate-800 align-top">
+						for _, r := range rows {
+							<tr class="hover:bg-slate-900/40">
+								<td class="px-3 py-2">
+									<span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+										<span aria-hidden="true">{ r.MediaIcon }</span>
+										<span class="badge">{ r.KindLabel }</span>
+									</span>
+								</td>
+								<td class="px-3 py-2">
+								<div class="flex items-center gap-2">
+									if r.PosterURL != "" {
+										<img src={ r.PosterURL } alt="" loading="lazy" class="h-12 w-8 shrink-0 rounded object-cover"/>
+									} else {
+										<div class="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-slate-800 text-sm">{ r.MediaIcon }</div>
+									}
+									<span class="font-medium text-slate-100">{ r.Title }</span>
+								</div>
+							</td>
+								<td class="px-3 py-2"><span class={ "badge", r.LibraryColor }>{ r.Library }</span></td>
+								<td class="px-3 py-2 text-slate-300">
+									<div class="font-bold text-slate-100">{ r.Detail }</div>
+									if len(r.DetailItems) > 0 {
+										<ul class="mt-1 space-y-0.5 text-slate-400">
+											for _, di := range r.DetailItems {
+												<li class="flex items-center gap-2">
+													<span>{ di.Text }</span>
+													if di.Rating != "" {
+														<span class="rounded bg-amber-500/15 px-1.5 text-xs text-amber-300">{ "\u2605 " + di.Rating }</span>
+													}
+												</li>
+											}
+										</ul>
+									}
+								</td>
+								<td class="px-3 py-2">
+									<div class="flex items-center justify-end gap-2">
+										if r.TMDBLink != "" {
+											<a class="link-tmdb" href={ templ.SafeURL(r.TMDBLink) } target="_blank" rel="noreferrer noopener" title="TMDB">TMDB</a>
+										}
+										if r.JellyfinLink != "" {
+											<a class="link-jellyfin" href={ templ.SafeURL(r.JellyfinLink) } target="_blank" rel="noreferrer noopener" title="Jellyfin">Jellyfin</a>
+										}
+									</div>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</div>
+}
+
+templ sortHeader(label, col, curSort, curDir string) {
+	<th class="px-3 py-2">
+		<button
+			type="button"
+			class="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-200"
+			hx-get={ "/partials/findings?sort=" + col + "&dir=" + nextDir(col, curSort, curDir) }
+			hx-target="#findings"
+			hx-swap="outerHTML"
+		>
+			{ label }
+			if col == curSort {
+				<span class="text-indigo-400">{ sortArrow(col, curSort, curDir) }</span>
+			}
+		</button>
+	</th>
 }
 
 templ LogPanel(t *i18n.Translator, logs []LogEntryView) {
 	if len(logs) == 0 {
 		<p class="text-sm text-slate-500">{ t.T("dashboard.noLog") }</p>
 	} else {
-		<div class="max-h-64 overflow-y-auto rounded-lg bg-slate-950/60 p-3 font-mono text-xs">
+		<div class="font-mono text-xs leading-relaxed">
 			for _, e := range logs {
 				<div class="flex gap-2 py-0.5">
-					<span class="text-slate-600">{ e.Time }</span>
-					<span class={ logLevelClass(e.Level) }>{ e.Level }</span>
-					<span class="text-slate-300">{ e.Message }</span>
+					<span class="shrink-0 text-slate-600">{ e.Time }</span>
+					<span class={ "shrink-0", logLevelClass(e.Level) }>{ e.Level }</span>
+					<span class="break-all text-slate-300">{ e.Message }</span>
 				</div>
 			}
 		</div>

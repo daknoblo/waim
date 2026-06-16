@@ -44,6 +44,7 @@ type Scheduler struct {
 	status    Status
 	triggerCh chan struct{}
 	running   atomic.Bool
+	progress  *progressState
 }
 
 // New creates a Scheduler.
@@ -57,7 +58,77 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Scheduler {
 		log:       log,
 		status:    Status{State: StateIdle},
 		triggerCh: make(chan struct{}, 1),
+		progress:  &progressState{},
 	}
+}
+
+// Progress is a live snapshot of an in-flight scan.
+type Progress struct {
+	Current   string                 `json:"current"`
+	StartedAt time.Time              `json:"startedAt"`
+	Libraries []store.LibrarySummary `json:"libraries"`
+}
+
+// progressState tracks live scan progress and implements scanner.Reporter.
+type progressState struct {
+	mu        sync.Mutex
+	current   string
+	startedAt time.Time
+	order     []string
+	libs      map[string]*store.LibrarySummary
+}
+
+func (p *progressState) reset(started time.Time) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.current = ""
+	p.startedAt = started
+	p.order = nil
+	p.libs = map[string]*store.LibrarySummary{}
+}
+
+// SetCurrent implements scanner.Reporter.
+func (p *progressState) SetCurrent(name string) {
+	p.mu.Lock()
+	p.current = name
+	p.mu.Unlock()
+}
+
+// LibraryStart implements scanner.Reporter.
+func (p *progressState) LibraryStart(id, name string, total int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, ok := p.libs[id]; !ok {
+		p.order = append(p.order, id)
+	}
+	p.libs[id] = &store.LibrarySummary{ID: id, Name: name, Total: total}
+}
+
+// ItemDone implements scanner.Reporter.
+func (p *progressState) ItemDone(libID string, missing int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if l := p.libs[libID]; l != nil {
+		l.Scanned++
+		l.Missing += missing
+	}
+}
+
+func (p *progressState) snapshot() Progress {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := Progress{Current: p.current, StartedAt: p.startedAt}
+	for _, id := range p.order {
+		if l := p.libs[id]; l != nil {
+			out.Libraries = append(out.Libraries, *l)
+		}
+	}
+	return out
+}
+
+// Progress returns a snapshot of the current scan progress.
+func (s *Scheduler) Progress() Progress {
+	return s.progress.snapshot()
 }
 
 // Status returns a copy of the current status.
@@ -164,16 +235,18 @@ func (s *Scheduler) runScan(ctx context.Context) {
 	})
 	s.log.Info("scan started", "runId", runID)
 
+	s.progress.reset(started)
 	jf := jellyfin.New(settings.Jellyfin.URL, settings.Jellyfin.APIKey)
 	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS)
 	sc := scanner.New(jf, td, settings, s.log)
+	sc.SetReporter(s.progress)
 
 	result, scanErr := sc.Run(ctx)
 	finished := time.Now()
 
 	if scanErr != nil {
 		_ = s.store.FinishScanRun(ctx, runID, store.StatusError, scanErr.Error(),
-			result.LibrariesScanned, result.ItemsScanned, 0)
+			result.LibrariesScanned, result.ItemsScanned, 0, result.Libraries, result.Media)
 		s.setStatus(func(st *Status) {
 			st.State = StateIdle
 			st.LastFinished = &finished
@@ -187,7 +260,7 @@ func (s *Scheduler) runScan(ctx context.Context) {
 		s.log.Error("failed to persist findings", "runId", runID, "err", err)
 	}
 	if err := s.store.FinishScanRun(ctx, runID, store.StatusSuccess, "",
-		result.LibrariesScanned, result.ItemsScanned, len(result.Findings)); err != nil {
+		result.LibrariesScanned, result.ItemsScanned, len(result.Findings), result.Libraries, result.Media); err != nil {
 		s.log.Error("failed to finish scan run", "runId", runID, "err", err)
 	}
 	_ = s.store.PruneRuns(ctx, 20)

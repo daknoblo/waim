@@ -1,12 +1,16 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/daknoblo/waim/internal/config"
+	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/jellyfin"
+	"github.com/daknoblo/waim/internal/tmdb"
 	"github.com/daknoblo/waim/internal/web"
 )
 
@@ -14,7 +18,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	s.renderSettings(w, r, "", false)
 }
 
-func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message string, isErr bool) {
+func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message string, isErr bool, checks ...web.ConnCheck) {
 	cur := s.cfg.Get()
 	d := web.SettingsData{
 		Layout:         s.layout(r, web.NavSettings),
@@ -22,8 +26,15 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message 
 		Libraries:      cur.Libraries,
 		HasJellyfinKey: cur.Jellyfin.APIKey != "",
 		HasTMDBKey:     cur.TMDB.APIKey != "",
+		HasAIKey:       cur.AI.APIKey != "",
 		Message:        message,
 		IsError:        isErr,
+	}
+	if len(checks) > 0 {
+		d.JellyfinCheck = checks[0]
+	}
+	if len(checks) > 1 {
+		d.TMDBCheck = checks[1]
 	}
 	s.render(w, r, web.Settings(d))
 }
@@ -39,6 +50,7 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		s.renderSettings(w, r, t.T("settings.saveError", err.Error()), true)
 		return
 	}
+	s.applyLogLevel(ns.LogLevel)
 	// Reflect a locale change immediately via the cookie.
 	if s.catalog.Has(ns.Locale) {
 		http.SetCookie(w, &http.Cookie{
@@ -46,7 +58,9 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 			MaxAge: 60 * 60 * 24 * 365, HttpOnly: true, SameSite: http.SameSiteLaxMode,
 		})
 	}
-	s.renderSettings(w, r, s.catalog.For(ns.Locale).T("settings.saveSuccess"), false)
+	tt := s.catalog.For(ns.Locale)
+	jfCheck, tdCheck := s.testConnections(r.Context(), tt, ns)
+	s.renderSettings(w, r, tt.T("settings.saveSuccess"), false, jfCheck, tdCheck)
 }
 
 func (s *Server) handleRefreshLibraries(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +103,7 @@ func (s *Server) handleRefreshLibraries(w http.ResponseWriter, r *http.Request) 
 		s.renderSettings(w, r, t.T("settings.saveError", err.Error()), true)
 		return
 	}
+	s.applyLogLevel(ns.LogLevel)
 	s.renderSettings(w, r, t.T("settings.saveSuccess"), false)
 }
 
@@ -99,6 +114,7 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	ns := cur.Clone()
 
 	ns.Locale = config.NormalizeLocale(r.FormValue("locale"))
+	ns.LogLevel = config.NormalizeLogLevel(r.FormValue("log_level"))
 	ns.Jellyfin.URL = strings.TrimSpace(r.FormValue("jellyfin_url"))
 	ns.Jellyfin.UserID = strings.TrimSpace(r.FormValue("jellyfin_user_id"))
 	if k := strings.TrimSpace(r.FormValue("jellyfin_api_key")); k != "" {
@@ -109,6 +125,13 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	ns.TMDB.Region = strings.TrimSpace(r.FormValue("tmdb_region"))
 	if k := strings.TrimSpace(r.FormValue("tmdb_api_key")); k != "" {
 		ns.TMDB.APIKey = k
+	}
+
+	ns.AI.Enabled = r.FormValue("ai_enabled") != ""
+	ns.AI.Endpoint = strings.TrimSpace(r.FormValue("ai_endpoint"))
+	ns.AI.Model = strings.TrimSpace(r.FormValue("ai_model"))
+	if k := strings.TrimSpace(r.FormValue("ai_api_key")); k != "" {
+		ns.AI.APIKey = k
 	}
 
 	ns.Scan.IntervalMinutes = atoiDefault(r.FormValue("scan_interval"), cur.Scan.IntervalMinutes)
@@ -138,4 +161,43 @@ func atofDefault(s string, def float64) float64 {
 		return v
 	}
 	return def
+}
+
+// applyLogLevel updates the live logging verbosity to match the given level.
+func (s *Server) applyLogLevel(level string) {
+	if s.logLevel != nil {
+		s.logLevel.Set(config.ParseLogLevel(level))
+	}
+}
+
+// testConnections verifies the Jellyfin and TMDB credentials in ns and returns
+// localised, display-ready results. A credential that is not configured yields
+// an unchecked (hidden) result.
+func (s *Server) testConnections(ctx context.Context, t *i18n.Translator, ns config.Settings) (web.ConnCheck, web.ConnCheck) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var jf, td web.ConnCheck
+
+	if ns.Jellyfin.URL != "" && ns.Jellyfin.APIKey != "" {
+		jf.Checked = true
+		if info, err := jellyfin.New(ns.Jellyfin.URL, ns.Jellyfin.APIKey).SystemInfo(ctx); err != nil {
+			jf.Message = t.T("settings.connJellyfinFail", err.Error())
+		} else {
+			jf.OK = true
+			jf.Message = t.T("settings.connJellyfinOk", strings.TrimSpace(info.ServerName+" "+info.Version))
+		}
+	}
+
+	if ns.TMDB.APIKey != "" {
+		td.Checked = true
+		if err := tmdb.New(ns.TMDB.APIKey, ns.TMDB.Language, ns.TMDB.Region, ns.Scan.TMDBRateLimitRPS).Ping(ctx); err != nil {
+			td.Message = t.T("settings.connTmdbFail", err.Error())
+		} else {
+			td.OK = true
+			td.Message = t.T("settings.connTmdbOk")
+		}
+	}
+
+	return jf, td
 }

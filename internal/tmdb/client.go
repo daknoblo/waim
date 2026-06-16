@@ -166,3 +166,39 @@ func (c *Client) SearchTV(ctx context.Context, name string, year int) ([]TVSearc
 func (c *Client) Ping(ctx context.Context) error {
 	return c.get(ctx, "/configuration", nil, nil)
 }
+
+// TrendingTV returns the trending TV shows for the week.
+func (c *Client) TrendingTV(ctx context.Context) ([]MediaResult, error) {
+	return c.trending(ctx, "tv")
+}
+
+// TrendingMovie returns the trending movies for the week.
+func (c *Client) TrendingMovie(ctx context.Context) ([]MediaResult, error) {
+	return c.trending(ctx, "movie")
+}
+
+func (c *Client) trending(ctx context.Context, kind string) ([]MediaResult, error) {
+	var resp mediaResponse
+	if err := c.get(ctx, "/trending/"+kind+"/week", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+// TVRecommendations returns recommended TV shows for the given show.
+func (c *Client) TVRecommendations(ctx context.Context, id int64) ([]MediaResult, error) {
+	return c.recommendations(ctx, "tv", id)
+}
+
+// MovieRecommendations returns recommended movies for the given movie.
+func (c *Client) MovieRecommendations(ctx context.Context, id int64) ([]MediaResult, error) {
+	return c.recommendations(ctx, "movie", id)
+}
+
+func (c *Client) recommendations(ctx context.Context, kind string, id int64) ([]MediaResult, error) {
+	var resp mediaResponse
+	if err := c.get(ctx, fmt.Sprintf("/%s/%d/recommendations", kind, id), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
+}

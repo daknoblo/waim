@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/a-h/templ"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/daknoblo/waim/internal/logbuf"
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/store"
+	"github.com/daknoblo/waim/internal/suggest"
 	"github.com/daknoblo/waim/internal/version"
 	"github.com/daknoblo/waim/internal/web"
 )
@@ -25,26 +28,46 @@ const (
 
 // Server holds the dependencies shared by all HTTP handlers.
 type Server struct {
-	cfg     *config.Manager
-	store   *store.Store
-	sched   *scheduler.Scheduler
-	logs    *logbuf.Buffer
-	catalog *i18n.Catalog
-	log     *slog.Logger
-	info    version.Info
+	cfg      *config.Manager
+	store    *store.Store
+	sched    *scheduler.Scheduler
+	suggest  *suggest.Service
+	logs     *logbuf.Buffer
+	catalog  *i18n.Catalog
+	log      *slog.Logger
+	logLevel *slog.LevelVar
+	info     version.Info
+	assetVer string
 }
 
 // New constructs a Server.
-func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger) *Server {
+func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *suggest.Service, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger, logLevel *slog.LevelVar) *Server {
+	info := version.Get()
 	return &Server{
-		cfg:     cfg,
-		store:   st,
-		sched:   sched,
-		logs:    logs,
-		catalog: catalog,
-		log:     log,
-		info:    version.Get(),
+		cfg:      cfg,
+		store:    st,
+		sched:    sched,
+		suggest:  sug,
+		logs:     logs,
+		catalog:  catalog,
+		log:      log,
+		logLevel: logLevel,
+		info:     info,
+		assetVer: computeAssetVersion(info),
 	}
+}
+
+// computeAssetVersion returns a token used to cache-bust static assets. It uses
+// the build commit/version when available and falls back to the process start
+// time so each container start serves fresh assets during development.
+func computeAssetVersion(info version.Info) string {
+	if info.Commit != "" && info.Commit != "unknown" {
+		return info.Commit
+	}
+	if info.Version != "" && info.Version != "dev" {
+		return info.Version
+	}
+	return strconv.FormatInt(time.Now().Unix(), 10)
 }
 
 // Handler builds the HTTP routing tree.
@@ -57,6 +80,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 
 	mux.HandleFunc("GET /{$}", s.handleDashboard)
+	mux.HandleFunc("GET /stats", s.handleStats)
+	mux.HandleFunc("GET /suggestions", s.handleSuggestions)
+	mux.HandleFunc("POST /suggestions/generate", s.handleGenerateSuggestions)
+	mux.HandleFunc("GET /partials/suggestions", s.handlePartialSuggestions)
+	mux.HandleFunc("GET /logs", s.handleLogs)
 	mux.HandleFunc("GET /settings", s.handleSettings)
 	mux.HandleFunc("POST /settings", s.handleSaveSettings)
 	mux.HandleFunc("POST /settings/refresh-libraries", s.handleRefreshLibraries)
@@ -94,6 +122,8 @@ func (s *Server) layout(r *http.Request, active string) web.Layout {
 		T:                t,
 		Active:           active,
 		Version:          s.info.Version,
+		Channel:          s.info.Channel,
+		AssetVersion:     s.assetVer,
 		Repo:             repoURL,
 		MasterKeyMissing: !s.cfg.CipherEnabled(),
 		Languages:        web.LanguageOptions(t.Locale()),
