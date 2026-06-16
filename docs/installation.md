@@ -55,14 +55,16 @@ docker compose up -d
 | Variable          | Default        | Description                                           |
 | ----------------- | -------------- | ----------------------------------------------------- |
 | `WAIM_MASTER_KEY` | *(unset)*      | **Required** to store/decrypt API keys (AES-256-GCM). |
-| `WAIM_DATA_DIR`   | `/app/appdata` | Directory for `config.json` and the SQLite database.  |
 | `WAIM_ADDR`       | `:8080`        | Listen address.                                       |
 | `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
-| `WAIM_DEBUG`      | `false`        | Enable debug logging.                                 |
+
+Everything else is configured in the web UI. Log verbosity is set on the
+**Settings** page (not via an environment variable).
 
 ## Persistence
 
-Everything waim needs lives in the data directory (`/app/appdata` by default):
+Everything waim needs lives in the container data directory `/app/appdata`
+(this path is fixed; mount a volume there to keep your data):
 
 - `config.json` — settings, with API keys stored encrypted.
 - `waim.db` — SQLite database with scan runs and findings.
