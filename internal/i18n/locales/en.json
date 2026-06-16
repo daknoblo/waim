@@ -16,6 +16,17 @@
   "common.never": "Never",
   "common.none": "None",
   "common.minutes": "minutes",
+
+  "relative.now": "just now",
+  "relative.soon": "shortly",
+  "relative.ago": "%s ago",
+  "relative.in": "in %s",
+  "relative.minute": "%d minute",
+  "relative.minutes": "%d minutes",
+  "relative.hour": "%d hour",
+  "relative.hours": "%d hours",
+  "relative.day": "%d day",
+  "relative.days": "%d days",
   "common.loading": "Loading…",
 
   "warning.noMasterKey": "WAIM_MASTER_KEY is not set. API keys cannot be encrypted or stored. Set the environment variable and restart.",

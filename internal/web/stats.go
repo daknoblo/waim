@@ -105,7 +105,7 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 		return sd
 	}
 	sd.HasData = true
-	sd.LastScan = FormatTime(t, run.FinishedAt)
+	sd.LastScan = FormatRelative(t, run.FinishedAt)
 	sd.Duration = orDash(FormatDuration(run.Duration()))
 	sd.ItemsScanned = run.ItemsScanned
 	sd.LibrariesCount = len(run.Libraries)
