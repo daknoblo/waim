@@ -6,7 +6,6 @@ package config
 import (
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -162,19 +161,13 @@ func ParseLogLevel(level string) slog.Level {
 	}
 }
 
-// DataDir resolves the directory used to store the config file and database.
-// It honours WAIM_DATA_DIR and falls back to a platform-appropriate default.
+// DataDir resolves the directory used to store the config file and database:
+// /app/appdata inside the container image, or ./appdata for local development.
 func DataDir() string {
-	if d := strings.TrimSpace(os.Getenv("WAIM_DATA_DIR")); d != "" {
-		return d
-	}
-	// In containers the working directory layout uses /app/appdata.
+	// In containers the image lays out the data directory under /app/appdata.
 	if _, err := os.Stat("/app"); err == nil {
 		return "/app/appdata"
 	}
-	// Local development fallback.
-	if home, err := os.UserConfigDir(); err == nil {
-		return filepath.Join(home, "waim")
-	}
+	// Local development fallback (a gitignored ./appdata in the working dir).
 	return "appdata"
 }

@@ -28,6 +28,13 @@ UI (templ + HTMX + Tailwind), built to run in Docker.
 - Periodic scans (configurable interval), scan-on-startup and a manual
   **Scan now** button.
 - Per-library selection: choose exactly which Jellyfin libraries to scan.
+- Dashboard with grouped findings, sortable columns, a live search box and a
+  per-library quick filter.
+- **Statistics** page: completeness per library, most incomplete series and
+  collections, top/lowest rated titles per library, and genre/decade breakdowns.
+- **Suggestions** page: what to watch next from TMDB trending and
+  recommendations, with optional AI-generated picks.
+- Optional **AI suggestions** via any OpenAI/Azure-compatible chat endpoint.
 - Configurable TMDB request rate limit.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
   rest** (AES-256-GCM, key derived from `WAIM_MASTER_KEY`).
@@ -36,6 +43,17 @@ UI (templ + HTMX + Tailwind), built to run in Docker.
 - Bilingual UI (English / German) with an in-app language switch.
 - Activity log and live scan status in the dashboard.
 - Stable and dev image channels published to GitHub Container Registry.
+
+## Screenshots
+
+|  |  |
+| :--: | :--: |
+| **Dashboard** | **Statistics** |
+| [![Dashboard](docs/images/dashboard.png)](docs/images/dashboard.png) | [![Statistics](docs/images/statistics.png)](docs/images/statistics.png) |
+| **Suggestions** | **Settings** |
+| [![Suggestions](docs/images/suggestions.png)](docs/images/suggestions.png) | [![Settings](docs/images/settings.png)](docs/images/settings.png) |
+| **Activity log** | **About** |
+| [![Activity log](docs/images/logs.png)](docs/images/logs.png) | [![About](docs/images/about.png)](docs/images/about.png) |
 
 ## Quick start (Docker Compose)
 
@@ -70,10 +88,11 @@ in the data directory. Only a few environment variables are needed:
 | Variable          | Default        | Description                                           |
 | ----------------- | -------------- | ----------------------------------------------------- |
 | `WAIM_MASTER_KEY` | *(unset)*      | **Required** to store/decrypt API keys (AES-256-GCM). |
-| `WAIM_DATA_DIR`   | `/app/appdata` | Directory for `config.json` and the SQLite database.  |
 | `WAIM_ADDR`       | `:8080`        | Listen address.                                       |
 | `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
-| `WAIM_DEBUG`      | `false`        | Enable debug logging.                                 |
+
+The data directory is fixed at `/app/appdata` inside the container (mount a
+volume there to persist it). All other configuration lives in the web UI.
 
 See [docs/configuration.md](docs/configuration.md) for the full settings
 reference.
