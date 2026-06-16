@@ -36,10 +36,6 @@ encrypted** and never written in plaintext.
     "tmdbRateLimitRps": 1,     // TMDB requests per second
     "includeSpecials": false   // include season 0 / specials in comparisons
   },
-  "search": {
-    "urlTemplate": "https://duckduckgo.com/?q={query}", // {query} + optional {key}
-    "apiKeyEnc": "<base64>"    // AES-256-GCM ciphertext (never plaintext); for {key}
-  },
   "libraries": [
     { "id": "...", "name": "Movies", "type": "movies", "enabled": true }
   ]
@@ -96,29 +92,6 @@ turned off by default.
 
 Use **Refresh libraries from Jellyfin** to load your current libraries, then tick
 the ones you want included in scans. Only enabled libraries are scanned.
-
-### External search
-
-Every missing season or movie in the findings table gets a small **Search** link
-that opens an external search provider in a new browser tab. The search term is
-built automatically: `Series Title S04` for a season, `Movie Title Year` for a
-movie. waim assembles the final URL server-side and redirects, so the optional
-API key never appears in the page.
-
-| Field      | Description                                                                                            |
-| ---------- | ----------------------------------------------------------------------------------------------------- |
-| Search URL | A URL template. `{query}` is replaced with the URL-encoded search term; the optional `{key}` is replaced with the API key below. Defaults to DuckDuckGo. |
-| API key    | Optional. Stored encrypted; only used when the URL contains `{key}` (e.g. a search API that authenticates via the query string). |
-
-Examples:
-
-- DuckDuckGo (default): `https://duckduckgo.com/?q={query}`
-- A self-hosted search UI: `https://search.example.com/search?query={query}`
-- A search API needing a key: `https://indexer.example.com/api/v1/search?query={query}&apikey={key}`
-
-The template must be an `http`/`https` URL and contain `{query}`. If it also
-contains `{key}`, the API key must be set, and storing it requires
-`WAIM_MASTER_KEY` (it is encrypted at rest).
 
 ### Interface language
 

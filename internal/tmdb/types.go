@@ -19,6 +19,7 @@ type Genre struct {
 type Movie struct {
 	ID                  int64          `json:"id"`
 	Title               string         `json:"title"`
+	IMDbID              string         `json:"imdb_id"`
 	ReleaseDate         string         `json:"release_date"`
 	VoteAverage         float64        `json:"vote_average"`
 	Runtime             int            `json:"runtime"`

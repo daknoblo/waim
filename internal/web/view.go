@@ -28,10 +28,11 @@ const (
 
 // DetailItem is a single missing part/episode line, with an optional rating.
 type DetailItem struct {
-	Text      string
-	Rating    string
-	SearchURL string
-	sortKey   int
+	Text     string
+	Rating   string
+	CopyText string
+	IMDbURL  string
+	sortKey  int
 }
 
 // FindingRow is a display-ready representation of a store.Finding.
@@ -55,19 +56,20 @@ type detailPayload struct {
 	EpisodeCount    int    `json:"episodeCount"`
 	MissingEpisodes []int  `json:"missingEpisodes"`
 	PosterPath      string `json:"posterPath"`
+	IMDbID          string `json:"imdbId"`
 	MissingParts    []struct {
 		TMDBID int64   `json:"tmdbId"`
 		Title  string  `json:"title"`
 		Year   string  `json:"year"`
 		Rating float64 `json:"rating"`
+		IMDbID string  `json:"imdbId"`
 	} `json:"missingParts"`
 }
 
 // BuildFindingRows converts findings into localised rows for the UI. Series
 // findings are grouped so each series appears once with its season gaps listed.
-// jellyfinURL is used to build deep links to the originating Jellyfin item;
-// searchEnabled toggles the per-item external search links.
-func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL string, searchEnabled bool) []FindingRow {
+// jellyfinURL is used to build deep links to the originating Jellyfin item.
+func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL string) []FindingRow {
 	var rows []FindingRow
 	groups := map[string]*FindingRow{}
 	var groupOrder []string
@@ -105,11 +107,11 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				if p.Rating > 0 {
 					item.Rating = fmt.Sprintf("%.1f", p.Rating)
 				}
-				query := p.Title
+				item.CopyText = p.Title
 				if p.Year != "" {
-					query += " " + p.Year
+					item.CopyText += " " + p.Year
 				}
-				item.SearchURL = searchRedirectPath(searchEnabled, query)
+				item.IMDbURL = imdbURL(p.IMDbID)
 				row.DetailItems = append(row.DetailItems, item)
 			}
 			rows = append(rows, row)
@@ -140,9 +142,12 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			} else {
 				text = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
 			}
-			item := DetailItem{Text: text, sortKey: d.SeasonNumber}
-			item.SearchURL = searchRedirectPath(searchEnabled, fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber))
-			g.DetailItems = append(g.DetailItems, item)
+			g.DetailItems = append(g.DetailItems, DetailItem{
+				Text:     text,
+				sortKey:  d.SeasonNumber,
+				CopyText: fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber),
+				IMDbURL:  imdbSeasonURL(d.IMDbID, d.SeasonNumber),
+			})
 			g.MissingCount += len(d.MissingEpisodes)
 		}
 	}
@@ -243,6 +248,22 @@ func tmdbLink(kind string, id int64) string {
 		return ""
 	}
 	return "https://www.themoviedb.org/" + kind + "/" + strconv.FormatInt(id, 10)
+}
+
+func imdbURL(id string) string {
+	id = strings.TrimSpace(id)
+	if !strings.HasPrefix(id, "tt") {
+		return ""
+	}
+	return "https://www.imdb.com/title/" + id + "/"
+}
+
+func imdbSeasonURL(id string, season int) string {
+	id = strings.TrimSpace(id)
+	if !strings.HasPrefix(id, "tt") {
+		return ""
+	}
+	return fmt.Sprintf("https://www.imdb.com/title/%s/episodes/?season=%d", id, season)
 }
 
 // FormatTime renders a time for display, or a localised "never" placeholder.

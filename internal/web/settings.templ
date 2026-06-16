@@ -100,13 +100,6 @@ templ settingsBody(d SettingsData) {
 		</div>
 
 		<div class="card grid gap-3">
-			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.search") }</h2>
-			@textField(d.Layout.T.T("settings.searchUrl"), "search_url", "text", d.Settings.Search.URLTemplate, "https://duckduckgo.com/?q={query}")
-			@secretField(d.Layout.T, "search_api_key", d.Layout.T.T("settings.searchApiKey"), d.HasSearchKey)
-			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.searchUrlHint") }</p>
-		</div>
-
-		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.exports") }</h2>
 			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.exportsHint") }</p>
 			<div class="flex flex-wrap gap-2">

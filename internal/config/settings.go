@@ -66,17 +66,6 @@ type ScanSettings struct {
 	IncludeSpecials  bool    `json:"includeSpecials"`  // include season 0 / specials
 }
 
-// DefaultSearchURLTemplate is the out-of-the-box external search provider.
-const DefaultSearchURLTemplate = "https://duckduckgo.com/?q={query}"
-
-// SearchSettings configures the external search provider used for the per-item
-// "search" links on the dashboard. URLTemplate must contain a {query}
-// placeholder, which is replaced with the URL-encoded search string.
-type SearchSettings struct {
-	URLTemplate string `json:"urlTemplate"`
-	APIKey      string `json:"apiKey"` // plaintext in memory; encrypted on disk
-}
-
 // Settings is the full in-memory configuration with decrypted API keys.
 type Settings struct {
 	Locale    string           `json:"locale"`
@@ -85,7 +74,6 @@ type Settings struct {
 	TMDB      TMDBSettings     `json:"tmdb"`
 	AI        AISettings       `json:"ai"`
 	Scan      ScanSettings     `json:"scan"`
-	Search    SearchSettings   `json:"search"`
 	Libraries []Library        `json:"libraries"`
 }
 
@@ -106,9 +94,6 @@ func Defaults() Settings {
 			RunOnStart:       true,
 			TMDBRateLimitRPS: 1,
 			IncludeSpecials:  false,
-		},
-		Search: SearchSettings{
-			URLTemplate: DefaultSearchURLTemplate,
 		},
 		Libraries: []Library{},
 	}

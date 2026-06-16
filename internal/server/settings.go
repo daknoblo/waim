@@ -27,7 +27,6 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message 
 		HasJellyfinKey: cur.Jellyfin.APIKey != "",
 		HasTMDBKey:     cur.TMDB.APIKey != "",
 		HasAIKey:       cur.AI.APIKey != "",
-		HasSearchKey:   cur.Search.APIKey != "",
 		Message:        message,
 		IsError:        isErr,
 	}
@@ -133,14 +132,6 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	ns.AI.Model = strings.TrimSpace(r.FormValue("ai_model"))
 	if k := strings.TrimSpace(r.FormValue("ai_api_key")); k != "" {
 		ns.AI.APIKey = k
-	}
-
-	ns.Search.URLTemplate = strings.TrimSpace(r.FormValue("search_url"))
-	if ns.Search.URLTemplate == "" {
-		ns.Search.URLTemplate = config.DefaultSearchURLTemplate
-	}
-	if k := strings.TrimSpace(r.FormValue("search_api_key")); k != "" {
-		ns.Search.APIKey = k
 	}
 
 	ns.Scan.IntervalMinutes = atoiDefault(r.FormValue("scan_interval"), cur.Scan.IntervalMinutes)
