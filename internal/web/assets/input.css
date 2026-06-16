@@ -14,11 +14,8 @@
     @apply bg-slate-800 text-slate-100;
   }
 
-  .lang-btn {
-    @apply rounded px-2 py-1 text-xs uppercase text-slate-500 transition hover:text-slate-200;
-  }
-  .lang-btn-active {
-    @apply text-indigo-400;
+  .lang-select {
+    @apply rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300 outline-none transition hover:border-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500;
   }
 
   .btn-primary {
