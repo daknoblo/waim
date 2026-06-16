@@ -43,6 +43,7 @@ type stored struct {
 
 	Search struct {
 		URLTemplate string `json:"urlTemplate"`
+		APIKeyEnc   string `json:"apiKeyEnc"`
 	} `json:"search"`
 
 	Libraries []Library `json:"libraries"`
@@ -159,10 +160,15 @@ func (m *Manager) Save(s Settings) error {
 		if err != nil {
 			return fmt.Errorf("config: encrypt ai key: %w", err)
 		}
+		sEnc, err := m.cipher.Encrypt(s.Search.APIKey)
+		if err != nil {
+			return fmt.Errorf("config: encrypt search key: %w", err)
+		}
 		st.Jellyfin.APIKeyEnc = jEnc
 		st.TMDB.APIKeyEnc = tEnc
 		st.AI.APIKeyEnc = aEnc
-	} else if s.Jellyfin.APIKey != "" || s.TMDB.APIKey != "" || s.AI.APIKey != "" {
+		st.Search.APIKeyEnc = sEnc
+	} else if s.Jellyfin.APIKey != "" || s.TMDB.APIKey != "" || s.AI.APIKey != "" || s.Search.APIKey != "" {
 		return crypto.ErrNoKey
 	}
 
@@ -190,6 +196,9 @@ func (m *Manager) ExportStored() ([]byte, error) {
 		}
 		if aEnc, err := m.cipher.Encrypt(m.settings.AI.APIKey); err == nil {
 			st.AI.APIKeyEnc = aEnc
+		}
+		if sEnc, err := m.cipher.Encrypt(m.settings.Search.APIKey); err == nil {
+			st.Search.APIKeyEnc = sEnc
 		}
 	}
 	return json.MarshalIndent(st, "", "  ")
@@ -223,6 +232,9 @@ func (m *Manager) decryptStored(st stored) Settings {
 		}
 		if v, err := m.cipher.Decrypt(st.AI.APIKeyEnc); err == nil {
 			s.AI.APIKey = v
+		}
+		if v, err := m.cipher.Decrypt(st.Search.APIKeyEnc); err == nil {
+			s.Search.APIKey = v
 		}
 	}
 

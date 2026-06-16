@@ -31,7 +31,8 @@ UI (templ + HTMX + Tailwind), built to run in Docker.
 - Dashboard with grouped findings, sortable columns, a live search box and a
   per-library quick filter.
 - Per-finding **search links** that open a configurable provider in a new tab
-  (DuckDuckGo by default; any `{query}` URL such as Prowlarr or Jackett works).
+  (DuckDuckGo by default; any `{query}` URL works, with an optional encrypted
+  `{key}` for providers that need an API key).
 - **Statistics** page: completeness per library, most incomplete series and
   collections, top/lowest rated titles per library, and genre/decade breakdowns.
 - **Suggestions** page: what to watch next from TMDB trending and
