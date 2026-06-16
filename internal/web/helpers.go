@@ -10,6 +10,26 @@ func orDash(s string) string {
 	return s
 }
 
+// nextDir returns the sort direction to use when a column header is clicked:
+// clicking the active column toggles the direction, otherwise ascending.
+func nextDir(col, curSort, curDir string) string {
+	if col == curSort && curDir == DirAsc {
+		return DirDesc
+	}
+	return DirAsc
+}
+
+// sortArrow returns an arrow glyph for the active sort column, or empty.
+func sortArrow(col, curSort, curDir string) string {
+	if col != curSort {
+		return ""
+	}
+	if curDir == DirDesc {
+		return "\u25BC" // down triangle
+	}
+	return "\u25B2" // up triangle
+}
+
 // logLevelClass returns a CSS class for a log level label.
 func logLevelClass(level string) string {
 	switch level {

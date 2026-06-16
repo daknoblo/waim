@@ -49,7 +49,9 @@ func (s *Server) handlePartialStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePartialFindings(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
-	s.render(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t)))
+	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
+	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
+	s.render(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t, sortKey, dir), sortKey, dir))
 }
 
 func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
@@ -78,15 +80,19 @@ func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) dashboardData(r *http.Request) web.DashboardData {
 	t := s.translator(r)
+	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
+	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
 	return web.DashboardData{
 		Layout:   s.layout(r, web.NavDashboard),
 		Status:   s.statusView(r.Context(), t),
-		Findings: s.findingRows(r.Context(), t),
+		Findings: s.findingRows(r.Context(), t, sortKey, dir),
 		Logs:     web.BuildLogViews(s.logs.Entries()),
+		Sort:     sortKey,
+		Dir:      dir,
 	}
 }
 
-func (s *Server) findingRows(ctx context.Context, t *i18n.Translator) []web.FindingRow {
+func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, dir string) []web.FindingRow {
 	run, err := s.store.LatestSuccessfulRun(ctx)
 	if err != nil || run == nil {
 		return nil
@@ -95,7 +101,9 @@ func (s *Server) findingRows(ctx context.Context, t *i18n.Translator) []web.Find
 	if err != nil {
 		return nil
 	}
-	return web.BuildFindingRows(t, fs, s.cfg.Get().Jellyfin.URL)
+	rows := web.BuildFindingRows(t, fs, s.cfg.Get().Jellyfin.URL)
+	web.SortFindingRows(rows, sortKey, dir)
+	return rows
 }
 
 func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusView {
