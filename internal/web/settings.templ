@@ -20,25 +20,7 @@ templ settingsBody(d SettingsData) {
 			@textField(d.Layout.T.T("settings.jellyfinUrl"), "jellyfin_url", "url", d.Settings.Jellyfin.URL, "https://jellyfin.example.com")
 			@secretField(d.Layout.T, "jellyfin_api_key", d.Layout.T.T("settings.jellyfinApiKey"), d.HasJellyfinKey)
 			@textField(d.Layout.T.T("settings.jellyfinUserId"), "jellyfin_user_id", "text", d.Settings.Jellyfin.UserID, "")
-		</div>
-
-		<div class="card grid gap-3">
-			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdb") }</h2>
-			@secretField(d.Layout.T, "tmdb_api_key", d.Layout.T.T("settings.tmdbApiKey"), d.HasTMDBKey)
-			<div class="grid gap-3 sm:grid-cols-2">
-				@textField(d.Layout.T.T("settings.language"), "tmdb_language", "text", d.Settings.TMDB.Language, "en-US")
-				@textField(d.Layout.T.T("settings.region"), "tmdb_region", "text", d.Settings.TMDB.Region, "US")
-			</div>
-		</div>
-
-		<div class="card grid gap-3">
-			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.scan") }</h2>
-			<div class="grid gap-3 sm:grid-cols-2">
-				@numberField(d.Layout.T.T("settings.interval"), "scan_interval", strconv.Itoa(d.Settings.Scan.IntervalMinutes), "1")
-				@numberField(d.Layout.T.T("settings.rateLimit"), "scan_rate", strconv.FormatFloat(d.Settings.Scan.TMDBRateLimitRPS, 'f', -1, 64), "0.1")
-			</div>
-			@checkboxField(d.Layout.T.T("settings.runOnStart"), "scan_run_on_start", d.Settings.Scan.RunOnStart)
-			@checkboxField(d.Layout.T.T("settings.includeSpecials"), "scan_include_specials", d.Settings.Scan.IncludeSpecials)
+			@connStatus(d.JellyfinCheck)
 		</div>
 
 		<div class="card grid gap-3">
@@ -64,6 +46,39 @@ templ settingsBody(d SettingsData) {
 					}
 				</div>
 			}
+		</div>
+
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdb") }</h2>
+			@secretField(d.Layout.T, "tmdb_api_key", d.Layout.T.T("settings.tmdbApiKey"), d.HasTMDBKey)
+			<div class="grid gap-3 sm:grid-cols-2">
+				@languageSelectField(d.Layout.T.T("settings.language"), "tmdb_language", d.Settings.TMDB.Language)
+				@textField(d.Layout.T.T("settings.region"), "tmdb_region", "text", d.Settings.TMDB.Region, "US")
+			</div>
+			@connStatus(d.TMDBCheck)
+		</div>
+
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.scan") }</h2>
+			<div class="grid gap-3 sm:grid-cols-2">
+				@numberField(d.Layout.T.T("settings.interval"), "scan_interval", strconv.Itoa(d.Settings.Scan.IntervalMinutes), "1")
+				@numberField(d.Layout.T.T("settings.rateLimit"), "scan_rate", strconv.FormatFloat(d.Settings.Scan.TMDBRateLimitRPS, 'f', -1, 64), "0.1")
+			</div>
+			@checkboxField(d.Layout.T.T("settings.runOnStart"), "scan_run_on_start", d.Settings.Scan.RunOnStart)
+			@checkboxField(d.Layout.T.T("settings.includeSpecials"), "scan_include_specials", d.Settings.Scan.IncludeSpecials)
+		</div>
+
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.logging") }</h2>
+			<label class="grid gap-1 text-sm max-w-xs">
+				<span class="text-slate-300">{ d.Layout.T.T("settings.logLevel") }</span>
+				<select name="log_level" class="input">
+					@logLevelOption(d.Layout.T, "info", d.Settings.LogLevel)
+					@logLevelOption(d.Layout.T, "warn", d.Settings.LogLevel)
+					@logLevelOption(d.Layout.T, "debug", d.Settings.LogLevel)
+				</select>
+			</label>
+			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.logLevelHint") }</p>
 		</div>
 
 		<div class="card grid gap-3">
@@ -111,4 +126,27 @@ templ checkboxField(label, name string, checked bool) {
 		<input type="checkbox" name={ name } checked?={ checked } class="checkbox"/>
 		<span class="text-slate-300">{ label }</span>
 	</label>
+}
+
+templ logLevelOption(t *i18n.Translator, value, current string) {
+	<option value={ value } selected?={ value == current }>{ t.T("log." + value) }</option>
+}
+
+templ languageSelectField(label, name, current string) {
+	<label class="grid gap-1 text-sm">
+		<span class="text-slate-300">{ label }</span>
+		<select name={ name } class="input">
+			for _, lc := range MetadataLanguages(current) {
+				<option value={ lc.Code } selected?={ lc.Code == current }>{ lc.Label }</option>
+			}
+		</select>
+	</label>
+}
+
+templ connStatus(c ConnCheck) {
+	if c.Checked {
+		<div class={ "rounded-md px-3 py-2 text-sm", templ.KV("bg-emerald-500/10 text-emerald-200", c.OK), templ.KV("bg-rose-500/10 text-rose-200", !c.OK) }>
+			{ c.Message }
+		</div>
+	}
 }

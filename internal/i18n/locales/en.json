@@ -3,6 +3,7 @@
   "app.tagline": "What am I missing?",
 
   "nav.dashboard": "Dashboard",
+  "nav.logs": "Activity log",
   "nav.settings": "Settings",
   "nav.about": "About",
 
@@ -62,6 +63,12 @@
   "settings.runOnStart": "Run a scan on startup",
   "settings.rateLimit": "TMDB requests per second",
   "settings.includeSpecials": "Include specials (season 0)",
+  "settings.logging": "Logging",
+  "settings.logLevel": "Log level",
+  "settings.logLevelHint": "Controls how verbose the activity log and console output are. Applies immediately on save.",
+  "log.info": "INFO — normal operation",
+  "log.warn": "WARN — warnings and errors only",
+  "log.debug": "DEBUG — verbose, detailed diagnostics",
   "settings.libraries": "Libraries",
   "settings.librariesHint": "Select which libraries to include in scans.",
   "settings.refreshLibraries": "Refresh libraries from Jellyfin",
@@ -71,6 +78,10 @@
   "settings.keyPlaceholderSet": "•••••••• (stored, leave blank to keep)",
   "settings.saveSuccess": "Settings saved.",
   "settings.saveError": "Could not save settings: %s",
+  "settings.connJellyfinOk": "Jellyfin connection OK — %s",
+  "settings.connJellyfinFail": "Jellyfin connection failed: %s",
+  "settings.connTmdbOk": "TMDB connection OK",
+  "settings.connTmdbFail": "TMDB connection failed: %s",
 
   "about.title": "About",
   "about.disclaimerTitle": "Vibe-coded project",

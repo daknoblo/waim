@@ -25,25 +25,27 @@ const (
 
 // Server holds the dependencies shared by all HTTP handlers.
 type Server struct {
-	cfg     *config.Manager
-	store   *store.Store
-	sched   *scheduler.Scheduler
-	logs    *logbuf.Buffer
-	catalog *i18n.Catalog
-	log     *slog.Logger
-	info    version.Info
+	cfg      *config.Manager
+	store    *store.Store
+	sched    *scheduler.Scheduler
+	logs     *logbuf.Buffer
+	catalog  *i18n.Catalog
+	log      *slog.Logger
+	logLevel *slog.LevelVar
+	info     version.Info
 }
 
 // New constructs a Server.
-func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger) *Server {
+func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger, logLevel *slog.LevelVar) *Server {
 	return &Server{
-		cfg:     cfg,
-		store:   st,
-		sched:   sched,
-		logs:    logs,
-		catalog: catalog,
-		log:     log,
-		info:    version.Get(),
+		cfg:      cfg,
+		store:    st,
+		sched:    sched,
+		logs:     logs,
+		catalog:  catalog,
+		log:      log,
+		logLevel: logLevel,
+		info:     version.Get(),
 	}
 }
 
@@ -57,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 
 	mux.HandleFunc("GET /{$}", s.handleDashboard)
+	mux.HandleFunc("GET /logs", s.handleLogs)
 	mux.HandleFunc("GET /settings", s.handleSettings)
 	mux.HandleFunc("POST /settings", s.handleSaveSettings)
 	mux.HandleFunc("POST /settings/refresh-libraries", s.handleRefreshLibraries)

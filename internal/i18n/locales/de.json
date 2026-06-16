@@ -3,6 +3,7 @@
   "app.tagline": "Was fehlt mir?",
 
   "nav.dashboard": "Übersicht",
+  "nav.logs": "Aktivitätslog",
   "nav.settings": "Einstellungen",
   "nav.about": "Über",
 
@@ -62,6 +63,12 @@
   "settings.runOnStart": "Scan beim Start ausführen",
   "settings.rateLimit": "TMDB-Anfragen pro Sekunde",
   "settings.includeSpecials": "Specials einbeziehen (Staffel 0)",
+  "settings.logging": "Protokollierung",
+  "settings.logLevel": "Log-Level",
+  "settings.logLevelHint": "Legt fest, wie ausführlich Aktivitätsprotokoll und Konsolenausgabe sind. Wird beim Speichern sofort übernommen.",
+  "log.info": "INFO — normaler Betrieb",
+  "log.warn": "WARN — nur Warnungen und Fehler",
+  "log.debug": "DEBUG — ausführliche, detaillierte Diagnose",
   "settings.libraries": "Bibliotheken",
   "settings.librariesHint": "Wähle, welche Bibliotheken gescannt werden sollen.",
   "settings.refreshLibraries": "Bibliotheken von Jellyfin laden",
@@ -71,6 +78,10 @@
   "settings.keyPlaceholderSet": "•••••••• (gespeichert, leer lassen zum Beibehalten)",
   "settings.saveSuccess": "Einstellungen gespeichert.",
   "settings.saveError": "Einstellungen konnten nicht gespeichert werden: %s",
+  "settings.connJellyfinOk": "Jellyfin-Verbindung OK — %s",
+  "settings.connJellyfinFail": "Jellyfin-Verbindung fehlgeschlagen: %s",
+  "settings.connTmdbOk": "TMDB-Verbindung OK",
+  "settings.connTmdbFail": "TMDB-Verbindung fehlgeschlagen: %s",
 
   "about.title": "Über",
   "about.disclaimerTitle": "Vibe-coded-Projekt",

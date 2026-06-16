@@ -14,6 +14,14 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, web.Dashboard(s.dashboardData(r)))
 }
 
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	d := web.LogPageData{
+		Layout: s.layout(r, web.NavLogs),
+		Logs:   web.BuildLogViews(s.logs.Entries()),
+	}
+	s.render(w, r, web.Logs(d))
+}
+
 func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
 	d := web.AboutData{
 		Layout:    s.layout(r, web.NavAbout),
