@@ -39,14 +39,8 @@ type stored struct {
 		Model     string `json:"model"`
 	} `json:"ai"`
 
-	Scan ScanSettings `json:"scan"`
-
-	Search struct {
-		URLTemplate string `json:"urlTemplate"`
-		APIKeyEnc   string `json:"apiKeyEnc"`
-	} `json:"search"`
-
-	Libraries []Library `json:"libraries"`
+	Scan      ScanSettings `json:"scan"`
+	Libraries []Library    `json:"libraries"`
 }
 
 // Manager loads and persists the configuration and transparently handles
@@ -160,15 +154,10 @@ func (m *Manager) Save(s Settings) error {
 		if err != nil {
 			return fmt.Errorf("config: encrypt ai key: %w", err)
 		}
-		sEnc, err := m.cipher.Encrypt(s.Search.APIKey)
-		if err != nil {
-			return fmt.Errorf("config: encrypt search key: %w", err)
-		}
 		st.Jellyfin.APIKeyEnc = jEnc
 		st.TMDB.APIKeyEnc = tEnc
 		st.AI.APIKeyEnc = aEnc
-		st.Search.APIKeyEnc = sEnc
-	} else if s.Jellyfin.APIKey != "" || s.TMDB.APIKey != "" || s.AI.APIKey != "" || s.Search.APIKey != "" {
+	} else if s.Jellyfin.APIKey != "" || s.TMDB.APIKey != "" || s.AI.APIKey != "" {
 		return crypto.ErrNoKey
 	}
 
@@ -197,9 +186,6 @@ func (m *Manager) ExportStored() ([]byte, error) {
 		if aEnc, err := m.cipher.Encrypt(m.settings.AI.APIKey); err == nil {
 			st.AI.APIKeyEnc = aEnc
 		}
-		if sEnc, err := m.cipher.Encrypt(m.settings.Search.APIKey); err == nil {
-			st.Search.APIKeyEnc = sEnc
-		}
 	}
 	return json.MarshalIndent(st, "", "  ")
 }
@@ -221,7 +207,6 @@ func (m *Manager) decryptStored(st stored) Settings {
 	s.AI.Enabled = st.AI.Enabled
 	s.AI.Endpoint = st.AI.Endpoint
 	s.AI.Model = st.AI.Model
-	s.Search.URLTemplate = st.Search.URLTemplate
 
 	if m.cipher.Enabled() {
 		if v, err := m.cipher.Decrypt(st.Jellyfin.APIKeyEnc); err == nil {
@@ -232,9 +217,6 @@ func (m *Manager) decryptStored(st stored) Settings {
 		}
 		if v, err := m.cipher.Decrypt(st.AI.APIKeyEnc); err == nil {
 			s.AI.APIKey = v
-		}
-		if v, err := m.cipher.Decrypt(st.Search.APIKeyEnc); err == nil {
-			s.Search.APIKey = v
 		}
 	}
 
@@ -251,9 +233,6 @@ func (m *Manager) decryptStored(st stored) Settings {
 	}
 	if s.Libraries == nil {
 		s.Libraries = []Library{}
-	}
-	if s.Search.URLTemplate == "" {
-		s.Search.URLTemplate = def.Search.URLTemplate
 	}
 	return s
 }
@@ -300,7 +279,6 @@ func storedFromSettings(s Settings) stored {
 	st.AI.Endpoint = s.AI.Endpoint
 	st.AI.Model = s.AI.Model
 	st.Scan = s.Scan
-	st.Search.URLTemplate = s.Search.URLTemplate
 	st.Libraries = append([]Library(nil), s.Libraries...)
 	return st
 }

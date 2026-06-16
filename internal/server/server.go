@@ -102,8 +102,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /export/settings", s.handleExportSettings)
 	mux.HandleFunc("GET /export/sync", s.handleExportSync)
 
-	mux.HandleFunc("GET /search", s.handleSearch)
-
 	return logRequests(s.log, mux)
 }
 

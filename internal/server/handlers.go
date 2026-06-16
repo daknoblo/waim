@@ -190,23 +190,9 @@ func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, d
 	if err != nil {
 		return nil
 	}
-	cfg := s.cfg.Get()
-	rows := web.BuildFindingRows(t, fs, cfg.Jellyfin.URL, cfg.Search.URLTemplate != "")
+	rows := web.BuildFindingRows(t, fs, s.cfg.Get().Jellyfin.URL)
 	web.SortFindingRows(rows, sortKey, dir)
 	return rows
-}
-
-// handleSearch builds the external search URL server-side (so any API key stays
-// out of the rendered page) and redirects the browser to the configured
-// provider.
-func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	cfg := s.cfg.Get()
-	target := web.BuildSearchURL(cfg.Search.URLTemplate, cfg.Search.APIKey, r.URL.Query().Get("q"))
-	if target == "" {
-		http.Error(w, "search not configured", http.StatusBadRequest)
-		return
-	}
-	http.Redirect(w, r, target, http.StatusFound)
 }
 
 func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusView {
