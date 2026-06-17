@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -270,11 +271,36 @@ func (s *Server) handleExportSync(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// redirectBack returns the user to the referring page, or the dashboard.
+// redirectBack returns the user to the page they came from (after a locale
+// change), or the dashboard. The Referer is matched against the known set of
+// routes and a constant path is used, so a crafted Referer header cannot turn
+// this into an open redirect (CWE-601).
 func redirectBack(w http.ResponseWriter, r *http.Request) {
-	target := r.Header.Get("Referer")
-	if target == "" {
-		target = "/"
+	http.Redirect(w, r, safeReturnPath(r), http.StatusSeeOther)
+}
+
+// knownRoutes are the top-level pages a locale change may return to. Mapping to
+// constant values keeps the redirect target free of request-derived data.
+var knownRoutes = map[string]string{
+	"/":            "/",
+	"/suggestions": "/suggestions",
+	"/stats":       "/stats",
+	"/logs":        "/logs",
+	"/settings":    "/settings",
+	"/about":       "/about",
+}
+
+func safeReturnPath(r *http.Request) string {
+	ref := r.Header.Get("Referer")
+	if ref == "" {
+		return "/"
 	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	u, err := url.Parse(ref)
+	if err != nil || (u.Host != "" && u.Host != r.Host) {
+		return "/"
+	}
+	if dest, ok := knownRoutes[u.EscapedPath()]; ok {
+		return dest
+	}
+	return "/"
 }
