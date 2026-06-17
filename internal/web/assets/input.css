@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The [hidden] attribute must win over display utilities like .flex (author
+   styles otherwise beat the user-agent rule), so hidden rows actually hide. */
+[hidden] {
+  display: none !important;
+}
+
 @layer components {
   .card {
     @apply rounded-xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20;

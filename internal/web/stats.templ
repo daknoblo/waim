@@ -76,11 +76,23 @@ templ statsBody(d StatsData) {
 				@topList(d.Layout.T.T("stats.topCollections"), d.Layout.T.T("stats.missingParts"), d.TopCollections, d.Layout.T.T("stats.noGaps"))
 			</div>
 
+			<h2 class="mt-2 border-b border-slate-800 pb-1 text-base font-semibold text-slate-300">{ d.Layout.T.T("stats.ratingsExisting") }</h2>
 			for _, lr := range d.LibraryRatings {
 				<div class="grid gap-4 lg:grid-cols-2">
-					@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.topRated"), lr.Top, d.Layout.T.T("stats.noMedia"))
-					@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.worstRated"), lr.Lowest, d.Layout.T.T("stats.noMedia"))
+					@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.topRated"), lr.Top, d.Layout.T.T("stats.noMedia"), d.Layout.T.T("stats.showCount"))
+					@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.worstRated"), lr.Lowest, d.Layout.T.T("stats.noMedia"), d.Layout.T.T("stats.showCount"))
 				</div>
+			}
+
+			if len(d.FindingRatings) > 0 {
+				<h2 class="mt-2 border-b border-slate-800 pb-1 text-base font-semibold text-slate-300">{ d.Layout.T.T("stats.ratingsFindings") }</h2>
+				<p class="-mt-2 text-sm text-slate-400">{ d.Layout.T.T("stats.ratingsFindingsHint") }</p>
+				for _, lr := range d.FindingRatings {
+					<div class="grid gap-4 lg:grid-cols-2">
+						@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.topRated"), lr.Top, d.Layout.T.T("stats.noFindings"), d.Layout.T.T("stats.showCount"))
+						@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.worstRated"), lr.Lowest, d.Layout.T.T("stats.noFindings"), d.Layout.T.T("stats.showCount"))
+					</div>
+				}
 			}
 
 			<div class="grid gap-4 lg:grid-cols-2">
@@ -98,7 +110,7 @@ templ statsBody(d StatsData) {
 	</section>
 }
 
-templ ratedListLib(libName string, color []string, kind string, items []StatsRated, empty string) {
+templ ratedListLib(libName string, color []string, kind string, items []StatsRated, empty, showLabel string) {
 	<div class="card">
 		<h2 class="mb-3 flex items-center gap-2 text-lg font-semibold">
 			<span class={ "badge", color }>{ libName }</span>
@@ -107,9 +119,9 @@ templ ratedListLib(libName string, color []string, kind string, items []StatsRat
 		if len(items) == 0 {
 			<p class="text-sm text-slate-500">{ empty }</p>
 		} else {
-			<ol class="grid gap-1.5 text-sm">
+			<ol class="rated-list grid gap-1.5 text-sm">
 				for i, it := range items {
-					<li class="flex items-center justify-between gap-2">
+					<li class="rated-row flex items-center justify-between gap-2" hidden?={ i >= 10 }>
 						<span class="flex min-w-0 items-center gap-2">
 							<span class="w-5 shrink-0 text-right text-xs text-slate-600">{ strconv.Itoa(i + 1) }.</span>
 							<span class="truncate font-medium text-slate-100">{ it.Title }</span>
@@ -121,6 +133,16 @@ templ ratedListLib(libName string, color []string, kind string, items []StatsRat
 					</li>
 				}
 			</ol>
+			if len(items) > 10 {
+				<div class="mt-3 flex items-center justify-end gap-2 border-t border-slate-800 pt-2">
+					<label class="text-xs text-slate-400">{ showLabel }</label>
+					<select class="rated-limit lang-select">
+						<option value="10" selected>10</option>
+						<option value="25">25</option>
+						<option value="50">50</option>
+					</select>
+				</div>
+			}
 		}
 	</div>
 }
