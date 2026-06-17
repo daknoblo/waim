@@ -27,7 +27,7 @@ templ Page(l Layout, body templ.Component) {
 			<div class="mx-auto flex min-h-screen w-2/3 flex-col px-4">
 				<header class="flex flex-wrap items-center justify-between gap-4 py-5">
 					<div class="flex items-baseline gap-3">
-						<span class="text-2xl font-bold tracking-tight text-indigo-400">{ l.T.T("app.title") }</span>
+						<a href="/" class="text-2xl font-bold tracking-tight text-indigo-400 transition hover:text-indigo-300">{ l.T.T("app.title") }</a>
 						<span class="text-sm text-slate-400">{ l.T.T("app.tagline") }</span>
 					</div>
 					<nav class="flex items-center gap-1 text-sm">

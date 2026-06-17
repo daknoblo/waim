@@ -139,6 +139,12 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	ns.Scan.RunOnStart = r.FormValue("scan_run_on_start") != ""
 	ns.Scan.IncludeSpecials = r.FormValue("scan_include_specials") != ""
 
+	ns.Cache.RefreshEnabled = r.FormValue("cache_refresh_enabled") != ""
+	ns.Cache.RefreshIntervalMinutes = atoiDefault(r.FormValue("cache_refresh_interval"), cur.Cache.RefreshIntervalMinutes)
+	ns.Cache.RefreshPercent = atoiDefault(r.FormValue("cache_refresh_percent"), cur.Cache.RefreshPercent)
+	ns.Cache.CleanupEnabled = r.FormValue("cache_cleanup_enabled") != ""
+	ns.Cache.CleanupMaxAgeDays = atoiDefault(r.FormValue("cache_cleanup_max_age"), cur.Cache.CleanupMaxAgeDays)
+
 	selected := map[string]bool{}
 	for _, id := range r.Form["library"] {
 		selected[id] = true

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/store"
@@ -27,6 +29,7 @@ type StatsData struct {
 	TopSeries      []StatsTop
 	TopCollections []StatsTop
 	LibraryRatings []StatsLibraryRatings
+	FindingRatings []StatsLibraryRatings
 	LongestMovies  []StatsRuntime
 	ShortestMovies []StatsRuntime
 	Niches         []StatsNiche
@@ -188,6 +191,7 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 	sd.TopCollections = topN(collections, 5)
 
 	computeMediaStats(&sd, run, t)
+	sd.FindingRatings = buildFindingRatings(findings)
 
 	return sd
 }
@@ -227,8 +231,8 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 		sd.LibraryRatings = append(sd.LibraryRatings, StatsLibraryRatings{
 			Name:   l.Name,
 			Color:  LibraryColor(l.ID),
-			Top:    toRated(top, 10),
-			Lowest: toRated(low, 10),
+			Top:    toRated(top, 50),
+			Lowest: toRated(low, 50),
 		})
 	}
 
@@ -297,6 +301,75 @@ func toRated(ms []store.MediaStat, n int) []StatsRated {
 		out = append(out, StatsRated{Title: m.Title, Year: m.Year, Rating: fmt.Sprintf("%.1f", m.Rating)})
 	}
 	return out
+}
+
+// buildFindingRatings ranks the missing collection parts (individual missing
+// movies, which carry a TMDB rating) by rating per library, so the user can see
+// which missing titles are worth getting. Missing seasons/episodes have no
+// standalone rating and are not included.
+func buildFindingRatings(findings []store.Finding) []StatsLibraryRatings {
+	type ratedPart struct {
+		title  string
+		year   int
+		rating float64
+	}
+	byLib := map[string][]ratedPart{}
+	names := map[string]string{}
+	var order []string
+	for _, f := range findings {
+		if f.Kind != store.KindMissingCollection {
+			continue
+		}
+		var d detailPayload
+		if f.Details != "" {
+			_ = json.Unmarshal([]byte(f.Details), &d)
+		}
+		for _, p := range d.MissingParts {
+			if p.Rating <= 0 {
+				continue
+			}
+			if _, ok := byLib[f.LibraryID]; !ok {
+				order = append(order, f.LibraryID)
+				names[f.LibraryID] = f.LibraryName
+			}
+			byLib[f.LibraryID] = append(byLib[f.LibraryID], ratedPart{title: p.Title, year: yearInt(p.Year), rating: p.Rating})
+		}
+	}
+
+	toRatedParts := func(parts []ratedPart, n int) []StatsRated {
+		if len(parts) > n {
+			parts = parts[:n]
+		}
+		out := make([]StatsRated, 0, len(parts))
+		for _, p := range parts {
+			out = append(out, StatsRated{Title: p.title, Year: p.year, Rating: fmt.Sprintf("%.1f", p.rating)})
+		}
+		return out
+	}
+
+	var out []StatsLibraryRatings
+	for _, id := range order {
+		parts := byLib[id]
+		top := append([]ratedPart(nil), parts...)
+		sort.SliceStable(top, func(i, j int) bool { return top[i].rating > top[j].rating })
+		low := append([]ratedPart(nil), parts...)
+		sort.SliceStable(low, func(i, j int) bool { return low[i].rating < low[j].rating })
+		out = append(out, StatsLibraryRatings{
+			Name:   names[id],
+			Color:  LibraryColor(id),
+			Top:    toRatedParts(top, 50),
+			Lowest: toRatedParts(low, 50),
+		})
+	}
+	return out
+}
+
+// yearInt parses a year string, returning 0 when it is empty or invalid.
+func yearInt(y string) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(y)); err == nil && n > 0 {
+		return n
+	}
+	return 0
 }
 
 func toRuntime(ms []store.MediaStat, n int) []StatsRuntime {
