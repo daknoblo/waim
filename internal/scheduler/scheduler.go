@@ -153,6 +153,7 @@ func (s *Scheduler) Trigger() {
 
 // Run starts the scheduler loop and blocks until ctx is cancelled.
 func (s *Scheduler) Run(ctx context.Context) {
+	s.restoreStatus(ctx)
 	if s.cfg.Get().Scan.RunOnStart {
 		s.Trigger()
 	}
@@ -281,6 +282,25 @@ func (s *Scheduler) setStatus(mut func(*Status)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	mut(&s.status)
+}
+
+// restoreStatus seeds the in-memory status from the most recent persisted run so
+// the dashboard still shows the last scan date after a restart.
+func (s *Scheduler) restoreStatus(ctx context.Context) {
+	run, err := s.store.LatestSuccessfulRun(ctx)
+	if err != nil || run == nil {
+		return
+	}
+	s.setStatus(func(st *Status) {
+		st.LastRunID = run.ID
+		started := run.StartedAt
+		st.LastStarted = &started
+		if run.FinishedAt != nil {
+			finished := *run.FinishedAt
+			st.LastFinished = &finished
+		}
+		st.LastMissing = run.MissingCount
+	})
 }
 
 func validateRunnable(s config.Settings, cipherEnabled bool) error {
