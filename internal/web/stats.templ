@@ -1,6 +1,10 @@
 package web
 
-import "strconv"
+import (
+	"strconv"
+
+	"github.com/daknoblo/waim/internal/i18n"
+)
 
 templ Stats(d StatsData) {
 	@Page(d.Layout, statsBody(d))
@@ -25,16 +29,16 @@ templ statsBody(d StatsData) {
 				<div class="card">
 					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.mediaSplit") }</h2>
 					<div class="grid grid-cols-2 gap-3">
-						@statCard("\U0001F3AC "+d.Layout.T.T("stats.movies"), strconv.Itoa(d.MoviesScanned))
-						@statCard("\U0001F4FA "+d.Layout.T.T("stats.series"), strconv.Itoa(d.SeriesScanned))
+						@statCardCenteredSub("\U0001F3AC "+d.Layout.T.T("stats.movies"), strconv.Itoa(d.MoviesScanned), "")
+						@statCardCenteredSub("\U0001F4FA "+d.Layout.T.T("stats.series"), strconv.Itoa(d.SeriesScanned), pluralT(d.Layout.T, d.SeriesEpisodes, "stats.episode.one", "stats.episode.other", d.SeriesEpisodes))
 					</div>
 				</div>
 				<div class="card">
 					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.byKind") }</h2>
 					<div class="grid grid-cols-3 gap-3">
-						@statCard(d.Layout.T.T("finding.kind.missing_season"), strconv.Itoa(d.ByKind.MissingSeasons))
-						@statCard(d.Layout.T.T("finding.kind.missing_episodes"), strconv.Itoa(d.ByKind.MissingEpisodes))
-						@statCard(d.Layout.T.T("finding.kind.missing_collection"), strconv.Itoa(d.ByKind.MissingCollections))
+						@statCardCentered(pluralT(d.Layout.T, d.ByKind.MissingSeasons, "stats.gapSeason.one", "stats.gapSeason.other"), strconv.Itoa(d.ByKind.MissingSeasons))
+						@statCardCentered(pluralT(d.Layout.T, d.ByKind.MissingEpisodes, "stats.gapEpisode.one", "stats.gapEpisode.other"), strconv.Itoa(d.ByKind.MissingEpisodes))
+						@statCardCentered(pluralT(d.Layout.T, d.ByKind.MissingCollections, "stats.gapCollection.one", "stats.gapCollection.other"), strconv.Itoa(d.ByKind.MissingCollections))
 					</div>
 				</div>
 			</div>
@@ -72,8 +76,8 @@ templ statsBody(d StatsData) {
 			</div>
 
 			<div class="grid gap-4 lg:grid-cols-2">
-				@topList(d.Layout.T.T("stats.topSeries"), d.Layout.T.T("stats.missingEpisodes"), d.TopSeries, d.Layout.T.T("stats.noGaps"))
-				@topList(d.Layout.T.T("stats.topCollections"), d.Layout.T.T("stats.missingParts"), d.TopCollections, d.Layout.T.T("stats.noGaps"))
+				@topList(d.Layout.T, d.Layout.T.T("stats.topSeries"), "stats.missingEpisodes.one", "stats.missingEpisodes.other", d.TopSeries, d.Layout.T.T("stats.noGaps"))
+				@topList(d.Layout.T, d.Layout.T.T("stats.topCollections"), "stats.missingParts.one", "stats.missingParts.other", d.TopCollections, d.Layout.T.T("stats.noGaps"))
 			</div>
 
 			<h2 class="mt-2 border-b border-slate-800 pb-1 text-base font-semibold text-slate-300">{ d.Layout.T.T("stats.ratingsExisting") }</h2>
@@ -228,6 +232,16 @@ templ statCardCentered(label, value string) {
 	</div>
 }
 
+templ statCardCenteredSub(label, value, sub string) {
+	<div class="rounded-lg bg-slate-900/60 px-3 py-2 text-center">
+		<div class="text-xs uppercase tracking-wide text-slate-500">{ label }</div>
+		<div class="mt-1 text-lg font-semibold text-slate-100">{ value }</div>
+		if sub != "" {
+			<div class="mt-0.5 text-xs text-slate-400">{ sub }</div>
+		}
+	</div>
+}
+
 templ completenessBar(pct int) {
 	<div class="flex items-center gap-2">
 		<div class="h-2 w-24 overflow-hidden rounded-full bg-slate-800">
@@ -237,7 +251,7 @@ templ completenessBar(pct int) {
 	</div>
 }
 
-templ topList(title, metric string, items []StatsTop, empty string) {
+templ topList(t *i18n.Translator, title, metricOne, metricOther string, items []StatsTop, empty string) {
 	<div class="card">
 		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
 		if len(items) == 0 {
@@ -250,7 +264,7 @@ templ topList(title, metric string, items []StatsTop, empty string) {
 							<span class="font-medium text-slate-100">{ it.Title }</span>
 							<span class={ "badge", it.Color }>{ it.Library }</span>
 						</span>
-						<span class="whitespace-nowrap text-slate-400">{ strconv.Itoa(it.Missing) } { metric }</span>
+						<span class="whitespace-nowrap text-slate-400">{ pluralT(t, it.Missing, metricOne, metricOther, it.Missing) }</span>
 					</li>
 				}
 			</ul>

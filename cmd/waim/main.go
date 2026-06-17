@@ -63,7 +63,7 @@ func run() error {
 	// Logging: structured stdout output plus an in-memory ring buffer for the UI.
 	// The level is held in an slog.LevelVar so it can be changed at runtime from
 	// the settings page.
-	logBuf := logbuf.New(300)
+	logBuf := logbuf.New(500)
 	levelVar := new(slog.LevelVar)
 	levelVar.Set(slog.LevelInfo)
 	base := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: levelVar})

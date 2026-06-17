@@ -17,7 +17,8 @@ type MediaStat struct {
 	Title       string   `json:"title"`
 	Year        int      `json:"year"`
 	Rating      float64  `json:"rating"`
-	Runtime     int      `json:"runtime"` // minutes (movies)
+	Runtime     int      `json:"runtime"`            // minutes (movies)
+	Episodes    int      `json:"episodes,omitempty"` // owned episodes (series)
 	Genres      []string `json:"genres"`
 	LibraryID   string   `json:"libraryId"`
 	LibraryName string   `json:"libraryName"`

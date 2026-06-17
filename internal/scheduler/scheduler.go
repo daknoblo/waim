@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,11 +42,12 @@ type Scheduler struct {
 	store *store.Store
 	log   *slog.Logger
 
-	mu        sync.RWMutex
-	status    Status
-	triggerCh chan struct{}
-	running   atomic.Bool
-	progress  *progressState
+	mu           sync.RWMutex
+	status       Status
+	triggerCh    chan struct{}
+	forcePending atomic.Bool
+	running      atomic.Bool
+	progress     *progressState
 }
 
 // New creates a Scheduler.
@@ -151,30 +153,59 @@ func (s *Scheduler) Trigger() {
 	}
 }
 
+// TriggerForce requests an immediate full re-scan that bypasses the TMDB cache
+// (all data is re-fetched fresh and rewritten). The force flag is sticky so it
+// is not lost when triggers are coalesced.
+func (s *Scheduler) TriggerForce() {
+	s.forcePending.Store(true)
+	s.Trigger()
+}
+
 // Run starts the scheduler loop and blocks until ctx is cancelled.
 func (s *Scheduler) Run(ctx context.Context) {
 	s.restoreStatus(ctx)
-	if s.cfg.Get().Scan.RunOnStart {
+	cfg := s.cfg.Get().Scan
+	// Manual mode (no interval): do a one-off startup scan only when enabled and
+	// nothing has been scanned yet, so restarts don't re-scan.
+	if cfg.IntervalMinutes <= 0 && cfg.RunOnStart && s.lastFinished() == nil {
 		s.Trigger()
 	}
-	timer := time.NewTimer(s.nextInterval())
+
+	delay := s.startupDelay()
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
+	s.armNextRun(delay)
 
 	for {
-		s.updateNextRun()
 		select {
 		case <-ctx.Done():
 			return
 		case <-s.triggerCh:
-			s.runScan(ctx)
-			s.resetTimer(timer)
+			s.runScan(ctx, s.forcePending.Swap(false))
+			s.armNextRun(s.resetTimer(timer))
 		case <-timer.C:
 			if s.cfg.Get().Scan.IntervalMinutes > 0 {
-				s.runScan(ctx)
+				s.runScan(ctx, false)
 			}
-			s.resetTimer(timer)
+			s.armNextRun(s.resetTimer(timer))
 		}
 	}
+}
+
+// startupDelay returns how long to wait before the first scan after a (re)start.
+// It is based on the last persisted scan so restarts keep the existing cadence
+// instead of resetting it, and it honours RunOnStart.
+func (s *Scheduler) startupDelay() time.Duration {
+	cfg := s.cfg.Get().Scan
+	if cfg.IntervalMinutes <= 0 {
+		return time.Hour // park; the manual-mode startup scan is handled separately
+	}
+	due := s.untilNextScan() // 0 when a scan is overdue or none has run yet
+	if due == 0 && !cfg.RunOnStart {
+		// A scan is due, but startup scans are disabled: wait a full interval.
+		return s.nextInterval()
+	}
+	return due
 }
 
 func (s *Scheduler) nextInterval() time.Duration {
@@ -185,29 +216,59 @@ func (s *Scheduler) nextInterval() time.Duration {
 	return time.Duration(m) * time.Minute
 }
 
-func (s *Scheduler) resetTimer(t *time.Timer) {
+// untilNextScan returns the time until the next scan is due, based on the last
+// successful scan and the interval. It is 0 when a scan is overdue or none has
+// run yet, and parks when periodic scans are disabled.
+func (s *Scheduler) untilNextScan() time.Duration {
+	if s.cfg.Get().Scan.IntervalMinutes <= 0 {
+		return time.Hour
+	}
+	last := s.lastFinished()
+	if last == nil {
+		return 0
+	}
+	if d := time.Until(last.Add(s.nextInterval())); d > 0 {
+		return d
+	}
+	return 0
+}
+
+func (s *Scheduler) lastFinished() *time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.status.LastFinished
+}
+
+// resetTimer re-arms the timer for a full interval after a scan and returns the
+// delay it used.
+func (s *Scheduler) resetTimer(t *time.Timer) time.Duration {
+	d := s.nextInterval()
 	if !t.Stop() {
 		select {
 		case <-t.C:
 		default:
 		}
 	}
-	t.Reset(s.nextInterval())
+	t.Reset(d)
+	return d
 }
 
-func (s *Scheduler) updateNextRun() {
+// armNextRun sets the displayed next-run time to now+d, or clears it when
+// periodic scans are disabled.
+func (s *Scheduler) armNextRun(d time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.cfg.Get().Scan.IntervalMinutes > 0 {
-		next := time.Now().Add(s.nextInterval())
+		next := time.Now().Add(d)
 		s.status.NextRun = &next
 	} else {
 		s.status.NextRun = nil
 	}
 }
 
-// runScan executes a single scan, ignoring overlapping invocations.
-func (s *Scheduler) runScan(ctx context.Context) {
+// runScan executes a single scan, ignoring overlapping invocations. When force
+// is set, cached TMDB responses are bypassed so everything is re-fetched fresh.
+func (s *Scheduler) runScan(ctx context.Context, force bool) {
 	if !s.running.CompareAndSwap(false, true) {
 		return
 	}
@@ -235,12 +296,13 @@ func (s *Scheduler) runScan(ctx context.Context) {
 		st.LastStarted = &started
 		st.LastError = ""
 	})
-	s.log.Info("scan started", "runId", runID)
+	s.log.Info("scan started", "runId", runID, "fullRefresh", force)
 
 	s.progress.reset(started)
 	jf := jellyfin.New(settings.Jellyfin.URL, settings.Jellyfin.APIKey)
 	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
-		WithCache(tmdbcache.New(s.store))
+		WithCache(tmdbcache.New(s.store)).
+		WithForceRefresh(force)
 	sc := scanner.New(jf, td, settings, s.log)
 	sc.SetReporter(s.progress)
 
@@ -259,6 +321,7 @@ func (s *Scheduler) runScan(ctx context.Context) {
 		return
 	}
 
+	newGaps := s.countNewFindings(ctx, result.Findings)
 	if err := s.store.AddFindings(ctx, runID, result.Findings); err != nil {
 		s.log.Error("failed to persist findings", "runId", runID, "err", err)
 	}
@@ -266,7 +329,11 @@ func (s *Scheduler) runScan(ctx context.Context) {
 		result.LibrariesScanned, result.ItemsScanned, len(result.Findings), result.Libraries, result.Media); err != nil {
 		s.log.Error("failed to finish scan run", "runId", runID, "err", err)
 	}
-	_ = s.store.PruneRuns(ctx, 20)
+	if pruned, err := s.store.PruneRuns(ctx, 20); err != nil {
+		s.log.Warn("failed to prune old scan runs", "err", err)
+	} else if pruned > 0 {
+		s.log.Info("maintenance: pruned old scan runs", "removed", pruned)
+	}
 
 	s.setStatus(func(st *Status) {
 		st.State = StateIdle
@@ -274,8 +341,44 @@ func (s *Scheduler) runScan(ctx context.Context) {
 		st.LastMissing = len(result.Findings)
 		st.LastError = ""
 	})
+	if newGaps > 0 {
+		s.log.Info("new gaps detected since last scan", "new", newGaps, "total", len(result.Findings))
+	}
 	s.log.Info("scan finished", "runId", runID, "libraries", result.LibrariesScanned,
-		"items", result.ItemsScanned, "missing", len(result.Findings))
+		"items", result.ItemsScanned, "missing", len(result.Findings), "new", newGaps)
+}
+
+// countNewFindings reports how many of the given findings were not present in the
+// most recent previous successful scan, so the activity log can highlight what
+// changed. It must be called before the current run is marked successful.
+func (s *Scheduler) countNewFindings(ctx context.Context, current []store.Finding) int {
+	prev, err := s.store.LatestSuccessfulRun(ctx)
+	if err != nil || prev == nil {
+		return len(current) // no baseline yet -> everything counts as new
+	}
+	prevFindings, err := s.store.FindingsForRun(ctx, prev.ID)
+	if err != nil {
+		return 0
+	}
+	seen := make(map[string]struct{}, len(prevFindings))
+	for _, f := range prevFindings {
+		seen[findingKey(f)] = struct{}{}
+	}
+	n := 0
+	for _, f := range current {
+		if _, ok := seen[findingKey(f)]; !ok {
+			n++
+		}
+	}
+	return n
+}
+
+func findingKey(f store.Finding) string {
+	season := ""
+	if f.SeasonNumber != nil {
+		season = strconv.Itoa(*f.SeasonNumber)
+	}
+	return f.Kind + "\x00" + f.LibraryID + "\x00" + f.Title + "\x00" + season
 }
 
 func (s *Scheduler) setStatus(mut func(*Status)) {

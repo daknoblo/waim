@@ -296,6 +296,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		s.log.Warn("tmdb tv lookup failed", "title", item.Name, "tmdbId", id, "err", err)
 		return 0
 	}
+	mediaIdx := len(res.Media)
 	res.Media = append(res.Media, store.MediaStat{
 		Type:        store.MediaSeries,
 		Title:       item.Name,
@@ -312,6 +313,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		s.log.Warn("jellyfin episodes failed", "title", item.Name, "err", err)
 		return 0
 	}
+	res.Media[mediaIdx].Episodes = len(eps)
 	present := map[int]map[int]bool{}
 	for _, ep := range eps {
 		if ep.ParentIndexNumber == nil || ep.IndexNumber == nil {

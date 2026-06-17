@@ -23,6 +23,7 @@ type StatsData struct {
 	MissingUnits   int
 	MoviesScanned  int
 	SeriesScanned  int
+	SeriesEpisodes int
 	Completeness   int
 	Libraries      []StatsLibrary
 	ByKind         StatsByKind
@@ -206,6 +207,9 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 	for _, m := range media {
 		if m.Type == store.MediaMovie {
 			movies = append(movies, m)
+		}
+		if m.Type == store.MediaSeries {
+			sd.SeriesEpisodes += m.Episodes
 		}
 		byLib[m.LibraryID] = append(byLib[m.LibraryID], m)
 		for _, g := range m.Genres {
