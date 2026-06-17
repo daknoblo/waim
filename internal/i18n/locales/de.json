@@ -54,6 +54,11 @@
   "dashboard.export": "Export",
   "dashboard.allLibraries": "Alle Bibliotheken",
   "dashboard.filterLibrary": "Nach Bibliothek filtern",
+  "dashboard.allGapTypes": "Alle L\u00fcckentypen",
+  "dashboard.filterKind": "Nach L\u00fcckentyp filtern",
+  "dashboard.kindSeasons": "Fehlende Staffeln",
+  "dashboard.kindEpisodes": "Fehlende Folgen",
+  "dashboard.kindCollections": "Fehlende Sammlungen",
   "dashboard.searchPlaceholder": "Ergebnisse durchsuchen\u2026",
 
   "stats.title": "Statistik",

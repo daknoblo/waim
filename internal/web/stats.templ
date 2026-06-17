@@ -27,18 +27,18 @@ templ statsBody(d StatsData) {
 
 			<div class="grid gap-4 lg:grid-cols-2">
 				<div class="card">
-					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.mediaSplit") }</h2>
+					<h2 class="mb-3 text-center text-lg font-semibold">{ d.Layout.T.T("stats.mediaSplit") }</h2>
 					<div class="grid grid-cols-2 gap-3">
 						@statCardCenteredSub("\U0001F3AC "+d.Layout.T.T("stats.movies"), strconv.Itoa(d.MoviesScanned), "")
 						@statCardCenteredSub("\U0001F4FA "+d.Layout.T.T("stats.series"), strconv.Itoa(d.SeriesScanned), pluralT(d.Layout.T, d.SeriesEpisodes, "stats.episode.one", "stats.episode.other", d.SeriesEpisodes))
 					</div>
 				</div>
 				<div class="card">
-					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.byKind") }</h2>
+					<h2 class="mb-3 text-center text-lg font-semibold">{ d.Layout.T.T("stats.byKind") }</h2>
 					<div class="grid grid-cols-3 gap-3">
-						@statCardCentered(pluralT(d.Layout.T, d.ByKind.MissingSeasons, "stats.gapSeason.one", "stats.gapSeason.other"), strconv.Itoa(d.ByKind.MissingSeasons))
-						@statCardCentered(pluralT(d.Layout.T, d.ByKind.MissingEpisodes, "stats.gapEpisode.one", "stats.gapEpisode.other"), strconv.Itoa(d.ByKind.MissingEpisodes))
-						@statCardCentered(pluralT(d.Layout.T, d.ByKind.MissingCollections, "stats.gapCollection.one", "stats.gapCollection.other"), strconv.Itoa(d.ByKind.MissingCollections))
+						@statCardLink(pluralT(d.Layout.T, d.ByKind.MissingSeasons, "stats.gapSeason.one", "stats.gapSeason.other"), strconv.Itoa(d.ByKind.MissingSeasons), "/?kind=missing_season")
+						@statCardLink(pluralT(d.Layout.T, d.ByKind.MissingEpisodes, "stats.gapEpisode.one", "stats.gapEpisode.other"), strconv.Itoa(d.ByKind.MissingEpisodes), "/?kind=missing_episodes")
+						@statCardLink(pluralT(d.Layout.T, d.ByKind.MissingCollections, "stats.gapCollection.one", "stats.gapCollection.other"), strconv.Itoa(d.ByKind.MissingCollections), "/?kind=missing_collection")
 					</div>
 				</div>
 			</div>
@@ -240,6 +240,13 @@ templ statCardCenteredSub(label, value, sub string) {
 			<div class="mt-0.5 text-xs text-slate-400">{ sub }</div>
 		}
 	</div>
+}
+
+templ statCardLink(label, value, href string) {
+	<a href={ templ.SafeURL(href) } class="block rounded-lg bg-slate-900/60 px-3 py-2 text-center transition hover:bg-slate-800 hover:ring-1 hover:ring-indigo-500/40">
+		<div class="text-xs uppercase tracking-wide text-slate-500">{ label }</div>
+		<div class="mt-1 text-lg font-semibold text-slate-100">{ value }</div>
+	</a>
 }
 
 templ completenessBar(pct int) {

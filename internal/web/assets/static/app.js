@@ -9,14 +9,35 @@
     var q = (box ? box.value : "").toLowerCase().trim();
     var libSel = document.getElementById("finding-lib-filter");
     var lib = libSel ? libSel.value : "";
+    var kindSel = document.getElementById("finding-kind-filter");
+    var kind = kindSel ? kindSel.value : "";
     var rows = document.querySelectorAll("#findings tbody tr");
     for (var i = 0; i < rows.length; i++) {
       var textMatch = rows[i].textContent.toLowerCase().indexOf(q) !== -1;
       var libMatch = !lib || rows[i].getAttribute("data-library") === lib;
-      rows[i].style.display = textMatch && libMatch ? "" : "none";
+      var kinds = (rows[i].getAttribute("data-kinds") || "").split(" ");
+      var kindMatch = !kind || kinds.indexOf(kind) !== -1;
+      rows[i].style.display = textMatch && libMatch && kindMatch ? "" : "none";
     }
   }
   window.waimFilterFindings = filterFindings;
+
+  // Apply a gap-type filter passed via the URL (?kind=...), e.g. when arriving
+  // from a "Gaps by type" card on the statistics page, and scroll it into view.
+  function applyKindFromURL() {
+    var params = new URLSearchParams(window.location.search);
+    var kind = params.get("kind");
+    if (!kind) return;
+    var kindSel = document.getElementById("finding-kind-filter");
+    if (kindSel) {
+      kindSel.value = kind;
+    }
+    filterFindings();
+    var findings = document.getElementById("findings");
+    if (findings && findings.scrollIntoView) {
+      findings.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
 
   // Copy text to the clipboard, falling back to execCommand for non-secure
   // (plain http) contexts where navigator.clipboard is unavailable.
@@ -87,11 +108,17 @@
     if (libSel) {
       libSel.addEventListener("change", filterFindings);
     }
+    var kindSel = document.getElementById("finding-kind-filter");
+    if (kindSel) {
+      kindSel.addEventListener("change", filterFindings);
+    }
     // Re-apply the filter after any HTMX swap (polling, sorting, scanning).
     document.body.addEventListener("htmx:afterSettle", filterFindings);
     // Click-to-copy for finding names (delegated; survives HTMX swaps).
     document.body.addEventListener("click", onCopyClick);
     // Expandable rated lists on the statistics page (delegated).
     document.body.addEventListener("change", onRatedLimitChange);
+    // Honour a ?kind= filter coming from the statistics page.
+    applyKindFromURL();
   });
 })();

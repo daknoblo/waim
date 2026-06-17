@@ -54,6 +54,11 @@
   "dashboard.export": "Export",
   "dashboard.allLibraries": "All libraries",
   "dashboard.filterLibrary": "Filter by library",
+  "dashboard.allGapTypes": "All gap types",
+  "dashboard.filterKind": "Filter by gap type",
+  "dashboard.kindSeasons": "Missing seasons",
+  "dashboard.kindEpisodes": "Missing episodes",
+  "dashboard.kindCollections": "Missing collections",
   "dashboard.searchPlaceholder": "Search findings\u2026",
 
   "stats.title": "Statistics",

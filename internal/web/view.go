@@ -49,6 +49,7 @@ type FindingRow struct {
 	PosterURL    string
 	TMDBLink     string
 	JellyfinLink string
+	Kinds        string // space-separated gap kinds present in this row
 }
 
 type detailPayload struct {
@@ -72,6 +73,7 @@ type detailPayload struct {
 func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL string) []FindingRow {
 	var rows []FindingRow
 	groups := map[string]*FindingRow{}
+	groupKinds := map[string]map[string]bool{}
 	var groupOrder []string
 
 	for _, f := range findings {
@@ -94,6 +96,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				Detail:       pluralT(t, len(d.MissingParts), "finding.missingCollection.one", "finding.missingCollection.other", len(d.MissingParts)),
 				MissingCount: len(d.MissingParts),
 				TMDBLink:     tmdbLink("collection", f.TMDBID),
+				Kinds:        store.KindMissingCollection,
 			}
 			sort.SliceStable(d.MissingParts, func(i, j int) bool {
 				return yearValue(d.MissingParts[i].Year) < yearValue(d.MissingParts[j].Year)
@@ -133,6 +136,10 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				groups[key] = g
 				groupOrder = append(groupOrder, key)
 			}
+			if groupKinds[key] == nil {
+				groupKinds[key] = map[string]bool{}
+			}
+			groupKinds[key][f.Kind] = true
 			if g.PosterURL == "" {
 				g.PosterURL = posterURL(d.PosterPath)
 			}
@@ -158,9 +165,21 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			return g.DetailItems[i].sortKey < g.DetailItems[j].sortKey
 		})
 		g.Detail = pluralT(t, len(g.DetailItems), "finding.seriesGaps.one", "finding.seriesGaps.other", len(g.DetailItems))
+		g.Kinds = joinKinds(groupKinds[key])
 		rows = append(rows, *g)
 	}
 	return rows
+}
+
+// joinKinds returns the kinds in set as a sorted, space-separated string for a
+// data attribute.
+func joinKinds(set map[string]bool) string {
+	ks := make([]string, 0, len(set))
+	for k := range set {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return strings.Join(ks, " ")
 }
 
 func seriesKey(f store.Finding) string {
