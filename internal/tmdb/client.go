@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -81,7 +82,10 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 	}
 
 	if c.cache != nil && out != nil {
-		if payload, ok, _ := c.cache.Get(ctx, key); ok && len(payload) > 0 {
+		if payload, ok, err := c.cache.Get(ctx, key); err != nil {
+			// Best-effort cache: log and fall back to a live request.
+			slog.Default().Debug("tmdb: cache read failed", "key", key, "error", err)
+		} else if ok && len(payload) > 0 {
 			if err := json.Unmarshal(payload, out); err == nil {
 				return nil
 			}
@@ -94,7 +98,10 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 		return err
 	}
 	if c.cache != nil && out != nil && len(body) > 0 {
-		_ = c.cache.Put(ctx, key, body)
+		if err := c.cache.Put(ctx, key, body); err != nil {
+			// A failed write leaves the cache stale; surface it without failing the call.
+			slog.Default().Warn("tmdb: cache write failed", "key", key, "error", err)
+		}
 	}
 	if out == nil {
 		return nil

@@ -15,10 +15,11 @@ are missing**:
   a collection (e.g. owning *The Lord of the Rings* part 1 & 3 but not part 2).
 
 It is a small, single-binary Go application with a modern, server-rendered web
-UI (templ + HTMX + Tailwind), built to run in Docker. 
+UI (templ + HTMX + Tailwind), built to run in Docker.
 
-The main driver behind was a lack of simple UIs to track which Episodes or Movies are missing
-without additional features, this is a alternative for Huntarr or Missingarr.
+The main motivation was the lack of a simple UI to track which episodes or
+movies are missing, without extra features — a lightweight alternative to
+Huntarr or Missingarr.
 
 ---
 
