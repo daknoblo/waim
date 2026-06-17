@@ -22,6 +22,12 @@ templ dashboardBody(d DashboardData) {
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="text-lg font-semibold">{ d.Layout.T.T("dashboard.findings") }</h2>
 				<div class="flex items-center gap-2">
+					<select id="finding-kind-filter" class="select-filter" aria-label={ d.Layout.T.T("dashboard.filterKind") }>
+						<option value="">{ d.Layout.T.T("dashboard.allGapTypes") }</option>
+						<option value="missing_season">{ d.Layout.T.T("dashboard.kindSeasons") }</option>
+						<option value="missing_episodes">{ d.Layout.T.T("dashboard.kindEpisodes") }</option>
+						<option value="missing_collection">{ d.Layout.T.T("dashboard.kindCollections") }</option>
+					</select>
 					if len(d.Libraries) > 0 {
 						<select id="finding-lib-filter" class="select-filter" aria-label={ d.Layout.T.T("dashboard.filterLibrary") }>
 							<option value="">{ d.Layout.T.T("dashboard.allLibraries") }</option>
@@ -128,7 +134,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) 
 					</thead>
 					<tbody class="divide-y divide-slate-800 align-top">
 						for _, r := range rows {
-							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID }>
+							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID } data-kinds={ r.Kinds }>
 								<td class="px-3 py-2">
 								<div class="flex items-center gap-2">
 									if r.PosterURL != "" {
