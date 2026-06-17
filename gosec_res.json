@@ -1,0 +1,90 @@
+{
+	"Golang errors": {},
+	"Issues": [
+		{
+			"severity": "HIGH",
+			"confidence": "MEDIUM",
+			"cwe": {
+				"id": "190",
+				"url": "https://cwe.mitre.org/data/definitions/190.html"
+			},
+			"rule_id": "G115",
+			"details": "integer overflow conversion int -\u003e uint32",
+			"file": "/Users/numark1/src/daknoblo/waim/internal/web/helpers.go",
+			"code": "74: \t}\n75: \treturn libraryPalette[int(h%uint32(len(libraryPalette)))]\n76: }\n",
+			"line": "75",
+			"column": "36",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "614",
+				"url": "https://cwe.mitre.org/data/definitions/614.html"
+			},
+			"rule_id": "G124",
+			"details": "http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute",
+			"file": "/Users/numark1/src/daknoblo/waim/internal/server/settings.go",
+			"code": "55: \tif s.catalog.Has(ns.Locale) {\n56: \t\thttp.SetCookie(w, \u0026http.Cookie{\n57: \t\t\tName: localeCookie, Value: ns.Locale, Path: \"/\",\n",
+			"line": "56",
+			"column": "33",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "614",
+				"url": "https://cwe.mitre.org/data/definitions/614.html"
+			},
+			"rule_id": "G124",
+			"details": "http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute",
+			"file": "/Users/numark1/src/daknoblo/waim/internal/server/handlers.go",
+			"code": "147: \tif s.catalog.Has(loc) {\n148: \t\thttp.SetCookie(w, \u0026http.Cookie{\n149: \t\t\tName:     localeCookie,\n",
+			"line": "148",
+			"column": "33",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/Users/numark1/src/daknoblo/waim/internal/config/manager.go",
+			"code": "278: \tvar st stored\n279: \tdata, err := os.ReadFile(path)\n280: \tif err != nil {\n",
+			"line": "279",
+			"column": "15",
+			"nosec": false,
+			"suppressions": null,
+			"autofix": "Consider using os.Root to scope file access under a fixed root (Go \u003e=1.24). Prefer root.Open/root.Stat over os.Open/os.Stat to prevent directory traversal."
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": null,
+			"rule_id": "G710",
+			"details": "Open redirect via taint analysis",
+			"file": "/Users/numark1/src/daknoblo/waim/internal/server/handlers.go",
+			"code": "289: \t}\n290: \thttp.Redirect(w, r, target, http.StatusSeeOther)\n291: }\n",
+			"line": "290",
+			"column": "15",
+			"nosec": false,
+			"suppressions": null
+		}
+	],
+	"Stats": {
+		"files": 36,
+		"lines": 11012,
+		"nosec": 0,
+		"found": 5
+	},
+	"GosecVersion": "dev"
+}exit status 1
