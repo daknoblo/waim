@@ -15,7 +15,10 @@ are missing**:
   a collection (e.g. owning *The Lord of the Rings* part 1 & 3 but not part 2).
 
 It is a small, single-binary Go application with a modern, server-rendered web
-UI (templ + HTMX + Tailwind), built to run in Docker.
+UI (templ + HTMX + Tailwind), built to run in Docker. 
+
+The main driver behind was a lack of simple UIs to track which Episodes or Movies are missing
+without additional features, this is a alternative for Huntarr or Missingarr.
 
 ---
 
@@ -31,11 +34,16 @@ UI (templ + HTMX + Tailwind), built to run in Docker.
 - Dashboard with grouped findings, sortable columns, a live search box and a
   per-library quick filter.
 - **Statistics** page: completeness per library, most incomplete series and
-  collections, top/lowest rated titles per library, and genre/decade breakdowns.
+  collections, top/lowest rated titles per library — in separate sections for
+  owned media and for missing titles (so you can decide what's worth getting),
+  each expandable up to 50 entries — plus genre/decade breakdowns.
 - **Suggestions** page: what to watch next from TMDB trending and
   recommendations, with optional AI-generated picks.
 - Optional **AI suggestions** via any OpenAI/Azure-compatible chat endpoint.
 - Configurable TMDB request rate limit.
+- Local TMDB response cache with an incremental background refresher (spread
+  across the day) and a nightly cleanup of orphaned entries, so scans and
+  suggestions reuse data instead of re-loading everything from TMDB.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
   rest** (AES-256-GCM, key derived from `WAIM_MASTER_KEY`).
 - Export of settings (keys stay encrypted, never plaintext) and of the current

@@ -20,6 +20,7 @@ import (
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
+	"github.com/daknoblo/waim/internal/refresher"
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/server"
 	"github.com/daknoblo/waim/internal/store"
@@ -98,11 +99,13 @@ func run() error {
 
 	sched := scheduler.New(cfg, st, logger)
 	suggestSvc := suggest.New(cfg, st, logger)
+	ref := refresher.New(cfg, st, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go sched.Run(ctx)
+	go ref.Run(ctx)
 
 	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar)
 	httpServer := &http.Server{

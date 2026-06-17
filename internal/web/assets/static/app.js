@@ -58,6 +58,26 @@
     }, 1200);
   }
 
+  // Limit how many rows of a rated list are visible, controlled by its dropdown.
+  function applyRatedLimit(select) {
+    var card = select.closest ? select.closest(".card") : null;
+    if (!card) return;
+    var list = card.querySelector(".rated-list");
+    if (!list) return;
+    var limit = parseInt(select.value, 10) || 10;
+    var rows = list.querySelectorAll(".rated-row");
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].hidden = i >= limit;
+    }
+  }
+
+  function onRatedLimitChange(e) {
+    var t = e.target;
+    if (t && t.classList && t.classList.contains("rated-limit")) {
+      applyRatedLimit(t);
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var box = document.getElementById("finding-search");
     if (box) {
@@ -71,5 +91,7 @@
     document.body.addEventListener("htmx:afterSettle", filterFindings);
     // Click-to-copy for finding names (delegated; survives HTMX swaps).
     document.body.addEventListener("click", onCopyClick);
+    // Expandable rated lists on the statistics page (delegated).
+    document.body.addEventListener("change", onRatedLimitChange);
   });
 })();

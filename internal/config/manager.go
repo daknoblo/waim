@@ -39,8 +39,9 @@ type stored struct {
 		Model     string `json:"model"`
 	} `json:"ai"`
 
-	Scan      ScanSettings `json:"scan"`
-	Libraries []Library    `json:"libraries"`
+	Scan      ScanSettings  `json:"scan"`
+	Cache     CacheSettings `json:"cache"`
+	Libraries []Library     `json:"libraries"`
 }
 
 // Manager loads and persists the configuration and transparently handles
@@ -199,6 +200,7 @@ func (m *Manager) decryptStored(st stored) Settings {
 		LogLevel:  NormalizeLogLevel(st.LogLevel),
 		Libraries: append([]Library(nil), st.Libraries...),
 		Scan:      st.Scan,
+		Cache:     st.Cache,
 	}
 	s.Jellyfin.URL = st.Jellyfin.URL
 	s.Jellyfin.UserID = st.Jellyfin.UserID
@@ -230,6 +232,24 @@ func (m *Manager) decryptStored(st stored) Settings {
 	}
 	if s.Scan.TMDBRateLimitRPS == 0 {
 		s.Scan.TMDBRateLimitRPS = def.Scan.TMDBRateLimitRPS
+	}
+	// A fully zero cache config means it predates this setting; restore defaults
+	// (including RefreshEnabled, whose false zero value is otherwise ambiguous).
+	if s.Cache.RefreshIntervalMinutes == 0 && s.Cache.RefreshPercent == 0 {
+		s.Cache = def.Cache
+	} else {
+		if s.Cache.RefreshIntervalMinutes == 0 {
+			s.Cache.RefreshIntervalMinutes = def.Cache.RefreshIntervalMinutes
+		}
+		if s.Cache.RefreshPercent == 0 {
+			s.Cache.RefreshPercent = def.Cache.RefreshPercent
+		}
+		// Cleanup config added later; a zero max-age means it was never set, so
+		// backfill its defaults (including the CleanupEnabled bool).
+		if s.Cache.CleanupMaxAgeDays == 0 {
+			s.Cache.CleanupEnabled = def.Cache.CleanupEnabled
+			s.Cache.CleanupMaxAgeDays = def.Cache.CleanupMaxAgeDays
+		}
 	}
 	if s.Libraries == nil {
 		s.Libraries = []Library{}
@@ -279,6 +299,7 @@ func storedFromSettings(s Settings) stored {
 	st.AI.Endpoint = s.AI.Endpoint
 	st.AI.Model = s.AI.Model
 	st.Scan = s.Scan
+	st.Cache = s.Cache
 	st.Libraries = append([]Library(nil), s.Libraries...)
 	return st
 }

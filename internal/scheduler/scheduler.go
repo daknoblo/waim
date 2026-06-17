@@ -15,6 +15,7 @@ import (
 	"github.com/daknoblo/waim/internal/scanner"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
+	"github.com/daknoblo/waim/internal/tmdbcache"
 )
 
 // State values for the scheduler.
@@ -237,7 +238,8 @@ func (s *Scheduler) runScan(ctx context.Context) {
 
 	s.progress.reset(started)
 	jf := jellyfin.New(settings.Jellyfin.URL, settings.Jellyfin.APIKey)
-	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS)
+	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
+		WithCache(tmdbcache.New(s.store))
 	sc := scanner.New(jf, td, settings, s.log)
 	sc.SetReporter(s.progress)
 
