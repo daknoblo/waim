@@ -30,7 +30,7 @@ Huntarr or Missingarr.
   title/year search.
 - Detects missing seasons, missing episodes and missing collection entries.
 - Periodic scans (configurable interval), scan-on-startup and a manual
-  **Scan now** button.
+  **Scan now** button (which forces a full refresh, bypassing the TMDB cache).
 - Per-library selection: choose exactly which Jellyfin libraries to scan.
 - Dashboard with grouped findings, sortable columns, a live search box and a
   per-library quick filter.

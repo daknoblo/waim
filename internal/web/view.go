@@ -91,7 +91,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				LibraryColor: LibraryColor(f.LibraryID),
 				JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
 				PosterURL:    posterURL(d.PosterPath),
-				Detail:       t.T("finding.missingCollection", len(d.MissingParts)),
+				Detail:       pluralT(t, len(d.MissingParts), "finding.missingCollection.one", "finding.missingCollection.other", len(d.MissingParts)),
 				MissingCount: len(d.MissingParts),
 				TMDBLink:     tmdbLink("collection", f.TMDBID),
 			}
@@ -138,9 +138,9 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			}
 			var text string
 			if f.Kind == store.KindMissingSeason {
-				text = t.T("finding.missingSeason", d.SeasonNumber, len(d.MissingEpisodes))
+				text = pluralT(t, len(d.MissingEpisodes), "finding.missingSeason.one", "finding.missingSeason.other", d.SeasonNumber, len(d.MissingEpisodes))
 			} else {
-				text = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
+				text = pluralT(t, len(d.MissingEpisodes), "finding.missingEpisodes.one", "finding.missingEpisodes.other", d.SeasonNumber, len(d.MissingEpisodes))
 			}
 			g.DetailItems = append(g.DetailItems, DetailItem{
 				Text:     text,
@@ -157,7 +157,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 		sort.SliceStable(g.DetailItems, func(i, j int) bool {
 			return g.DetailItems[i].sortKey < g.DetailItems[j].sortKey
 		})
-		g.Detail = t.T("finding.seriesGaps", len(g.DetailItems))
+		g.Detail = pluralT(t, len(g.DetailItems), "finding.seriesGaps.one", "finding.seriesGaps.other", len(g.DetailItems))
 		rows = append(rows, *g)
 	}
 	return rows
@@ -311,6 +311,15 @@ func relUnit(t *i18n.Translator, n int, singular, plural string) string {
 		return t.T(singular, n)
 	}
 	return t.T(plural, n)
+}
+
+// pluralT selects the singular (n == 1) or plural i18n key and formats it with
+// args, so messages read correctly for one vs many.
+func pluralT(t *i18n.Translator, n int, one, other string, args ...any) string {
+	if n == 1 {
+		return t.T(one, args...)
+	}
+	return t.T(other, args...)
 }
 
 // FormatDuration renders a duration like "1h 5m 12s", "2m 35s" or "12s"; empty for zero.

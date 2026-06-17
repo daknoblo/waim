@@ -124,6 +124,7 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
 		WithCache(tmdbcache.New(r.store))
 
+	r.log.Info("background TMDB cache refresh started", "batch", len(keys), "total", count)
 	var refreshed, failed int
 	for _, key := range keys {
 		if ctx.Err() != nil {
@@ -136,7 +137,7 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 		}
 		refreshed++
 	}
-	r.log.Info("tmdb cache refreshed", "refreshed", refreshed, "failed", failed, "total", count)
+	r.log.Info("background TMDB cache refresh finished", "refreshed", refreshed, "failed", failed, "total", count)
 }
 
 // cleanup removes cache entries that have not been used by a scan or suggestion
@@ -151,12 +152,11 @@ func (r *Refresher) cleanup(ctx context.Context) {
 		days = 30
 	}
 	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+	r.log.Info("database cleanup started", "olderThanDays", days)
 	n, err := r.store.TMDBCachePruneUnusedBefore(ctx, cutoff)
 	if err != nil {
 		r.log.Warn("refresher: cleanup", "error", err)
 		return
 	}
-	if n > 0 {
-		r.log.Info("tmdb cache cleanup", "removed", n, "olderThanDays", days)
-	}
+	r.log.Info("database cleanup finished", "removed", n, "olderThanDays", days)
 }

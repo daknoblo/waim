@@ -401,19 +401,21 @@ func (s *Store) ExportSyncState(ctx context.Context) (SyncState, error) {
 	return state, nil
 }
 
-// PruneRuns deletes all but the most recent keep runs (and their findings).
-func (s *Store) PruneRuns(ctx context.Context, keep int) error {
+// PruneRuns deletes all but the most recent keep runs (and their findings) and
+// returns how many runs were removed.
+func (s *Store) PruneRuns(ctx context.Context, keep int) (int64, error) {
 	if keep < 1 {
 		keep = 1
 	}
-	_, err := s.db.ExecContext(ctx, `
+	res, err := s.db.ExecContext(ctx, `
         DELETE FROM scan_runs WHERE id NOT IN (
             SELECT id FROM scan_runs ORDER BY id DESC LIMIT ?
         )`, keep)
 	if err != nil {
-		return fmt.Errorf("store: prune runs: %w", err)
+		return 0, fmt.Errorf("store: prune runs: %w", err)
 	}
-	return nil
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // rowScanner abstracts *sql.Row and *sql.Rows for shared scanning.

@@ -115,7 +115,7 @@ func fileSize(path string) int64 {
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
-	s.sched.Trigger()
+	s.sched.TriggerForce()
 	t := s.translator(r)
 	s.render(w, r, web.StatusCard(t, s.statusView(r.Context(), t)))
 }

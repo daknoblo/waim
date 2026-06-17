@@ -20,13 +20,14 @@ const baseURL = "https://api.themoviedb.org/3"
 
 // Client talks to the TMDB API with a client-side rate limiter.
 type Client struct {
-	apiKey   string
-	useBuilt bool // true when apiKey is a v4 bearer token
-	language string
-	region   string
-	http     *http.Client
-	limiter  *rate.Limiter
-	cache    Cache
+	apiKey       string
+	useBuilt     bool // true when apiKey is a v4 bearer token
+	language     string
+	region       string
+	http         *http.Client
+	limiter      *rate.Limiter
+	cache        Cache
+	forceRefresh bool // bypass cached reads, but still write fresh responses
 }
 
 // Cache stores raw TMDB JSON responses keyed by request path+query, so repeated
@@ -66,6 +67,14 @@ func (c *Client) WithCache(cache Cache) *Client {
 	return c
 }
 
+// WithForceRefresh makes the client bypass cached reads (always fetching fresh
+// from TMDB) while still updating the cache with the fresh responses. Used for a
+// manual full re-scan.
+func (c *Client) WithForceRefresh(force bool) *Client {
+	c.forceRefresh = force
+	return c
+}
+
 // get fetches path with query q, decoding the JSON into out. When a cache is
 // configured and out is non-nil, successful responses are served from and
 // written to the cache, so repeated calls avoid hitting the TMDB API.
@@ -81,7 +90,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 		key += "?" + enc
 	}
 
-	if c.cache != nil && out != nil {
+	if c.cache != nil && out != nil && !c.forceRefresh {
 		if payload, ok, err := c.cache.Get(ctx, key); err != nil {
 			// Best-effort cache: log and fall back to a live request.
 			slog.Default().Debug("tmdb: cache read failed", "key", key, "error", err)
