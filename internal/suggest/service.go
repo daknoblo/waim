@@ -20,6 +20,7 @@ import (
 	"github.com/daknoblo/waim/internal/jellyfin"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
+	"github.com/daknoblo/waim/internal/tmdbcache"
 )
 
 const (
@@ -143,7 +144,8 @@ func (s *Service) build(ctx context.Context) *Result {
 	res.AIEnabled = settings.AI.Enabled && settings.AI.Endpoint != "" && settings.AI.APIKey != ""
 
 	jf := jellyfin.New(settings.Jellyfin.URL, settings.Jellyfin.APIKey)
-	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS)
+	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
+		WithCache(tmdbcache.New(s.store))
 
 	ownedTV := map[int64]bool{}
 	ownedMovie := map[int64]bool{}

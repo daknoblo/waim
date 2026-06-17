@@ -78,6 +78,22 @@ templ settingsBody(d SettingsData) {
 		</div>
 
 		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.cache") }</h2>
+			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.cacheHint") }</p>
+			@checkboxField(d.Layout.T.T("settings.cacheEnabled"), "cache_refresh_enabled", d.Settings.Cache.RefreshEnabled)
+			<div class="grid gap-3 sm:grid-cols-2">
+				@numberField(d.Layout.T.T("settings.cacheInterval"), "cache_refresh_interval", strconv.Itoa(d.Settings.Cache.RefreshIntervalMinutes), "1")
+				@numberField(d.Layout.T.T("settings.cachePercent"), "cache_refresh_percent", strconv.Itoa(d.Settings.Cache.RefreshPercent), "1")
+			</div>
+			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.cachePercentHint") }</p>
+			@checkboxField(d.Layout.T.T("settings.cacheCleanupEnabled"), "cache_cleanup_enabled", d.Settings.Cache.CleanupEnabled)
+			<div class="grid gap-3 sm:grid-cols-2">
+				@numberField(d.Layout.T.T("settings.cacheCleanupMaxAge"), "cache_cleanup_max_age", strconv.Itoa(d.Settings.Cache.CleanupMaxAgeDays), "1")
+			</div>
+			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.cacheCleanupHint") }</p>
+		</div>
+
+		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.logging") }</h2>
 			<label class="grid gap-1 text-sm max-w-xs">
 				<span class="text-slate-300">{ d.Layout.T.T("settings.logLevel") }</span>

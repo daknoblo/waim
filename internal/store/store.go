@@ -135,6 +135,89 @@ func (s *Store) GetKV(ctx context.Context, key string) (string, bool, error) {
 	}
 }
 
+// --- TMDB response cache ---
+
+// TMDBCacheGet returns the cached payload for key and whether it was present.
+// A hit marks the entry as recently used (throttled to once per day to limit
+// write churn during large scans) so the nightly cleanup can prune entries that
+// are no longer requested by any scan or suggestion.
+func (s *Store) TMDBCacheGet(ctx context.Context, key string) ([]byte, bool, error) {
+	var payload string
+	err := s.db.QueryRowContext(ctx, `SELECT payload FROM tmdb_cache WHERE cache_key = ?`, key).Scan(&payload)
+	switch err {
+	case nil:
+		now := time.Now().UTC()
+		_, _ = s.db.ExecContext(ctx,
+			`UPDATE tmdb_cache SET last_used_at = ? WHERE cache_key = ? AND (last_used_at IS NULL OR last_used_at < ?)`,
+			now.Format(timeLayout), key, now.Add(-24*time.Hour).Format(timeLayout))
+		return []byte(payload), true, nil
+	case sql.ErrNoRows:
+		return nil, false, nil
+	default:
+		return nil, false, fmt.Errorf("store: tmdb cache get: %w", err)
+	}
+}
+
+// TMDBCachePut stores or refreshes the payload for key, stamping fetched_at now.
+// On insert last_used_at is set to now; on refresh (conflict) last_used_at is
+// preserved, so background refreshes do not keep orphaned entries "used".
+func (s *Store) TMDBCachePut(ctx context.Context, key string, payload []byte) error {
+	now := time.Now().UTC().Format(timeLayout)
+	_, err := s.db.ExecContext(ctx, `
+        INSERT INTO tmdb_cache(cache_key, payload, fetched_at, last_used_at) VALUES(?, ?, ?, ?)
+        ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at`,
+		key, string(payload), now, now)
+	if err != nil {
+		return fmt.Errorf("store: tmdb cache put: %w", err)
+	}
+	return nil
+}
+
+// TMDBCacheCount returns the number of cached TMDB entries.
+func (s *Store) TMDBCacheCount(ctx context.Context) (int, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM tmdb_cache`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("store: tmdb cache count: %w", err)
+	}
+	return n, nil
+}
+
+// TMDBCacheOldestKeys returns up to limit cache keys with the oldest fetched_at.
+func (s *Store) TMDBCacheOldestKeys(ctx context.Context, limit int) ([]string, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT cache_key FROM tmdb_cache ORDER BY fetched_at ASC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: tmdb cache oldest: %w", err)
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, fmt.Errorf("store: tmdb cache scan: %w", err)
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+// TMDBCachePruneUnusedBefore deletes cache entries whose last_used_at is older
+// than cutoff (i.e. not requested by any scan or suggestion since then) and
+// returns the number removed.
+func (s *Store) TMDBCachePruneUnusedBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM tmdb_cache WHERE last_used_at IS NOT NULL AND last_used_at < ?`,
+		cutoff.UTC().Format(timeLayout))
+	if err != nil {
+		return 0, fmt.Errorf("store: tmdb cache prune: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // --- Scan runs ---
 
 // StartScanRun inserts a new run in the "running" state and returns its ID.

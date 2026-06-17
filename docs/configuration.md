@@ -36,6 +36,13 @@ encrypted** and never written in plaintext.
     "tmdbRateLimitRps": 1,     // TMDB requests per second
     "includeSpecials": false   // include season 0 / specials in comparisons
   },
+  "cache": {
+    "refreshEnabled": true,        // run the background TMDB cache refresher
+    "refreshIntervalMinutes": 15,  // minutes between refresh batches
+    "refreshPercent": 1,           // percent of oldest entries refreshed per batch
+    "cleanupEnabled": true,        // prune orphaned entries once a night
+    "cleanupMaxAgeDays": 30        // remove entries unused for this many days
+  },
   "libraries": [
     { "id": "...", "name": "Movies", "type": "movies", "enabled": true }
   ]
@@ -87,6 +94,21 @@ turned off by default.
 | Run a scan on startup  | Trigger one scan when the container starts.                              |
 | TMDB requests per second | Client-side rate limit for TMDB API calls.                            |
 | Include specials (season 0) | When enabled, specials are included in the comparison; off by default. |
+
+### Data refresh
+
+TMDB responses are cached locally in `waim.db` (`tmdb_cache` table), so scans and
+suggestions reuse data instead of re-fetching everything from TMDB. A background
+job keeps the cache fresh by re-fetching the oldest entries first, and a nightly
+cleanup (03:00) prunes entries no longer used by any scan or suggestion.
+
+| Field                          | Description                                                                                          |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Refresh cached TMDB data       | Master switch for the background refresher.                                                          |
+| Refresh interval (minutes)     | How often a refresh batch runs.                                                                      |
+| Share refreshed per run (%)    | Percentage of the oldest cache entries re-fetched each run. The defaults (1% every 15 min) spread a full refresh across the day. |
+| Remove orphaned entries nightly | Master switch for the nightly cleanup.                                                              |
+| Remove entries unused for (days) | Cache entries not requested by any scan or suggestion for this many days are deleted (e.g. media removed from the library). |
 
 ### Libraries
 

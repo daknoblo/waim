@@ -66,6 +66,18 @@ type ScanSettings struct {
 	IncludeSpecials  bool    `json:"includeSpecials"`  // include season 0 / specials
 }
 
+// CacheSettings controls the background refresh of cached TMDB responses. The
+// refresher periodically re-fetches the oldest slice of the cache so data stays
+// current without re-loading everything on each scan, and a nightly cleanup
+// prunes entries no longer used by any scan or suggestion.
+type CacheSettings struct {
+	RefreshEnabled         bool `json:"refreshEnabled"`         // run the background refresher
+	RefreshIntervalMinutes int  `json:"refreshIntervalMinutes"` // minutes between refresh batches
+	RefreshPercent         int  `json:"refreshPercent"`         // percent of cache refreshed per batch (1-100)
+	CleanupEnabled         bool `json:"cleanupEnabled"`         // run the nightly orphan cleanup
+	CleanupMaxAgeDays      int  `json:"cleanupMaxAgeDays"`      // remove entries unused for this many days
+}
+
 // Settings is the full in-memory configuration with decrypted API keys.
 type Settings struct {
 	Locale    string           `json:"locale"`
@@ -74,6 +86,7 @@ type Settings struct {
 	TMDB      TMDBSettings     `json:"tmdb"`
 	AI        AISettings       `json:"ai"`
 	Scan      ScanSettings     `json:"scan"`
+	Cache     CacheSettings    `json:"cache"`
 	Libraries []Library        `json:"libraries"`
 }
 
@@ -94,6 +107,13 @@ func Defaults() Settings {
 			RunOnStart:       true,
 			TMDBRateLimitRPS: 1,
 			IncludeSpecials:  false,
+		},
+		Cache: CacheSettings{
+			RefreshEnabled:         true,
+			RefreshIntervalMinutes: 15,
+			RefreshPercent:         1,
+			CleanupEnabled:         true,
+			CleanupMaxAgeDays:      30,
 		},
 		Libraries: []Library{},
 	}

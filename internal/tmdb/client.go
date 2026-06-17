@@ -25,6 +25,14 @@ type Client struct {
 	region   string
 	http     *http.Client
 	limiter  *rate.Limiter
+	cache    Cache
+}
+
+// Cache stores raw TMDB JSON responses keyed by request path+query, so repeated
+// calls (and re-scans) can be served without hitting the TMDB API.
+type Cache interface {
+	Get(ctx context.Context, key string) ([]byte, bool, error)
+	Put(ctx context.Context, key string, payload []byte) error
 }
 
 // New constructs a TMDB client. The rps argument bounds the request rate; a
@@ -51,27 +59,73 @@ func New(apiKey, language, region string, rps float64) *Client {
 	}
 }
 
+// WithCache attaches a response cache and returns the client for chaining.
+func (c *Client) WithCache(cache Cache) *Client {
+	c.cache = cache
+	return c
+}
+
+// get fetches path with query q, decoding the JSON into out. When a cache is
+// configured and out is non-nil, successful responses are served from and
+// written to the cache, so repeated calls avoid hitting the TMDB API.
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
-	if c.apiKey == "" {
-		return fmt.Errorf("tmdb: API key not configured")
-	}
-	if err := c.limiter.Wait(ctx); err != nil {
-		return err
-	}
 	if q == nil {
 		q = url.Values{}
 	}
 	if c.language != "" {
 		q.Set("language", c.language)
 	}
-	if !c.useBuilt {
-		q.Set("api_key", c.apiKey)
+	key := path
+	if enc := q.Encode(); enc != "" {
+		key += "?" + enc
 	}
 
-	u := baseURL + path + "?" + q.Encode()
+	if c.cache != nil && out != nil {
+		if payload, ok, _ := c.cache.Get(ctx, key); ok && len(payload) > 0 {
+			if err := json.Unmarshal(payload, out); err == nil {
+				return nil
+			}
+			// Corrupt cache entry: fall through and re-fetch.
+		}
+	}
+
+	body, err := c.fetchRaw(ctx, path, q)
+	if err != nil {
+		return err
+	}
+	if c.cache != nil && out != nil && len(body) > 0 {
+		_ = c.cache.Put(ctx, key, body)
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("tmdb: decode %s: %w", path, err)
+	}
+	return nil
+}
+
+// fetchRaw performs the rate-limited HTTP GET and returns the raw response body.
+// q must already contain the language parameter; the API key is added here.
+func (c *Client) fetchRaw(ctx context.Context, path string, q url.Values) ([]byte, error) {
+	if c.apiKey == "" {
+		return nil, fmt.Errorf("tmdb: API key not configured")
+	}
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	qq := make(url.Values, len(q)+1)
+	for k, v := range q {
+		qq[k] = v
+	}
+	if !c.useBuilt {
+		qq.Set("api_key", c.apiKey)
+	}
+
+	u := baseURL + path + "?" + qq.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return fmt.Errorf("tmdb: build request: %w", err)
+		return nil, fmt.Errorf("tmdb: build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	if c.useBuilt {
@@ -80,24 +134,43 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("tmdb: request %s: %w", path, err)
+		return nil, fmt.Errorf("tmdb: request %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("tmdb: %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("tmdb: %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	if out == nil {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, fmt.Errorf("tmdb: read %s: %w", path, err)
+	}
+	return body, nil
+}
+
+// RefreshKey re-fetches the cached entry identified by key (path?query) and
+// stores the fresh payload. Used by the background refresher.
+func (c *Client) RefreshKey(ctx context.Context, key string) error {
+	if c.cache == nil {
 		return nil
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("tmdb: decode %s: %w", path, err)
+	path := key
+	q := url.Values{}
+	if i := strings.IndexByte(key, '?'); i >= 0 {
+		path = key[:i]
+		if parsed, perr := url.ParseQuery(key[i+1:]); perr == nil {
+			q = parsed
+		}
 	}
-	return nil
+	body, err := c.fetchRaw(ctx, path, q)
+	if err != nil {
+		return err
+	}
+	return c.cache.Put(ctx, key, body)
 }
 
 // ErrNotFound is returned when TMDB responds with HTTP 404.
