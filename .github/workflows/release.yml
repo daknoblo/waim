@@ -21,6 +21,11 @@ jobs:
   publish:
     name: Build, Push & Scan Image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      id-token: write
     steps:
       - name: "\U0001F4E5 Check out repository"
         uses: actions/checkout@v6
@@ -78,6 +83,19 @@ jobs:
             DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: "\U0001F524 Compute lowercase image ref"
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
       - name: "\U0001F6E1\uFE0F Scan image for vulnerabilities (Trivy)"
         uses: aquasecurity/trivy-action@v0.36.0

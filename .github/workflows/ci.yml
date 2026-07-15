@@ -19,10 +19,10 @@ jobs:
       - name: "\U0001F4E5 Check out repository"
         uses: actions/checkout@v6
 
-      - name: "\U0001F527 Set up Go 1.25 (with module cache)"
+      - name: "\U0001F527 Set up Go 1.26 (with module cache)"
         uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           cache: true
 
       - name: "\U0001F4E6 Install templ code generator"
@@ -49,6 +49,11 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
+
+      - name: "\U0001F6E1\uFE0F Vulnerability check (govulncheck)"
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
       - name: "\u2705 Run tests (with race detector)"
         run: go test -race ./...
