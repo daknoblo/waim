@@ -41,12 +41,12 @@ FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
 COPY --from=builder /out/waim /app/waim
-COPY --from=builder --chown=65532:65532 /out/appdata /app/appdata
+COPY --from=builder --chown=65532:65532 /out/appdata /appdata
 
 ENV WAIM_ADDR=:8080
 
 EXPOSE 8080
-VOLUME ["/app/appdata"]
+VOLUME ["/appdata"]
 
 # Run as the built-in non-root user provided by the distroless image.
 USER nonroot:nonroot

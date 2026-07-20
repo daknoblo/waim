@@ -27,7 +27,7 @@ docker run -d \
   --name waim \
   -p 8080:8080 \
   -e WAIM_MASTER_KEY="$(openssl rand -base64 32)" \
-  -v waim-data:/app/appdata \
+  -v waim-data:/appdata \
   --read-only \
   --security-opt no-new-privileges:true \
   --cap-drop ALL \
@@ -63,7 +63,7 @@ Everything else is configured in the web UI. Log verbosity is set on the
 
 ## Persistence
 
-Everything waim needs lives in the container data directory `/app/appdata`
+Everything waim needs lives in the container data directory `/appdata`
 (this path is fixed; mount a volume there to keep your data):
 
 - `config.json` — settings, with API keys stored encrypted.

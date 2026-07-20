@@ -21,7 +21,7 @@ services:
       # Timezone for the database timestamps and log display (IANA name).
       TZ: "${TZ:-Etc/UTC}"
     volumes:
-      - waim-data:/app/appdata
+      - waim-data:/appdata
     # Security hardening: run with a read-only root filesystem; only the
     # mounted data volume (and an in-memory /tmp) are writable.
     read_only: true

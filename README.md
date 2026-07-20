@@ -100,7 +100,7 @@ in the data directory. Only a few environment variables are needed:
 | `WAIM_ADDR`       | `:8080`        | Listen address.                                       |
 | `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
 
-The data directory is fixed at `/app/appdata` inside the container (mount a
+The data directory is fixed at `/appdata` inside the container (mount a
 volume there to persist it). All other configuration lives in the web UI.
 
 See [docs/configuration.md](docs/configuration.md) for the full settings
