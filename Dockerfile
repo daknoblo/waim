@@ -11,22 +11,22 @@ WORKDIR /src
 
 # Cache dependencies first.
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy the rest of the sources (generated *_templ.go and app.css are committed).
 COPY . .
 
 ARG VERSION=dev
-ARG CHANNEL=local
 ARG COMMIT=unknown
 ARG DATE=unknown
 
 # Build a fully static, CGO-free binary (modernc.org/sqlite is pure Go).
-RUN CGO_ENABLED=0 GOOS=linux go build \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
     -ldflags="-s -w \
       -X github.com/daknoblo/waim/internal/version.Version=${VERSION} \
-      -X github.com/daknoblo/waim/internal/version.Channel=${CHANNEL} \
       -X github.com/daknoblo/waim/internal/version.Commit=${COMMIT} \
       -X github.com/daknoblo/waim/internal/version.Date=${DATE}" \
     -o /out/waim ./cmd/waim

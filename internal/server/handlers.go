@@ -95,7 +95,6 @@ func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
 	dbSize := fileSize(dbPath) + fileSize(dbPath+"-wal") + fileSize(dbPath+"-shm")
 	d := web.AboutData{
 		Layout:     s.layout(r, web.NavAbout),
-		Channel:    s.info.Channel,
 		Version:    s.info.Version,
 		Commit:     short,
 		CommitURL:  commitURL,
@@ -144,16 +143,24 @@ func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 	}
 	loc := r.FormValue("locale")
 	if s.catalog.Has(loc) {
-		http.SetCookie(w, &http.Cookie{
-			Name:     localeCookie,
-			Value:    loc,
-			Path:     "/",
-			MaxAge:   60 * 60 * 24 * 365,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
+		setLocaleCookie(w, r, loc)
 	}
 	redirectBack(w, r)
+}
+
+// setLocaleCookie persists the selected UI language for a year. It is HttpOnly
+// (no script needs it), SameSite=Lax and Secure whenever the request arrived
+// over HTTPS.
+func setLocaleCookie(w http.ResponseWriter, r *http.Request, locale string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     localeCookie,
+		Value:    locale,
+		Path:     "/",
+		MaxAge:   int((365 * 24 * time.Hour).Seconds()),
+		HttpOnly: true,
+		Secure:   isSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func (s *Server) dashboardData(r *http.Request) web.DashboardData {

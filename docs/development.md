@@ -74,11 +74,13 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
 - `.github/workflows/ci.yml` — verifies generated templ code and CSS are up to
   date, runs `go vet`, golangci-lint, race-enabled tests and a build.
 - `.github/workflows/release.yml` — builds and pushes multi-arch images to
-  `ghcr.io`. `main` → `:stable`, `develop` → `:dev`, git tags → semver tags.
-  Images are scanned with Trivy.
+  `ghcr.io`. `main` → `:latest`, git tags → semver tags, every commit → a
+  `sha-…` tag. Images are scanned with Trivy.
 
 ## Branching & releases
 
-- `main` is the stable channel; merges here publish the `:stable` image.
-- `develop` is the development channel; pushes here publish the `:dev` image.
+- `main` is the only long-lived branch; every merge publishes the `:latest`
+  image plus an immutable `sha-…` tag for rollbacks.
+- Use short-lived feature branches and pull requests against `main`; CI runs on
+  every PR.
 - Create a `vX.Y.Z` tag to publish a pinned, versioned image.

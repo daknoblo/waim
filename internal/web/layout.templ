@@ -18,6 +18,8 @@ templ Page(l Layout, body templ.Component) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="color-scheme" content="dark"/>
+			<!-- Keep htmx from injecting an inline <style> element (blocked by the CSP). -->
+			<meta name="htmx-config" content="{&#34;includeIndicatorStyles&#34;:false}"/>
 			<title>{ l.T.T("app.title") } — { l.T.T("app.tagline") }</title>
 			<link rel="stylesheet" href={ "/static/app.css?v=" + l.AssetVersion }/>
 			<script src={ "/static/htmx.min.js?v=" + l.AssetVersion } defer></script>
@@ -50,7 +52,7 @@ templ Page(l Layout, body templ.Component) {
 				</main>
 				<footer class="border-t border-slate-800 py-4 text-xs text-slate-500">
 					<div class="flex flex-wrap items-center justify-between gap-2">
-						<span>{ l.T.T("app.title") } · { l.Channel } · { l.Version }</span>
+						<span>{ l.T.T("app.title") } · { l.Version }</span>
 						<a class="hover:text-slate-300" href={ templ.SafeURL(l.Repo) } target="_blank" rel="noreferrer noopener">{ l.Repo }</a>
 					</div>
 				</footer>
@@ -64,7 +66,6 @@ templ languageSwitcher(l Layout) {
 		<select
 			name="locale"
 			aria-label={ l.T.T("settings.uiLanguage") }
-			onchange="this.form.submit()"
 			class="lang-select"
 		>
 			for _, lang := range l.Languages {

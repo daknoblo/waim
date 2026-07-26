@@ -4,12 +4,16 @@ name: Code Checks (Lint, Test & Build)
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -19,10 +23,10 @@ jobs:
       - name: "\U0001F4E5 Check out repository"
         uses: actions/checkout@v6
 
-      - name: "\U0001F527 Set up Go 1.25 (with module cache)"
+      - name: "\U0001F527 Set up Go (version from go.mod, with module cache)"
         uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version-file: go.mod
           cache: true
 
       - name: "\U0001F4E6 Install templ code generator"

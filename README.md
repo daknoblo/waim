@@ -51,7 +51,7 @@ Huntarr or Missingarr.
   sync state.
 - Bilingual UI (English / German) with an in-app language switch.
 - Activity log and live scan status in the dashboard.
-- Stable and dev image channels published to GitHub Container Registry.
+- Multi-arch images published to GitHub Container Registry.
 
 ## Screenshots
 
@@ -81,13 +81,13 @@ Then open <http://localhost:8080>, go to **Settings**, and enter your Jellyfin
 URL + API key and your TMDB API key. Use **Refresh libraries from Jellyfin** to
 load your libraries, select the ones to scan, and save.
 
-### Image channels
+### Image tags
 
-| Tag                            | Source branch | Purpose            |
-| ------------------------------ | ------------- | ------------------ |
-| `ghcr.io/daknoblo/waim:stable` | `main`        | Stable releases    |
-| `ghcr.io/daknoblo/waim:dev`    | `develop`     | Development builds |
-| `ghcr.io/daknoblo/waim:vX.Y.Z` | git tag       | Pinned versions    |
+| Tag                            | Source        | Purpose                       |
+| ------------------------------ | ------------- | ----------------------------- |
+| `ghcr.io/daknoblo/waim:latest` | `main`        | Current build of `main`       |
+| `ghcr.io/daknoblo/waim:vX.Y.Z` | git tag       | Pinned versions               |
+| `ghcr.io/daknoblo/waim:sha-…`  | every commit  | Exact commit, for rollbacks   |
 
 ## Configuration
 

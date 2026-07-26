@@ -172,7 +172,6 @@
   "suggestions.generatedAt": "Generated",
 
   "about.title": "About",
-  "about.channel": "Channel",
   "about.commit": "Commit",
   "about.database": "Database size",
   "about.config": "Config size",

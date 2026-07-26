@@ -29,12 +29,25 @@ type Store struct {
 // Open opens (creating if needed) the SQLite database at path, applies pending
 // migrations, and returns a ready-to-use Store.
 func Open(path string) (*Store, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)", path)
+	// synchronous(NORMAL) is the recommended durability level for WAL: it is
+	// crash-safe and avoids an fsync per transaction. The negative cache_size is
+	// a KiB budget (8 MiB), which keeps memory bounded regardless of page size.
+	dsn := fmt.Sprintf("file:%s?"+
+		"_pragma=busy_timeout(5000)"+
+		"&_pragma=journal_mode(WAL)"+
+		"&_pragma=synchronous(NORMAL)"+
+		"&_pragma=foreign_keys(ON)"+
+		"&_pragma=cache_size(-8000)", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}
-	db.SetMaxOpenConns(1) // SQLite: serialise writes to avoid lock contention
+	// SQLite: serialise access through a single connection to avoid lock
+	// contention; keep it alive so the pragmas are not re-applied per query.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxIdleTime(0)
+	db.SetConnMaxLifetime(0)
 	s := &Store{db: db, path: path}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()

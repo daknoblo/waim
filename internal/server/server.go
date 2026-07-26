@@ -102,7 +102,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /export/settings", s.handleExportSettings)
 	mux.HandleFunc("GET /export/sync", s.handleExportSync)
 
-	return logRequests(s.log, mux)
+	// CrossOriginProtection rejects unsafe (state-changing) cross-origin browser
+	// requests based on Sec-Fetch-Site / Origin, which protects every POST route
+	// against CSRF without needing per-form tokens.
+	csrf := http.NewCrossOriginProtection()
+	return logRequests(s.log, securityHeaders(limitRequestBody(csrf.Handler(mux))))
 }
 
 // locale resolves the active locale from the cookie, then the configured
@@ -124,7 +128,6 @@ func (s *Server) layout(r *http.Request, active string) web.Layout {
 		T:                t,
 		Active:           active,
 		Version:          s.info.Version,
-		Channel:          s.info.Channel,
 		AssetVersion:     s.assetVer,
 		Repo:             repoURL,
 		MasterKeyMissing: !s.cfg.CipherEnabled(),
@@ -153,14 +156,77 @@ func cacheControl(next http.Handler) http.Handler {
 	})
 }
 
+// contentSecurityPolicy locks the page down to same-origin scripts and styles.
+// The only external resource is the TMDB poster CDN. No inline scripts, styles
+// or event handlers are used, so no 'unsafe-inline' is required.
+const contentSecurityPolicy = "default-src 'none'; " +
+	"script-src 'self'; " +
+	"style-src 'self'; " +
+	"img-src 'self' data: https://image.tmdb.org; " +
+	"font-src 'self'; " +
+	"connect-src 'self'; " +
+	"form-action 'self'; " +
+	"frame-ancestors 'none'; " +
+	"base-uri 'none'"
+
+// securityHeaders applies conservative, framework-independent response headers.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		// same-origin keeps the Referer available for the post-locale redirect
+		// while never leaking the URL to third parties.
+		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		h.Set("Cross-Origin-Resource-Policy", "same-origin")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()")
+		if isSecureRequest(r) {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// maxRequestBody bounds the size of an incoming request body. The largest form
+// (settings, including the library list) is far below this.
+const maxRequestBody = 1 << 20 // 1 MiB
+
+// limitRequestBody caps the body of state-changing requests so a malicious or
+// broken client cannot exhaust memory via ParseForm.
+func limitRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+		default:
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isSecureRequest reports whether the client connection is HTTPS, either
+// directly or through a terminating reverse proxy. A spoofed header can only
+// make cookies stricter, never weaker.
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip the high-frequency paths before wrapping, so polling partials and
+		// static assets cost no extra allocation.
+		if skipRequestLog(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		if skipRequestLog(r.URL.Path) {
-			return
-		}
 		log.Debug(fmt.Sprintf("%s %s \u2192 %d (%s)",
 			r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond)))
 	})

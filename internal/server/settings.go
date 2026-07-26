@@ -53,10 +53,7 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	s.applyLogLevel(ns.LogLevel)
 	// Reflect a locale change immediately via the cookie.
 	if s.catalog.Has(ns.Locale) {
-		http.SetCookie(w, &http.Cookie{
-			Name: localeCookie, Value: ns.Locale, Path: "/",
-			MaxAge: 60 * 60 * 24 * 365, HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		})
+		setLocaleCookie(w, r, ns.Locale)
 	}
 	tt := s.catalog.For(ns.Locale)
 	jfCheck, tdCheck := s.testConnections(r.Context(), tt, ns)

@@ -1,11 +1,10 @@
 # Builds the multi-arch Docker image, publishes it to GitHub Container Registry
-# (main -> :stable, develop -> :dev, tags -> versioned) and scans it for
-# vulnerabilities.
+# (main -> :latest, tags -> versioned) and scans it for vulnerabilities.
 name: Publish Docker Image (ghcr.io)
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     tags: ["v*"]
 
 env:
@@ -16,6 +15,10 @@ permissions:
   contents: read
   packages: write
   security-events: write
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   publish:
@@ -38,15 +41,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "\U0001F551 Compute build version and channel"
+      - name: "\U0001F551 Compute build version"
         id: buildmeta
-        run: |
-          echo "version=$(date -u +v%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "channel=stable" >> "$GITHUB_OUTPUT"
-          else
-            echo "channel=dev" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "version=$(date -u +v%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
 
       - name: "\U0001F3F7\uFE0F Determine image tags & labels"
         id: meta
@@ -54,8 +51,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
@@ -73,7 +69,6 @@ jobs:
           sbom: true
           build-args: |
             VERSION=${{ steps.buildmeta.outputs.version }}
-            CHANNEL=${{ steps.buildmeta.outputs.channel }}
             COMMIT=${{ github.sha }}
             DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha

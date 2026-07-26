@@ -20,6 +20,8 @@ type Entry struct {
 type Buffer struct {
 	mu      sync.RWMutex
 	entries []Entry
+	start   int // index of the oldest entry
+	count   int // number of entries currently held
 	max     int
 }
 
@@ -28,26 +30,29 @@ func New(max int) *Buffer {
 	if max <= 0 {
 		max = 200
 	}
-	return &Buffer{max: max, entries: make([]Entry, 0, max)}
+	return &Buffer{max: max, entries: make([]Entry, max)}
 }
 
-// Add appends an entry, evicting the oldest when at capacity.
+// Add appends an entry, evicting the oldest when at capacity. Insertion is O(1)
+// so debug-level logging during a scan does not shift the whole buffer.
 func (b *Buffer) Add(e Entry) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if len(b.entries) >= b.max {
-		copy(b.entries, b.entries[1:])
-		b.entries = b.entries[:b.max-1]
+	b.entries[(b.start+b.count)%b.max] = e
+	if b.count < b.max {
+		b.count++
+		return
 	}
-	b.entries = append(b.entries, e)
+	b.start = (b.start + 1) % b.max
 }
 
 // Entries returns a snapshot of the buffered entries, newest last.
 func (b *Buffer) Entries() []Entry {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	out := make([]Entry, len(b.entries))
-	copy(out, b.entries)
+	out := make([]Entry, b.count)
+	n := copy(out, b.entries[b.start:min(b.start+b.count, b.max)])
+	copy(out[n:], b.entries[:b.count-n])
 	return out
 }
 

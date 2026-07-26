@@ -9,8 +9,6 @@ import "runtime/debug"
 var (
 	// Version is the build version, formatted as vYYYYMMDD-HHMM at build time.
 	Version = "dev"
-	// Channel is the release channel: "stable", "dev" or "local".
-	Channel = "local"
 	// Commit is the git commit hash.
 	Commit = "unknown"
 	// Date is the build date in RFC3339 format.
@@ -20,7 +18,6 @@ var (
 // Info bundles the build metadata for display in the UI and logs.
 type Info struct {
 	Version string `json:"version"`
-	Channel string `json:"channel"`
 	Commit  string `json:"commit"`
 	Date    string `json:"date"`
 	GoVer   string `json:"goVersion"`
@@ -34,7 +31,6 @@ func Get() Info {
 	}
 	return Info{
 		Version: Version,
-		Channel: Channel,
 		Commit:  Commit,
 		Date:    Date,
 		GoVer:   goVer,

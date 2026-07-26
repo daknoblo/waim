@@ -78,6 +78,15 @@
     }
   }
 
+  // Submit the language switcher on selection. Handled here rather than with an
+  // inline onchange attribute so the page works under a strict CSP.
+  function onLangChange(e) {
+    var t = e.target;
+    if (t && t.classList && t.classList.contains("lang-select") && t.form) {
+      t.form.submit();
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var box = document.getElementById("finding-search");
     if (box) {
@@ -93,5 +102,7 @@
     document.body.addEventListener("click", onCopyClick);
     // Expandable rated lists on the statistics page (delegated).
     document.body.addEventListener("change", onRatedLimitChange);
+    // Language switcher (delegated).
+    document.body.addEventListener("change", onLangChange);
   });
 })();

@@ -15,8 +15,7 @@ waim is distributed as a multi-arch container image (`linux/amd64`,
 ## Pulling the image
 
 ```bash
-docker pull ghcr.io/daknoblo/waim:stable   # stable channel (main branch)
-docker pull ghcr.io/daknoblo/waim:dev      # development channel (develop branch)
+docker pull ghcr.io/daknoblo/waim:latest   # current build of the main branch
 docker pull ghcr.io/daknoblo/waim:v1.0.0   # a specific version tag
 ```
 
@@ -32,7 +31,7 @@ docker run -d \
   --security-opt no-new-privileges:true \
   --cap-drop ALL \
   --tmpfs /tmp \
-  ghcr.io/daknoblo/waim:stable
+  ghcr.io/daknoblo/waim:latest
 ```
 
 > Store the generated `WAIM_MASTER_KEY` somewhere safe. If you lose it, the
@@ -60,6 +59,20 @@ docker compose up -d
 
 Everything else is configured in the web UI. Log verbosity is set on the
 **Settings** page (not via an environment variable).
+
+## Running behind a reverse proxy
+
+waim has no built-in authentication — put it behind a proxy that handles TLS
+and access control. Two headers matter:
+
+- Forward the original `Host` header (nginx: `proxy_set_header Host $host;`).
+  waim rejects state-changing cross-origin requests (CSRF protection) by
+  comparing the browser's `Origin` against `Host`.
+- Forward `X-Forwarded-Proto: https` so the language cookie is marked `Secure`
+  and `Strict-Transport-Security` is sent.
+
+waim already emits a strict `Content-Security-Policy`, `X-Frame-Options: DENY`
+and `X-Content-Type-Options: nosniff`; the proxy does not need to add them.
 
 ## Persistence
 

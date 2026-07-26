@@ -257,7 +257,9 @@ func (m *Manager) decryptStored(st stored) Settings {
 	return s
 }
 
-// persist atomically writes the stored representation to disk.
+// persist atomically writes the stored representation to disk. The temp file is
+// fsynced before the rename so a crash or power loss cannot leave a truncated
+// config (which would lose the salt and with it every encrypted API key).
 func (m *Manager) persist(st stored) error {
 	st.SchemaVersion = SchemaVersion
 	data, err := json.MarshalIndent(st, "", "  ")
@@ -265,11 +267,34 @@ func (m *Manager) persist(st stored) error {
 		return fmt.Errorf("config: marshal: %w", err)
 	}
 	tmp := m.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("config: write temp: %w", err)
+	if err := writeFileSync(tmp, data); err != nil {
+		_ = os.Remove(tmp)
+		return err
 	}
 	if err := os.Rename(tmp, m.path); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("config: rename: %w", err)
+	}
+	return nil
+}
+
+// writeFileSync writes data to path with owner-only permissions and flushes it
+// to stable storage.
+func writeFileSync(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("config: write temp: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("config: write temp: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("config: sync temp: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("config: close temp: %w", err)
 	}
 	return nil
 }
