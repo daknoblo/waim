@@ -1,7 +1,8 @@
 # waim — What Am I Missing?
 
 [![CI](https://github.com/daknoblo/waim/actions/workflows/ci.yml/badge.svg)](https://github.com/daknoblo/waim/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/daknoblo/waim)](https://goreportcard.com/report/github.com/daknoblo/waim)
+[![Release](https://img.shields.io/github/v/release/daknoblo/waim)](https://github.com/daknoblo/waim/releases/latest)
+[![Go](https://img.shields.io/github/go-mod/go-version/daknoblo/waim)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GHCR](https://img.shields.io/badge/ghcr.io-waim-blue?logo=docker)](https://github.com/daknoblo/waim/pkgs/container/waim)
 
