@@ -84,7 +84,7 @@ jobs:
           ignore-unfixed: true
 
       - name: "\U0001F4E4 Upload scan results to the Security tab"
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4.37.3
         if: always()
         with:
           sarif_file: trivy-results.sarif
