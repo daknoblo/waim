@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: "\U0001F9F0 Set up QEMU (multi-arch emulation)"
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: "\U0001F3D7\uFE0F Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
