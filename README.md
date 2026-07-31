@@ -136,3 +136,8 @@ This project is **entirely "vibe-coded"** — it was generated with AI assistanc
 and does not come with formal quality-assurance guarantees or warranty. It talks
 to your Jellyfin server in read-only mode and to the TMDB API, but you should
 review the code and use it at your own risk.
+
+
+## License
+
+Released under the [MIT License](LICENSE).
