@@ -1,8 +1,14 @@
 # waim — What Am I Missing?
 
-> [!WARNING]
-> **This project is entirely "vibe-coded"** (AI-assisted, without formal QA
-> guarantees). Use it at your own risk. See [Disclaimer](#disclaimer).
+[![CI](https://github.com/daknoblo/waim/actions/workflows/ci.yml/badge.svg)](https://github.com/daknoblo/waim/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/daknoblo/waim)](https://goreportcard.com/report/github.com/daknoblo/waim)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![GHCR](https://img.shields.io/badge/ghcr.io-waim-blue?logo=docker)](https://github.com/daknoblo/waim/pkgs/container/waim)
+
+> [!NOTE]
+> This project is built with heavy AI assistance. Every change goes through CI,
+> golangci-lint, CodeQL and Dependabot, but it is a personal side project — see
+> [Disclaimer](#disclaimer).
 
 **waim** connects to your [Jellyfin](https://jellyfin.org/) server, reads your
 movies and series, and compares them against
@@ -132,10 +138,11 @@ Docker (distroless) · GitHub Actions.
 
 ## Disclaimer
 
-This project is **entirely "vibe-coded"** — it was generated with AI assistance
-and does not come with formal quality-assurance guarantees or warranty. It talks
-to your Jellyfin server in read-only mode and to the TMDB API, but you should
-review the code and use it at your own risk.
+This project is developed with heavy AI assistance and validated by CI,
+golangci-lint, CodeQL and Dependabot on every change. It is still a personal
+side project rather than a supported product: it talks to your Jellyfin server
+in read-only mode and to the TMDB API, and it is provided as-is, without
+warranty — see [LICENSE](LICENSE).
 
 
 ## License
