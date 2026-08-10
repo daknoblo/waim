@@ -43,10 +43,52 @@ type StatsData struct {
 	Genres         []StatsBar
 	Years          []StatsBar
 	RatingSpread   []StatsBar
+	Languages      []StatsBar
+	Countries      []StatsBar
 	GenrePie       []PieSlice
 	YearPie        []PieSlice
+	LanguagePie    []PieSlice
+	GenreRatings   []StatsRatedGroup
+	Completion     []StatsCompletion
+	EpisodePct     int
+	Growth         []StatsGrowth
 	SeriesOptions  []SeriesOption
 	Flow           SeriesFlow
+}
+
+// StatsCompletion is one series row of the season completion heatmap.
+type StatsCompletion struct {
+	Title   string
+	Library string
+	Color   []string
+	Owned   int
+	Total   int
+	Pct     int
+	Cells   []CompletionCell
+}
+
+// CompletionCell is a single season square of the heatmap.
+type CompletionCell struct {
+	Label string
+	Hint  string
+	Fill  string
+}
+
+// StatsRatedGroup is the average rating of a group of titles, e.g. a genre.
+type StatsRatedGroup struct {
+	Label  string
+	Rating string
+	Count  int
+	Pct    int
+}
+
+// StatsGrowth is one point of the library growth trend.
+type StatsGrowth struct {
+	Date   string
+	Titles int
+	Delta  string
+	Up     bool
+	Pct    int
 }
 
 // StatsFact is a single headline number with an explanatory label.
@@ -132,7 +174,8 @@ type StatsBar struct {
 
 // BuildStats computes the statistics view from the latest run and its findings.
 // libTypes maps library IDs to their Jellyfin collection type (movies/tvshows).
-func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding, libTypes map[string]string) StatsData {
+// history holds the totals of earlier runs for the growth trend.
+func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding, libTypes map[string]string, history []store.RunTotals) StatsData {
 	sd := StatsData{}
 	if run == nil {
 		return sd
@@ -223,8 +266,48 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 	computeMediaStats(&sd, run, t)
 	sd.FindingRatings = buildFindingRatings(findings)
 	sd.SeriesFindings = buildSeriesFindingRatings(findings, run.Media)
+	sd.Growth = buildGrowth(history)
 
 	return sd
+}
+
+// buildGrowth turns the totals of the recent scans into a trend of how many
+// titles the library gained (or lost) per scan.
+func buildGrowth(history []store.RunTotals) []StatsGrowth {
+	if len(history) < 2 {
+		return nil
+	}
+	max := 0
+	for _, h := range history {
+		if h.ItemsScanned > max {
+			max = h.ItemsScanned
+		}
+	}
+	out := make([]StatsGrowth, 0, len(history))
+	for i, h := range history {
+		g := StatsGrowth{
+			Date:   h.FinishedAt.Local().Format("2006-01-02"),
+			Titles: h.ItemsScanned,
+			Delta:  "\u2014",
+		}
+		if max > 0 {
+			g.Pct = h.ItemsScanned * 100 / max
+		}
+		if i > 0 {
+			d := h.ItemsScanned - history[i-1].ItemsScanned
+			switch {
+			case d > 0:
+				g.Delta = "+" + strconv.Itoa(d)
+				g.Up = true
+			case d < 0:
+				g.Delta = strconv.Itoa(d)
+			default:
+				g.Delta = "\u00b10"
+			}
+		}
+		out = append(out, g)
+	}
+	return out
 }
 
 func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
@@ -232,6 +315,8 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 	var movies, series []store.MediaStat
 	genreCounts := map[string]int{}
 	decadeCounts := map[int]int{}
+	langCounts := map[string]int{}
+	countryCounts := map[string]int{}
 	byLib := map[string][]store.MediaStat{}
 
 	for _, m := range media {
@@ -248,6 +333,12 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 		}
 		if m.Year > 0 {
 			decadeCounts[(m.Year/10)*10]++
+		}
+		if name := languageName(m.Language); name != "" {
+			langCounts[name]++
+		}
+		if name := countryName(m.Country); name != "" {
+			countryCounts[name]++
 		}
 	}
 
@@ -332,8 +423,118 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 
 	sd.GenrePie = pieSlices(sd.Genres)
 	sd.YearPie = pieSlices(sd.Years)
+	sd.Languages = topBars(langCounts, 10, sortByCountDesc)
+	sd.LanguagePie = pieSlices(sd.Languages)
+	sd.Countries = topBars(countryCounts, 12, sortByCountDesc)
 	sd.RatingSpread = ratingSpread(media)
-	sd.Facts = buildFacts(t, movies, series, sd.Genres)
+	sd.GenreRatings = genreRatings(media)
+	sd.Completion, sd.EpisodePct = seriesCompletion(t, series)
+	sd.Facts = buildFacts(t, movies, series, sd.Genres, sd.EpisodePct)
+}
+
+// seriesCompletion builds the season heatmap per series plus the overall share
+// of episodes owned across all series.
+func seriesCompletion(t *i18n.Translator, series []store.MediaStat) ([]StatsCompletion, int) {
+	ownedAll, totalAll := 0, 0
+	var rows []StatsCompletion
+	for _, s := range series {
+		if s.TotalEpisodes == 0 {
+			continue
+		}
+		ownedAll += s.Episodes
+		totalAll += s.TotalEpisodes
+		row := StatsCompletion{
+			Title:   s.Title,
+			Library: s.LibraryName,
+			Color:   LibraryColor(s.LibraryID),
+			Owned:   s.Episodes,
+			Total:   s.TotalEpisodes,
+			Pct:     percent(s.Episodes, s.TotalEpisodes),
+		}
+		for _, sn := range s.Seasons {
+			pct := percent(sn.Episodes, sn.Total)
+			cell := CompletionCell{
+				Label: strconv.Itoa(sn.Number),
+				Hint:  t.T("stats.seasonOwned", sn.Number, sn.Episodes, sn.Total),
+				Fill:  completionFill(pct),
+			}
+			if sn.Number == 0 {
+				cell.Label = "S"
+				cell.Hint = t.T("stats.specialsOwned", sn.Episodes, sn.Total)
+			}
+			row.Cells = append(row.Cells, cell)
+		}
+		rows = append(rows, row)
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Pct < rows[j].Pct })
+	if len(rows) > 20 {
+		rows = rows[:20]
+	}
+	return rows, percent(ownedAll, totalAll)
+}
+
+func completionFill(pct int) string {
+	switch {
+	case pct >= 100:
+		return "bg-emerald-500"
+	case pct >= 75:
+		return "bg-lime-500"
+	case pct >= 50:
+		return "bg-amber-500"
+	case pct > 0:
+		return "bg-orange-500"
+	default:
+		return "bg-rose-600"
+	}
+}
+
+func percent(part, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	return int(math.Round(float64(part) / float64(total) * 100))
+}
+
+// genreRatings averages the ratings of every genre with enough titles to be
+// meaningful, the "which genre do you actually collect well" view.
+func genreRatings(media []store.MediaStat) []StatsRatedGroup {
+	sums := map[string]float64{}
+	counts := map[string]int{}
+	for _, m := range media {
+		if m.Rating <= 0 {
+			continue
+		}
+		for _, g := range m.Genres {
+			sums[g] += m.Rating
+			counts[g]++
+		}
+	}
+	type genreAvg struct {
+		label string
+		avg   float64
+		count int
+	}
+	var avgs []genreAvg
+	for g, c := range counts {
+		if c < 3 {
+			continue
+		}
+		avgs = append(avgs, genreAvg{label: g, avg: sums[g] / float64(c), count: c})
+	}
+	sort.SliceStable(avgs, func(i, j int) bool { return avgs[i].avg > avgs[j].avg })
+	if len(avgs) > 12 {
+		avgs = avgs[:12]
+	}
+	out := make([]StatsRatedGroup, 0, len(avgs))
+	for _, a := range avgs {
+		out = append(out, StatsRatedGroup{
+			Label:  a.label,
+			Rating: fmt.Sprintf("%.1f", a.avg),
+			Count:  a.count,
+			Pct:    int(math.Round(a.avg * 10)),
+		})
+	}
+	return out
 }
 
 // seriesByBingeTime ranks series by the time needed to watch every owned
@@ -362,7 +563,7 @@ func seriesByBingeTime(t *i18n.Translator, series []store.MediaStat) (longest, s
 			out = append(out, StatsRuntime{
 				Title:   b.stat.Title,
 				Year:    b.stat.Year,
-				Detail:  t.T("stats.seasonsEpisodes", len(b.stat.Seasons), b.stat.Episodes),
+				Detail:  t.T("stats.seasonsEpisodes", ownedSeasonCount(b.stat), b.stat.Episodes),
 				Runtime: formatWatchTime(b.minutes),
 			})
 		}
@@ -441,17 +642,40 @@ func ratingSpread(media []store.MediaStat) []StatsBar {
 	return topBars(buckets, 0, sortByLabelAsc)
 }
 
+// ownedSeasonCount counts regular seasons (specials excluded) that have at
+// least one episode on the shelf.
+func ownedSeasonCount(m store.MediaStat) int {
+	n := 0
+	for _, sn := range m.Seasons {
+		if sn.Number > 0 && sn.Episodes > 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// specialEpisodes returns the owned episodes of season 0.
+func specialEpisodes(m store.MediaStat) int {
+	for _, sn := range m.Seasons {
+		if sn.Number == 0 {
+			return sn.Episodes
+		}
+	}
+	return 0
+}
+
 // buildFacts assembles the headline numbers of the library.
-func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []StatsBar) []StatsFact {
+func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []StatsBar, episodePct int) []StatsFact {
 	movieMinutes := 0
 	for _, m := range movies {
 		movieMinutes += m.Runtime
 	}
-	seriesMinutes, episodes, seasons := 0, 0, 0
+	seriesMinutes, episodes, seasons, specials := 0, 0, 0, 0
 	for _, s := range series {
 		seriesMinutes += s.Episodes * s.Runtime
 		episodes += s.Episodes
-		seasons += len(s.Seasons)
+		seasons += ownedSeasonCount(s)
+		specials += specialEpisodes(s)
 	}
 
 	ratingSum, ratingCount := 0.0, 0
@@ -471,7 +695,7 @@ func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []S
 
 	var longestSeries store.MediaStat
 	for _, s := range series {
-		if len(s.Seasons) > len(longestSeries.Seasons) {
+		if ownedSeasonCount(s) > ownedSeasonCount(longestSeries) {
 			longestSeries = s
 		}
 	}
@@ -498,12 +722,28 @@ func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []S
 			Hint:  t.T("stats.factEpisodesHint", seasons, episodes/len(series)),
 		})
 	}
+	if episodePct > 0 {
+		facts = append(facts, StatsFact{
+			Icon:  "\U0001F9E9",
+			Label: t.T("stats.factEpisodeCompletion"),
+			Value: strconv.Itoa(episodePct) + "%",
+			Hint:  t.T("stats.factEpisodeCompletionHint"),
+		})
+	}
+	if specials > 0 {
+		facts = append(facts, StatsFact{
+			Icon:  "\U0001F381",
+			Label: t.T("stats.factSpecials"),
+			Value: strconv.Itoa(percent(specials, episodes)) + "%",
+			Hint:  t.T("stats.factSpecialsHint", specials),
+		})
+	}
 	if longestSeries.Title != "" {
 		facts = append(facts, StatsFact{
 			Icon:  "\U0001F3C6",
 			Label: t.T("stats.factMostSeasons"),
 			Value: longestSeries.Title,
-			Hint:  t.T("stats.seasonsEpisodes", len(longestSeries.Seasons), longestSeries.Episodes),
+			Hint:  t.T("stats.seasonsEpisodes", ownedSeasonCount(longestSeries), longestSeries.Episodes),
 		})
 	}
 	if oldest.Title != "" {

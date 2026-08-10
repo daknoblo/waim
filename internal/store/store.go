@@ -8,6 +8,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -373,6 +374,47 @@ func (s *Store) FindingsForRun(ctx context.Context, runID int64) ([]Finding, err
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// RunTotals is a lightweight scan-run row for trend charts, without the media
+// payload of a full run.
+type RunTotals struct {
+	FinishedAt   time.Time
+	ItemsScanned int
+	MissingCount int
+}
+
+// SuccessfulRunTotals returns the totals of up to limit finished successful
+// runs, oldest first.
+func (s *Store) SuccessfulRunTotals(ctx context.Context, limit int) ([]RunTotals, error) {
+	rows, err := s.db.QueryContext(ctx, `
+        SELECT finished_at, items_scanned, missing_count
+        FROM scan_runs
+        WHERE status = 'success' AND finished_at IS NOT NULL
+        ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store: run totals: %w", err)
+	}
+	defer rows.Close()
+	var out []RunTotals
+	for rows.Next() {
+		var (
+			finished string
+			rt       RunTotals
+		)
+		if err := rows.Scan(&finished, &rt.ItemsScanned, &rt.MissingCount); err != nil {
+			return nil, fmt.Errorf("store: run totals row: %w", err)
+		}
+		if ts, perr := time.Parse(timeLayout, finished); perr == nil {
+			rt.FinishedAt = ts
+		}
+		out = append(out, rt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	slices.Reverse(out)
+	return out, nil
 }
 
 // RecentRuns returns up to limit recent runs, newest first.

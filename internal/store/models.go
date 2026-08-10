@@ -21,10 +21,13 @@ type MediaStat struct {
 	Genres         []string     `json:"genres"`
 	LibraryID      string       `json:"libraryId"`
 	LibraryName    string       `json:"libraryName"`
-	Episodes       int          `json:"episodes,omitempty"`       // owned episodes (series)
-	Seasons        []SeasonStat `json:"seasons,omitempty"`        // owned seasons (series)
-	CollectionID   int64        `json:"collectionId,omitempty"`   // TMDB collection (movies)
-	CollectionName string       `json:"collectionName,omitempty"` // TMDB collection (movies)
+	Language       string       `json:"language,omitempty"`      // ISO 639-1 original language
+	Country        string       `json:"country,omitempty"`       // ISO 3166-1 production country
+	Episodes       int          `json:"episodes,omitempty"`      // owned episodes (series)
+	TotalEpisodes  int          `json:"totalEpisodes,omitempty"` // episodes known to TMDB (series)
+	Seasons        []SeasonStat `json:"seasons,omitempty"`       // seasons known to TMDB (series)
+	CollectionID   int64        `json:"collectionId,omitempty"`  // TMDB collection (movies)
+	CollectionName string       `json:"collectionName,omitempty"`
 }
 
 // SeasonStat captures how many episodes of a season are owned.

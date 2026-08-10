@@ -128,7 +128,19 @@ templ statsBody(d StatsData) {
 				@barList(d.Layout.T.T("stats.byDecade"), d.Years, d.Layout.T.T("stats.noMedia"))
 			</div>
 
-			@barList(d.Layout.T.T("stats.ratingSpread"), d.RatingSpread, d.Layout.T.T("stats.noMedia"))
+			<div class="grid gap-4 lg:grid-cols-2">
+				@pieCard(d.Layout.T.T("stats.byLanguage"), d.LanguagePie, d.Layout.T.T("stats.noOriginData"))
+				@barList(d.Layout.T.T("stats.byCountry"), d.Countries, d.Layout.T.T("stats.noOriginData"))
+			</div>
+
+			<div class="grid gap-4 lg:grid-cols-2">
+				@barList(d.Layout.T.T("stats.ratingSpread"), d.RatingSpread, d.Layout.T.T("stats.noMedia"))
+				@genreRatingCard(d.Layout.T.T("stats.genreRatings"), d.Layout.T.T("stats.genreRatingsHint"), d.GenreRatings, d.Layout.T.T("stats.noMedia"))
+			</div>
+
+			@growthCard(d.Layout.T.T("stats.growth"), d.Layout.T.T("stats.growthHint"), d.Growth, d.Layout.T.T("stats.noGrowth"))
+
+			@completionCard(d.Layout.T, d.Completion, d.EpisodePct)
 
 			@seriesFlowCard(d.Layout.T, d.SeriesOptions, d.Flow)
 
@@ -272,6 +284,82 @@ templ factsCard(title string, facts []StatsFact, empty string) {
 						if f.Hint != "" {
 							<div class="truncate text-xs text-slate-500">{ f.Hint }</div>
 						}
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ completionCard(t *i18n.Translator, rows []StatsCompletion, overall int) {
+	<div class="card">
+		<div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+			<div>
+				<h2 class="text-lg font-semibold">{ t.T("stats.completion") }</h2>
+				<p class="text-sm text-slate-400">{ t.T("stats.completionHint") }</p>
+			</div>
+			if overall > 0 {
+				<span class="text-sm text-slate-300">{ t.T("stats.factEpisodeCompletion") }: { strconv.Itoa(overall) }%</span>
+			}
+		</div>
+		if len(rows) == 0 {
+			<p class="text-sm text-slate-500">{ t.T("stats.noSeriesData") }</p>
+		} else {
+			<div class="grid gap-1.5 text-sm">
+				for _, r := range rows {
+					<div class="flex items-center gap-2">
+						<span class="w-44 shrink-0 truncate text-slate-300" title={ r.Title }>{ r.Title }</span>
+						<span class="flex flex-1 flex-wrap gap-1">
+							for _, c := range r.Cells {
+								<span class={ "flex h-5 w-5 items-center justify-center rounded text-[10px] font-medium text-slate-950", c.Fill } title={ c.Hint }>{ c.Label }</span>
+							}
+						</span>
+						<span class="w-24 shrink-0 text-right text-xs text-slate-400">{ strconv.Itoa(r.Owned) } / { strconv.Itoa(r.Total) }</span>
+						<span class="w-10 shrink-0 text-right text-xs text-slate-500">{ strconv.Itoa(r.Pct) }%</span>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ genreRatingCard(title, hint string, items []StatsRatedGroup, empty string) {
+	<div class="card">
+		<h2 class="mb-1 text-lg font-semibold">{ title }</h2>
+		<p class="mb-3 text-sm text-slate-400">{ hint }</p>
+		if len(items) == 0 {
+			<p class="text-sm text-slate-500">{ empty }</p>
+		} else {
+			<div class="grid gap-1.5 text-sm">
+				for _, it := range items {
+					<div class="flex items-center gap-2">
+						<span class="w-28 shrink-0 truncate text-slate-300">{ it.Label }</span>
+						@meterBar(it.Pct, "fill-amber-500", "h-2 flex-1")
+						<span class="w-10 shrink-0 text-right text-xs text-amber-300">{ "\u2605 " + it.Rating }</span>
+						<span class="w-8 shrink-0 text-right text-xs text-slate-500">{ strconv.Itoa(it.Count) }</span>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ growthCard(title, hint string, items []StatsGrowth, empty string) {
+	<div class="card">
+		<h2 class="mb-1 text-lg font-semibold">{ title }</h2>
+		<p class="mb-3 text-sm text-slate-400">{ hint }</p>
+		if len(items) == 0 {
+			<p class="text-sm text-slate-500">{ empty }</p>
+		} else {
+			<div class="grid gap-1.5 text-sm">
+				for _, g := range items {
+					<div class="flex items-center gap-2">
+						<span class="w-24 shrink-0 text-slate-400">{ g.Date }</span>
+						@meterBar(g.Pct, "fill-sky-500", "h-2 flex-1")
+						<span class="w-12 shrink-0 text-right text-xs text-slate-300">{ strconv.Itoa(g.Titles) }</span>
+						<span
+							class={ "w-10 shrink-0 text-right text-xs", templ.KV("text-emerald-400", g.Up), templ.KV("text-slate-500", !g.Up) }
+						>{ g.Delta }</span>
 					</div>
 				}
 			</div>

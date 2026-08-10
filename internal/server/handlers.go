@@ -42,7 +42,8 @@ func (s *Server) statsData(r *http.Request) web.StatsData {
 	for _, l := range s.cfg.Get().Libraries {
 		libTypes[l.ID] = l.Type
 	}
-	d := web.BuildStats(t, run, findings, libTypes)
+	history, _ := s.store.SuccessfulRunTotals(ctx, 12)
+	d := web.BuildStats(t, run, findings, libTypes, history)
 	d.Layout = s.layout(r, web.NavStats)
 	return d
 }

@@ -158,7 +158,7 @@ const (
 func buildSeriesFlowData(t *i18n.Translator, series []store.MediaStat, selected string) ([]SeriesOption, SeriesFlow) {
 	withSeasons := make([]store.MediaStat, 0, len(series))
 	for _, s := range series {
-		if len(s.Seasons) > 0 {
+		if s.Episodes > 0 {
 			withSeasons = append(withSeasons, s)
 		}
 	}
@@ -180,7 +180,7 @@ func buildSeriesFlowData(t *i18n.Translator, series []store.MediaStat, selected 
 	for _, s := range withSeasons {
 		options = append(options, SeriesOption{
 			Title:    s.Title,
-			Label:    fmt.Sprintf("%s (%s)", s.Title, t.T("stats.seasonsEpisodes", len(s.Seasons), s.Episodes)),
+			Label:    fmt.Sprintf("%s (%s)", s.Title, t.T("stats.seasonsEpisodes", ownedSeasonCount(s), s.Episodes)),
 			Selected: s.Title == chosen.Title,
 		})
 	}
@@ -190,9 +190,13 @@ func buildSeriesFlowData(t *i18n.Translator, series []store.MediaStat, selected 
 // buildSeriesFlow lays out the sankey: season bars on the left, sized by their
 // episode count, and one full-height node for the whole series on the right.
 func buildSeriesFlow(t *i18n.Translator, s store.MediaStat) SeriesFlow {
-	seasons := s.Seasons
+	var seasons []store.SeasonStat
 	total := 0
-	for _, sn := range seasons {
+	for _, sn := range s.Seasons {
+		if sn.Episodes == 0 {
+			continue
+		}
+		seasons = append(seasons, sn)
 		total += sn.Episodes
 	}
 	if total == 0 {
@@ -216,7 +220,7 @@ func buildSeriesFlow(t *i18n.Translator, s store.MediaStat) SeriesFlow {
 		Library:   s.LibraryName,
 		Color:     LibraryColor(s.LibraryID),
 		Height:    int(math.Ceil(height)),
-		Summary:   t.T("stats.seasonsEpisodes", len(seasons), total),
+		Summary:   t.T("stats.seasonsEpisodes", ownedSeasonCount(s), total),
 	}
 
 	y := flowPadding

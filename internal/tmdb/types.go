@@ -15,6 +15,12 @@ type Genre struct {
 	Name string `json:"name"`
 }
 
+// Country is a production country reference.
+type Country struct {
+	Code string `json:"iso_3166_1"`
+	Name string `json:"name"`
+}
+
 // Movie is a subset of the /movie/{id} response.
 type Movie struct {
 	ID                  int64          `json:"id"`
@@ -23,6 +29,8 @@ type Movie struct {
 	ReleaseDate         string         `json:"release_date"`
 	VoteAverage         float64        `json:"vote_average"`
 	Runtime             int            `json:"runtime"`
+	OriginalLanguage    string         `json:"original_language"`
+	ProductionCountries []Country      `json:"production_countries"`
 	Genres              []Genre        `json:"genres"`
 	BelongsToCollection *CollectionRef `json:"belongs_to_collection"`
 }
@@ -52,15 +60,18 @@ type SeasonSummary struct {
 
 // TVShow is a subset of the /tv/{id} response.
 type TVShow struct {
-	ID              int64           `json:"id"`
-	Name            string          `json:"name"`
-	NumberOfSeasons int             `json:"number_of_seasons"`
-	VoteAverage     float64         `json:"vote_average"`
-	PosterPath      string          `json:"poster_path"`
-	FirstAirDate    string          `json:"first_air_date"`
-	EpisodeRunTime  []int           `json:"episode_run_time"`
-	Genres          []Genre         `json:"genres"`
-	Seasons         []SeasonSummary `json:"seasons"`
+	ID               int64           `json:"id"`
+	Name             string          `json:"name"`
+	NumberOfSeasons  int             `json:"number_of_seasons"`
+	NumberOfEpisodes int             `json:"number_of_episodes"`
+	VoteAverage      float64         `json:"vote_average"`
+	PosterPath       string          `json:"poster_path"`
+	FirstAirDate     string          `json:"first_air_date"`
+	EpisodeRunTime   []int           `json:"episode_run_time"`
+	OriginalLanguage string          `json:"original_language"`
+	OriginCountry    []string        `json:"origin_country"`
+	Genres           []Genre         `json:"genres"`
+	Seasons          []SeasonSummary `json:"seasons"`
 }
 
 // Episode is a subset of an episode in a season response.

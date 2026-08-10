@@ -306,6 +306,8 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		Genres:      genreNames(tv.Genres),
 		LibraryID:   libID,
 		LibraryName: libName,
+		Language:    tv.OriginalLanguage,
+		Country:     firstString(tv.OriginCountry),
 	}
 	imdbID, _ := item.ProviderID("Imdb")
 	eps, err := s.jf.Episodes(ctx, userID, item.ID)
@@ -328,6 +330,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 	stat.Seasons = ownedSeasons(tv, present)
 	for _, sn := range stat.Seasons {
 		stat.Episodes += sn.Episodes
+		stat.TotalEpisodes += sn.Total
 	}
 	res.Media = append(res.Media, stat)
 
@@ -496,6 +499,10 @@ func movieStat(m tmdb.Movie, libID, libName string) store.MediaStat {
 		Genres:      genreNames(m.Genres),
 		LibraryID:   libID,
 		LibraryName: libName,
+		Language:    m.OriginalLanguage,
+	}
+	if len(m.ProductionCountries) > 0 {
+		st.Country = m.ProductionCountries[0].Code
 	}
 	if m.BelongsToCollection != nil {
 		st.CollectionID = m.BelongsToCollection.ID
@@ -531,18 +538,29 @@ func firstInt(xs []int) int {
 	return 0
 }
 
-// ownedSeasons pairs the episodes present in Jellyfin with the season list from
-// TMDB, keeping the TMDB season order. Seasons unknown to TMDB are appended.
+func firstString(xs []string) string {
+	if len(xs) > 0 {
+		return xs[0]
+	}
+	return ""
+}
+
+// ownedSeasons pairs the episodes present in Jellyfin with every season TMDB
+// knows about, so seasons that are entirely missing still show up in the
+// statistics. Seasons unknown to TMDB are appended.
 func ownedSeasons(tv tmdb.TVShow, present map[int]map[int]bool) []store.SeasonStat {
 	var out []store.SeasonStat
 	known := map[int]bool{}
 	for _, season := range tv.Seasons {
-		known[season.SeasonNumber] = true
-		owned := len(present[season.SeasonNumber])
-		if owned == 0 {
+		if season.EpisodeCount == 0 {
 			continue
 		}
-		out = append(out, store.SeasonStat{Number: season.SeasonNumber, Episodes: owned, Total: season.EpisodeCount})
+		known[season.SeasonNumber] = true
+		out = append(out, store.SeasonStat{
+			Number:   season.SeasonNumber,
+			Episodes: len(present[season.SeasonNumber]),
+			Total:    season.EpisodeCount,
+		})
 	}
 	extra := make([]int, 0, len(present))
 	for sn := range present {
