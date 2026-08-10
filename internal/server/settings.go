@@ -135,6 +135,7 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	ns.Scan.TMDBRateLimitRPS = atofDefault(r.FormValue("scan_rate"), cur.Scan.TMDBRateLimitRPS)
 	ns.Scan.RunOnStart = r.FormValue("scan_run_on_start") != ""
 	ns.Scan.IncludeSpecials = r.FormValue("scan_include_specials") != ""
+	ns.Scan.EpisodeRatings = r.FormValue("scan_episode_ratings") != ""
 
 	ns.Cache.RefreshEnabled = r.FormValue("cache_refresh_enabled") != ""
 	ns.Cache.RefreshIntervalMinutes = atoiDefault(r.FormValue("cache_refresh_interval"), cur.Cache.RefreshIntervalMinutes)

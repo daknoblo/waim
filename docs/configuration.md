@@ -34,7 +34,8 @@ encrypted** and never written in plaintext.
     "intervalMinutes": 60,     // 0 disables periodic scans (manual only)
     "runOnStart": true,        // scan once on container startup
     "tmdbRateLimitRps": 1,     // TMDB requests per second
-    "includeSpecials": false   // include season 0 / specials in comparisons
+    "includeSpecials": false,  // include season 0 / specials in comparisons
+    "episodeRatings": false    // collect per-episode ratings for the statistics
   },
   "cache": {
     "refreshEnabled": true,        // run the background TMDB cache refresher
@@ -94,6 +95,7 @@ turned off by default.
 | Run a scan on startup  | Trigger one scan when the container starts.                              |
 | TMDB requests per second | Client-side rate limit for TMDB API calls.                            |
 | Include specials (season 0) | When enabled, specials are included in the comparison; off by default. |
+| Collect episode ratings | Loads every season of every series from TMDB so the statistics page can show the episode rating heatmap. The first scan takes noticeably longer (one request per season, bounded by the rate limit); afterwards the responses come from the local cache. Off by default. |
 
 ### Data refresh
 

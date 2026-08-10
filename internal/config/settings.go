@@ -64,6 +64,7 @@ type ScanSettings struct {
 	RunOnStart       bool    `json:"runOnStart"`       // scan once at startup
 	TMDBRateLimitRPS float64 `json:"tmdbRateLimitRps"` // requests per second
 	IncludeSpecials  bool    `json:"includeSpecials"`  // include season 0 / specials
+	EpisodeRatings   bool    `json:"episodeRatings"`   // collect per-episode ratings (one TMDB call per season)
 }
 
 // CacheSettings controls the background refresh of cached TMDB responses. The

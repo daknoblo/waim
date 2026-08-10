@@ -21,6 +21,8 @@ type MediaStat struct {
 	Genres         []string     `json:"genres"`
 	LibraryID      string       `json:"libraryId"`
 	LibraryName    string       `json:"libraryName"`
+	TMDBID         int64        `json:"tmdbId,omitempty"`
+	JellyfinID     string       `json:"jellyfinId,omitempty"`
 	Language       string       `json:"language,omitempty"`      // ISO 639-1 original language
 	Country        string       `json:"country,omitempty"`       // ISO 3166-1 production country
 	Episodes       int          `json:"episodes,omitempty"`      // owned episodes (series)
@@ -30,11 +32,22 @@ type MediaStat struct {
 	CollectionName string       `json:"collectionName,omitempty"`
 }
 
-// SeasonStat captures how many episodes of a season are owned.
+// SeasonStat captures how many episodes of a season are owned and, when episode
+// ratings are enabled, how each episode of that season is rated.
 type SeasonStat struct {
-	Number   int `json:"number"`
-	Episodes int `json:"episodes"`
-	Total    int `json:"total"`
+	Number   int             `json:"number"`
+	Episodes int             `json:"episodes"`
+	Total    int             `json:"total"`
+	Rating   float64         `json:"rating,omitempty"` // average episode rating
+	Ratings  []EpisodeRating `json:"ratings,omitempty"`
+}
+
+// EpisodeRating is the TMDB rating of a single episode.
+type EpisodeRating struct {
+	Number int     `json:"number"`
+	Title  string  `json:"title,omitempty"`
+	Rating float64 `json:"rating"`
+	Owned  bool    `json:"owned,omitempty"`
 }
 
 // Finding kinds.

@@ -49,11 +49,12 @@ type StatsData struct {
 	YearPie        []PieSlice
 	LanguagePie    []PieSlice
 	GenreRatings   []StatsRatedGroup
+	SeasonRatings  []StatsSeasonRatings
 	Completion     []StatsCompletion
 	EpisodePct     int
 	Growth         []StatsGrowth
 	SeriesOptions  []SeriesOption
-	Flow           SeriesFlow
+	Detail         SeriesDetail
 }
 
 // StatsCompletion is one series row of the season completion heatmap.
@@ -64,6 +65,7 @@ type StatsCompletion struct {
 	Owned   int
 	Total   int
 	Pct     int
+	Link    string
 	Cells   []CompletionCell
 }
 
@@ -131,13 +133,15 @@ type StatsTop struct {
 	Library string
 	Color   []string
 	Missing int
+	Link    string
 }
 
-// StatsRated is a movie ranked by rating.
+// StatsRated is a title ranked by rating.
 type StatsRated struct {
 	Title  string
 	Year   int
 	Rating string
+	Link   string
 }
 
 // StatsLibraryRatings holds the top and lowest rated titles of a single library.
@@ -154,6 +158,7 @@ type StatsRuntime struct {
 	Year    int
 	Detail  string
 	Runtime string
+	Link    string
 }
 
 // StatsNiche is a niche or classic title with the reason it qualifies.
@@ -161,6 +166,7 @@ type StatsNiche struct {
 	Title  string
 	Year   int
 	Reason string
+	Link   string
 }
 
 // StatsBar is a labelled count with the bar width (share of the largest value)
@@ -172,11 +178,19 @@ type StatsBar struct {
 	Share int
 }
 
+// StatsInput bundles the persisted data the statistics page is computed from.
+type StatsInput struct {
+	Run         *store.ScanRun
+	Findings    []store.Finding
+	LibTypes    map[string]string // library ID -> Jellyfin collection type
+	History     []store.RunTotals
+	JellyfinURL string
+}
+
 // BuildStats computes the statistics view from the latest run and its findings.
-// libTypes maps library IDs to their Jellyfin collection type (movies/tvshows).
-// history holds the totals of earlier runs for the growth trend.
-func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding, libTypes map[string]string, history []store.RunTotals) StatsData {
+func BuildStats(t *i18n.Translator, in StatsInput) StatsData {
 	sd := StatsData{}
+	run, findings := in.Run, in.Findings
 	if run == nil {
 		return sd
 	}
@@ -200,7 +214,7 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 	totalItems := 0
 	itemsWithGapsAll := 0
 	for _, l := range run.Libraries {
-		typ := libTypes[l.ID]
+		typ := in.LibTypes[l.ID]
 		switch typ {
 		case "movies":
 			sd.MoviesScanned += l.Scanned
@@ -249,11 +263,22 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 		case store.KindMissingSeason, store.KindMissingEpisodes:
 			key := f.LibraryID + "\x00" + title
 			if seriesMissing[key] == nil {
-				seriesMissing[key] = &StatsTop{Title: title, Library: f.LibraryName, Color: LibraryColor(f.LibraryID)}
+				seriesMissing[key] = &StatsTop{
+					Title:   title,
+					Library: f.LibraryName,
+					Color:   LibraryColor(f.LibraryID),
+					Link:    findingLink(f, in.JellyfinURL),
+				}
 			}
 			seriesMissing[key].Missing += count
 		case store.KindMissingCollection:
-			collections = append(collections, StatsTop{Title: title, Library: f.LibraryName, Color: LibraryColor(f.LibraryID), Missing: count})
+			collections = append(collections, StatsTop{
+				Title:   title,
+				Library: f.LibraryName,
+				Color:   LibraryColor(f.LibraryID),
+				Missing: count,
+				Link:    tmdbLink("collection", f.TMDBID),
+			})
 		}
 	}
 
@@ -263,12 +288,35 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 	sd.TopSeries = topN(sd.TopSeries, 5)
 	sd.TopCollections = topN(collections, 5)
 
-	computeMediaStats(&sd, run, t)
+	computeMediaStats(&sd, run, t, in.JellyfinURL)
 	sd.FindingRatings = buildFindingRatings(findings)
-	sd.SeriesFindings = buildSeriesFindingRatings(findings, run.Media)
-	sd.Growth = buildGrowth(history)
+	sd.SeriesFindings = buildSeriesFindingRatings(findings, run.Media, in.JellyfinURL)
+	sd.Growth = buildGrowth(in.History)
 
 	return sd
+}
+
+// mediaLink points at the item in Jellyfin when the server URL is known, and at
+// TMDB otherwise.
+func mediaLink(m store.MediaStat, jellyfinURL string) string {
+	if link := jellyfinItemURL(jellyfinURL, m.JellyfinID); link != "" {
+		return link
+	}
+	if m.Type == store.MediaSeries {
+		return tmdbLink("tv", m.TMDBID)
+	}
+	return tmdbLink("movie", m.TMDBID)
+}
+
+// findingLink points at the owned item a finding belongs to.
+func findingLink(f store.Finding, jellyfinURL string) string {
+	if link := jellyfinItemURL(jellyfinURL, f.JellyfinID); link != "" {
+		return link
+	}
+	if f.MediaType == store.MediaSeries {
+		return tmdbLink("tv", f.TMDBID)
+	}
+	return tmdbLink("movie", f.TMDBID)
 }
 
 // buildGrowth turns the totals of the recent scans into a trend of how many
@@ -310,7 +358,7 @@ func buildGrowth(history []store.RunTotals) []StatsGrowth {
 	return out
 }
 
-func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
+func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator, jellyfinURL string) {
 	media := run.Media
 	var movies, series []store.MediaStat
 	genreCounts := map[string]int{}
@@ -357,8 +405,8 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 		sd.LibraryRatings = append(sd.LibraryRatings, StatsLibraryRatings{
 			Name:   l.Name,
 			Color:  LibraryColor(l.ID),
-			Top:    toRated(top, 50),
-			Lowest: toRated(low, 50),
+			Top:    toRated(top, 50, jellyfinURL),
+			Lowest: toRated(low, 50, jellyfinURL),
 		})
 	}
 
@@ -371,14 +419,14 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 	}
 	long := append([]store.MediaStat(nil), withRuntime...)
 	sort.SliceStable(long, func(i, j int) bool { return long[i].Runtime > long[j].Runtime })
-	sd.LongestMovies = toRuntime(long, 10)
+	sd.LongestMovies = toRuntime(long, 10, jellyfinURL)
 	short := append([]store.MediaStat(nil), withRuntime...)
 	sort.SliceStable(short, func(i, j int) bool { return short[i].Runtime < short[j].Runtime })
-	sd.ShortestMovies = toRuntime(short, 10)
+	sd.ShortestMovies = toRuntime(short, 10, jellyfinURL)
 
-	sd.LongestSeries, sd.ShortestSeries = seriesByBingeTime(t, series)
+	sd.LongestSeries, sd.ShortestSeries = seriesByBingeTime(t, series, jellyfinURL)
 	sd.Sagas = sagasByRuntime(t, movies)
-	sd.SeriesOptions, sd.Flow = buildSeriesFlowData(t, series, "")
+	sd.SeriesOptions, sd.Detail = buildSeriesFlowData(t, series, "", jellyfinURL)
 
 	// Niche & classic movies: golden-age classics (pre-1960, the black-and-white
 	// era) and niche genres.
@@ -404,7 +452,7 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 			continue
 		}
 		seenNiche[m.Title] = true
-		sd.Niches = append(sd.Niches, StatsNiche{Title: m.Title, Year: m.Year, Reason: reason})
+		sd.Niches = append(sd.Niches, StatsNiche{Title: m.Title, Year: m.Year, Reason: reason, Link: mediaLink(m, jellyfinURL)})
 	}
 	sort.SliceStable(sd.Niches, func(i, j int) bool { return sd.Niches[i].Year < sd.Niches[j].Year })
 	if len(sd.Niches) > 12 {
@@ -428,13 +476,14 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 	sd.Countries = topBars(countryCounts, 12, sortByCountDesc)
 	sd.RatingSpread = ratingSpread(media)
 	sd.GenreRatings = genreRatings(media)
-	sd.Completion, sd.EpisodePct = seriesCompletion(t, series)
+	sd.SeasonRatings = seasonRatingRows(t, series, jellyfinURL)
+	sd.Completion, sd.EpisodePct = seriesCompletion(t, series, jellyfinURL)
 	sd.Facts = buildFacts(t, movies, series, sd.Genres, sd.EpisodePct)
 }
 
 // seriesCompletion builds the season heatmap per series plus the overall share
 // of episodes owned across all series.
-func seriesCompletion(t *i18n.Translator, series []store.MediaStat) ([]StatsCompletion, int) {
+func seriesCompletion(t *i18n.Translator, series []store.MediaStat, jellyfinURL string) ([]StatsCompletion, int) {
 	ownedAll, totalAll := 0, 0
 	var rows []StatsCompletion
 	for _, s := range series {
@@ -450,6 +499,7 @@ func seriesCompletion(t *i18n.Translator, series []store.MediaStat) ([]StatsComp
 			Owned:   s.Episodes,
 			Total:   s.TotalEpisodes,
 			Pct:     percent(s.Episodes, s.TotalEpisodes),
+			Link:    mediaLink(s, jellyfinURL),
 		}
 		for _, sn := range s.Seasons {
 			pct := percent(sn.Episodes, sn.Total)
@@ -539,7 +589,7 @@ func genreRatings(media []store.MediaStat) []StatsRatedGroup {
 
 // seriesByBingeTime ranks series by the time needed to watch every owned
 // episode (episode runtime times owned episodes).
-func seriesByBingeTime(t *i18n.Translator, series []store.MediaStat) (longest, shortest []StatsRuntime) {
+func seriesByBingeTime(t *i18n.Translator, series []store.MediaStat, jellyfinURL string) (longest, shortest []StatsRuntime) {
 	type binge struct {
 		stat    store.MediaStat
 		minutes int
@@ -565,6 +615,7 @@ func seriesByBingeTime(t *i18n.Translator, series []store.MediaStat) (longest, s
 				Year:    b.stat.Year,
 				Detail:  t.T("stats.seasonsEpisodes", ownedSeasonCount(b.stat), b.stat.Episodes),
 				Runtime: formatWatchTime(b.minutes),
+				Link:    mediaLink(b.stat, jellyfinURL),
 			})
 		}
 		return out
@@ -581,6 +632,7 @@ func seriesByBingeTime(t *i18n.Translator, series []store.MediaStat) (longest, s
 func sagasByRuntime(t *i18n.Translator, movies []store.MediaStat) []StatsRuntime {
 	type saga struct {
 		name    string
+		id      int64
 		parts   int
 		minutes int
 		year    int
@@ -593,7 +645,7 @@ func sagasByRuntime(t *i18n.Translator, movies []store.MediaStat) []StatsRuntime
 		}
 		s := byID[m.CollectionID]
 		if s == nil {
-			s = &saga{name: m.CollectionName, year: m.Year}
+			s = &saga{name: m.CollectionName, id: m.CollectionID, year: m.Year}
 			byID[m.CollectionID] = s
 			order = append(order, m.CollectionID)
 		}
@@ -620,6 +672,7 @@ func sagasByRuntime(t *i18n.Translator, movies []store.MediaStat) []StatsRuntime
 			Year:    s.year,
 			Detail:  t.T("stats.partsOwned", s.parts),
 			Runtime: formatWatchTime(s.minutes),
+			Link:    tmdbLink("collection", s.id),
 		})
 	}
 	return out
@@ -773,13 +826,13 @@ func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []S
 	return facts
 }
 
-func toRated(ms []store.MediaStat, n int) []StatsRated {
+func toRated(ms []store.MediaStat, n int, jellyfinURL string) []StatsRated {
 	if len(ms) > n {
 		ms = ms[:n]
 	}
 	out := make([]StatsRated, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, StatsRated{Title: m.Title, Year: m.Year, Rating: fmt.Sprintf("%.1f", m.Rating)})
+		out = append(out, StatsRated{Title: m.Title, Year: m.Year, Rating: fmt.Sprintf("%.1f", m.Rating), Link: mediaLink(m, jellyfinURL)})
 	}
 	return out
 }
@@ -793,6 +846,7 @@ func buildFindingRatings(findings []store.Finding) []StatsLibraryRatings {
 		title  string
 		year   int
 		rating float64
+		tmdbID int64
 	}
 	byLib := map[string][]ratedPart{}
 	names := map[string]string{}
@@ -813,7 +867,7 @@ func buildFindingRatings(findings []store.Finding) []StatsLibraryRatings {
 				order = append(order, f.LibraryID)
 				names[f.LibraryID] = f.LibraryName
 			}
-			byLib[f.LibraryID] = append(byLib[f.LibraryID], ratedPart{title: p.Title, year: yearInt(p.Year), rating: p.Rating})
+			byLib[f.LibraryID] = append(byLib[f.LibraryID], ratedPart{title: p.Title, year: yearInt(p.Year), rating: p.Rating, tmdbID: p.TMDBID})
 		}
 	}
 
@@ -823,7 +877,7 @@ func buildFindingRatings(findings []store.Finding) []StatsLibraryRatings {
 		}
 		out := make([]StatsRated, 0, len(parts))
 		for _, p := range parts {
-			out = append(out, StatsRated{Title: p.title, Year: p.year, Rating: fmt.Sprintf("%.1f", p.rating)})
+			out = append(out, StatsRated{Title: p.title, Year: p.year, Rating: fmt.Sprintf("%.1f", p.rating), Link: tmdbLink("movie", p.tmdbID)})
 		}
 		return out
 	}
@@ -848,12 +902,13 @@ func buildFindingRatings(findings []store.Finding) []StatsLibraryRatings {
 // buildSeriesFindingRatings ranks the series that have gaps by their own TMDB
 // rating per library. Seasons and episodes carry no standalone rating, so the
 // rating of the owned series is taken from the scan's media stats.
-func buildSeriesFindingRatings(findings []store.Finding, media []store.MediaStat) []StatsLibraryRatings {
+func buildSeriesFindingRatings(findings []store.Finding, media []store.MediaStat, jellyfinURL string) []StatsLibraryRatings {
 	type ratedSeries struct {
 		title   string
 		year    int
 		rating  float64
 		missing int
+		link    string
 	}
 	stats := map[string]store.MediaStat{}
 	for _, m := range media {
@@ -880,7 +935,7 @@ func buildSeriesFindingRatings(findings []store.Finding, media []store.MediaStat
 		}
 		entry := byLib[f.LibraryID][f.Title]
 		if entry == nil {
-			entry = &ratedSeries{title: f.Title, year: m.Year, rating: m.Rating}
+			entry = &ratedSeries{title: f.Title, year: m.Year, rating: m.Rating, link: mediaLink(m, jellyfinURL)}
 			byLib[f.LibraryID][f.Title] = entry
 		}
 		_, count, _ := findingMissing(f)
@@ -893,7 +948,7 @@ func buildSeriesFindingRatings(findings []store.Finding, media []store.MediaStat
 		}
 		out := make([]StatsRated, 0, len(items))
 		for _, it := range items {
-			out = append(out, StatsRated{Title: it.title, Year: it.year, Rating: fmt.Sprintf("%.1f", it.rating)})
+			out = append(out, StatsRated{Title: it.title, Year: it.year, Rating: fmt.Sprintf("%.1f", it.rating), Link: it.link})
 		}
 		return out
 	}
@@ -927,13 +982,13 @@ func yearInt(y string) int {
 	return 0
 }
 
-func toRuntime(ms []store.MediaStat, n int) []StatsRuntime {
+func toRuntime(ms []store.MediaStat, n int, jellyfinURL string) []StatsRuntime {
 	if len(ms) > n {
 		ms = ms[:n]
 	}
 	out := make([]StatsRuntime, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, StatsRuntime{Title: m.Title, Year: m.Year, Runtime: formatRuntime(m.Runtime)})
+		out = append(out, StatsRuntime{Title: m.Title, Year: m.Year, Runtime: formatRuntime(m.Runtime), Link: mediaLink(m, jellyfinURL)})
 	}
 	return out
 }

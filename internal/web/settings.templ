@@ -75,6 +75,8 @@ templ settingsBody(d SettingsData) {
 			</div>
 			@checkboxField(d.Layout.T.T("settings.runOnStart"), "scan_run_on_start", d.Settings.Scan.RunOnStart)
 			@checkboxField(d.Layout.T.T("settings.includeSpecials"), "scan_include_specials", d.Settings.Scan.IncludeSpecials)
+			@checkboxField(d.Layout.T.T("settings.episodeRatings"), "scan_episode_ratings", d.Settings.Scan.EpisodeRatings)
+			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.episodeRatingsHint") }</p>
 		</div>
 
 		<div class="card grid gap-3">

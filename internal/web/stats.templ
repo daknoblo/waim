@@ -25,9 +25,10 @@ templ statsBody(d StatsData) {
 			<div class="grid gap-4 lg:grid-cols-2">
 				<div class="card">
 					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.mediaSplit") }</h2>
-					<div class="grid grid-cols-2 gap-3">
-						@statCardSub("\U0001F3AC "+d.Layout.T.T("stats.movies"), strconv.Itoa(d.MoviesScanned), "")
-						@statCardSub("\U0001F4FA "+d.Layout.T.T("stats.series"), strconv.Itoa(d.SeriesScanned), d.Layout.T.T("stats.withEpisodes", d.SeriesEpisodes))
+					<div class="grid grid-cols-3 gap-3">
+						@statCardCentered("\U0001F3AC "+d.Layout.T.T("stats.movies"), strconv.Itoa(d.MoviesScanned))
+						@statCardCentered("\U0001F4FA "+d.Layout.T.T("stats.series"), strconv.Itoa(d.SeriesScanned))
+						@statCardCentered("\U0001F39E "+d.Layout.T.T("stats.episodes"), strconv.Itoa(d.SeriesEpisodes))
 					</div>
 				</div>
 				<div class="card">
@@ -142,11 +143,28 @@ templ statsBody(d StatsData) {
 
 			@completionCard(d.Layout.T, d.Completion, d.EpisodePct)
 
-			@seriesFlowCard(d.Layout.T, d.SeriesOptions, d.Flow)
+			@seasonRatingCard(d.Layout.T, d.SeasonRatings)
+
+			@seriesDetailCard(d.Layout.T, d.SeriesOptions, d.Detail)
 
 			@nicheList(d.Layout.T.T("stats.niches"), d.Layout.T.T("stats.nichesHint"), d.Niches, d.Layout.T.T("stats.noMedia"))
 		}
 	</section>
+}
+
+// titleLink renders a title as a link to Jellyfin or TMDB when one is known.
+templ titleLink(title, link string) {
+	if link != "" {
+		<a
+			class="truncate font-medium text-slate-100 transition hover:text-indigo-300 hover:underline"
+			href={ templ.SafeURL(link) }
+			target="_blank"
+			rel="noreferrer noopener"
+			title={ title }
+		>{ title }</a>
+	} else {
+		<span class="truncate font-medium text-slate-100">{ title }</span>
+	}
 }
 
 templ ratedListLib(libName string, color []string, kind string, items []StatsRated, empty, showLabel string) {
@@ -163,7 +181,7 @@ templ ratedListLib(libName string, color []string, kind string, items []StatsRat
 					<li class="rated-row flex items-center justify-between gap-2" hidden?={ i >= 10 }>
 						<span class="flex min-w-0 items-center gap-2">
 							<span class="w-5 shrink-0 text-right text-xs text-slate-600">{ strconv.Itoa(i + 1) }.</span>
-							<span class="truncate font-medium text-slate-100">{ it.Title }</span>
+							@titleLink(it.Title, it.Link)
 							if it.Year > 0 {
 								<span class="shrink-0 text-xs text-slate-500">{ strconv.Itoa(it.Year) }</span>
 							}
@@ -197,7 +215,7 @@ templ runtimeList(title string, items []StatsRuntime, empty string) {
 					<li class="flex items-center justify-between gap-2">
 						<span class="flex min-w-0 items-center gap-2">
 							<span class="w-5 shrink-0 text-right text-xs text-slate-600">{ strconv.Itoa(i + 1) }.</span>
-							<span class="truncate font-medium text-slate-100">{ it.Title }</span>
+							@titleLink(it.Title, it.Link)
 							if it.Year > 0 {
 								<span class="shrink-0 text-xs text-slate-500">{ strconv.Itoa(it.Year) }</span>
 							}
@@ -308,7 +326,9 @@ templ completionCard(t *i18n.Translator, rows []StatsCompletion, overall int) {
 			<div class="grid gap-1.5 text-sm">
 				for _, r := range rows {
 					<div class="flex items-center gap-2">
-						<span class="w-44 shrink-0 truncate text-slate-300" title={ r.Title }>{ r.Title }</span>
+						<span class="w-44 shrink-0 truncate">
+							@titleLink(r.Title, r.Link)
+						</span>
 						<span class="flex flex-1 flex-wrap gap-1">
 							for _, c := range r.Cells {
 								<span class={ "flex h-5 w-5 items-center justify-center rounded text-[10px] font-medium text-slate-950", c.Fill } title={ c.Hint }>{ c.Label }</span>
@@ -367,7 +387,7 @@ templ growthCard(title, hint string, items []StatsGrowth, empty string) {
 	</div>
 }
 
-templ seriesFlowCard(t *i18n.Translator, options []SeriesOption, flow SeriesFlow) {
+templ seriesDetailCard(t *i18n.Translator, options []SeriesOption, detail SeriesDetail) {
 	<div class="card">
 		<div class="mb-3 flex flex-wrap items-end justify-between gap-3">
 			<div>
@@ -375,27 +395,121 @@ templ seriesFlowCard(t *i18n.Translator, options []SeriesOption, flow SeriesFlow
 				<p class="text-sm text-slate-400">{ t.T("stats.seriesFlowHint") }</p>
 			</div>
 			if len(options) > 0 {
-				<select
-					name="series"
-					class="select-filter max-w-xs"
-					aria-label={ t.T("stats.seriesFlow") }
-					hx-get="/partials/series-flow"
-					hx-target="#series-flow"
-					hx-swap="innerHTML"
-				>
-					for _, o := range options {
-						<option value={ o.Title } selected?={ o.Selected }>{ o.Label }</option>
-					}
-				</select>
+				<div class="flex flex-wrap items-center gap-2">
+					<input
+						id="series-search"
+						type="search"
+						autocomplete="off"
+						placeholder={ t.T("stats.seriesSearch") }
+						aria-label={ t.T("stats.seriesSearch") }
+						class="input py-1.5 text-sm"
+					/>
+					<select
+						id="series-select"
+						name="series"
+						class="select-filter max-w-xs"
+						aria-label={ t.T("stats.seriesFlow") }
+						hx-get="/partials/series-flow"
+						hx-target="#series-detail"
+						hx-swap="innerHTML"
+					>
+						for _, o := range options {
+							<option value={ o.Title } selected?={ o.Selected }>{ o.Label }</option>
+						}
+					</select>
+				</div>
 			}
 		</div>
-		<div id="series-flow">
-			@SeriesFlowChart(t, flow)
+		<div id="series-detail">
+			@SeriesDetailCharts(t, detail)
 		</div>
 	</div>
 }
 
-templ SeriesFlowChart(t *i18n.Translator, f SeriesFlow) {
+templ SeriesDetailCharts(t *i18n.Translator, d SeriesDetail) {
+	@seriesFlowChart(t, d.Flow)
+	if d.Ratings.Available {
+		<div class="mt-5 border-t border-slate-800 pt-4">
+			@seriesRatingHeatmap(t, d.Ratings)
+		</div>
+	} else {
+		<p class="mt-4 border-t border-slate-800 pt-4 text-sm text-slate-500">{ t.T("stats.noEpisodeRatings") }</p>
+	}
+}
+
+templ seriesRatingHeatmap(t *i18n.Translator, r SeriesRatings) {
+	<div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+		<span class="font-semibold text-slate-200">{ t.T("stats.episodeRatings") }</span>
+		<span class="text-amber-300">{ "\u2605 " + r.Average }</span>
+		if r.Trend != "" {
+			<span class={ templ.KV("text-emerald-400", r.TrendUp), templ.KV("text-rose-400", !r.TrendUp) }>
+				{ t.T("stats.ratingTrend", r.Trend) }
+			</span>
+		}
+	</div>
+	<div class="overflow-x-auto">
+		<div class="inline-grid gap-1">
+			<div class="flex items-center gap-1">
+				<span class="w-16 shrink-0"></span>
+				for _, c := range r.Columns {
+					<span class="w-5 shrink-0 text-center text-[10px] text-slate-600">{ c }</span>
+				}
+			</div>
+			for _, row := range r.Rows {
+				<div class="flex items-center gap-1">
+					<span class="w-16 shrink-0 truncate text-xs text-slate-400">{ row.Label }</span>
+					for _, c := range row.Cells {
+						<span
+							class={ "h-5 w-5 shrink-0 rounded", c.Fill, templ.KV("opacity-30", c.Missing) }
+							title={ c.Hint }
+						></span>
+					}
+					<span class="ml-2 shrink-0 text-xs text-slate-400">{ "\u2605 " + row.Avg }</span>
+				</div>
+			}
+		</div>
+	</div>
+	<div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+		if r.Best != "" {
+			<span>{ t.T("stats.bestEpisode") }: <span class="text-slate-300">{ r.Best }</span></span>
+		}
+		if r.Worst != "" {
+			<span>{ t.T("stats.worstEpisode") }: <span class="text-slate-300">{ r.Worst }</span></span>
+		}
+		<span>{ t.T("stats.ratingLegend") }</span>
+	</div>
+}
+
+templ seasonRatingCard(t *i18n.Translator, rows []StatsSeasonRatings) {
+	<div class="card">
+		<h2 class="mb-1 text-lg font-semibold">{ t.T("stats.seasonRatings") }</h2>
+		<p class="mb-3 text-sm text-slate-400">{ t.T("stats.seasonRatingsHint") }</p>
+		if len(rows) == 0 {
+			<p class="text-sm text-slate-500">{ t.T("stats.noEpisodeRatings") }</p>
+		} else {
+			<div class="grid gap-1.5 text-sm">
+				for _, r := range rows {
+					<div class="flex items-center gap-2">
+						<span class="w-44 shrink-0 truncate">
+							@titleLink(r.Title, r.Link)
+						</span>
+						<span class="flex flex-1 flex-wrap gap-1">
+							for _, c := range r.Cells {
+								<span
+									class={ "flex h-5 w-5 items-center justify-center rounded text-[10px] font-medium text-slate-950", c.Fill, templ.KV("opacity-40", c.Missing) }
+									title={ c.Hint }
+								>{ c.Label }</span>
+							}
+						</span>
+						<span class="w-12 shrink-0 text-right text-xs text-amber-300">{ "\u2605 " + r.Avg }</span>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ seriesFlowChart(t *i18n.Translator, f SeriesFlow) {
 	if !f.Available {
 		<p class="text-sm text-slate-500">{ t.T("stats.noSeriesData") }</p>
 	} else {
@@ -429,7 +543,7 @@ templ nicheList(title, hint string, items []StatsNiche, empty string) {
 			<div class="flex flex-wrap gap-2">
 				for _, it := range items {
 					<span class="flex items-center gap-2 rounded-lg bg-slate-900/60 px-3 py-1.5 text-sm">
-						<span class="font-medium text-slate-100">{ it.Title }</span>
+						@titleLink(it.Title, it.Link)
 						if it.Year > 0 {
 							<span class="text-xs text-slate-500">{ strconv.Itoa(it.Year) }</span>
 						}
@@ -474,9 +588,9 @@ templ topList(title, metric string, items []StatsTop, empty string) {
 			<ul class="grid gap-2 text-sm">
 				for _, it := range items {
 					<li class="flex items-center justify-between gap-2">
-						<span class="flex items-center gap-2">
-							<span class="font-medium text-slate-100">{ it.Title }</span>
-							<span class={ "badge", it.Color }>{ it.Library }</span>
+						<span class="flex min-w-0 items-center gap-2">
+							@titleLink(it.Title, it.Link)
+							<span class={ "badge shrink-0", it.Color }>{ it.Library }</span>
 						</span>
 						<span class="whitespace-nowrap text-slate-400">{ strconv.Itoa(it.Missing) } { metric }</span>
 					</li>

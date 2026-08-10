@@ -124,6 +124,49 @@ type SeriesFlow struct {
 	Summary   string
 }
 
+// SeriesDetail bundles the charts shown for the series picked in the dropdown.
+type SeriesDetail struct {
+	Flow    SeriesFlow
+	Ratings SeriesRatings
+}
+
+// SeriesRatings is the season-by-episode rating heatmap of a single series.
+type SeriesRatings struct {
+	Available bool
+	Title     string
+	Link      string
+	Average   string
+	Trend     string
+	TrendUp   bool
+	Best      string
+	Worst     string
+	Columns   []string
+	Rows      []RatingRow
+}
+
+// RatingRow is one season of the rating heatmap.
+type RatingRow struct {
+	Label string
+	Avg   string
+	Cells []RatingCell
+}
+
+// RatingCell is a single episode (or season) square of a rating heatmap.
+type RatingCell struct {
+	Label   string
+	Hint    string
+	Fill    string
+	Missing bool
+}
+
+// StatsSeasonRatings is one series row of the season rating overview.
+type StatsSeasonRatings struct {
+	Title string
+	Link  string
+	Avg   string
+	Cells []RatingCell
+}
+
 // FlowNode is a rectangle of the flow chart with its pre-placed label.
 type FlowNode struct {
 	X, Y, W, H   string
@@ -154,8 +197,8 @@ const (
 )
 
 // buildSeriesFlowData returns the dropdown options for every series with season
-// data plus the flow chart of the selected series (the first one by default).
-func buildSeriesFlowData(t *i18n.Translator, series []store.MediaStat, selected string) ([]SeriesOption, SeriesFlow) {
+// data plus the charts of the selected series (the first one by default).
+func buildSeriesFlowData(t *i18n.Translator, series []store.MediaStat, selected, jellyfinURL string) ([]SeriesOption, SeriesDetail) {
 	withSeasons := make([]store.MediaStat, 0, len(series))
 	for _, s := range series {
 		if s.Episodes > 0 {
@@ -163,7 +206,7 @@ func buildSeriesFlowData(t *i18n.Translator, series []store.MediaStat, selected 
 		}
 	}
 	if len(withSeasons) == 0 {
-		return nil, SeriesFlow{}
+		return nil, SeriesDetail{}
 	}
 	sort.SliceStable(withSeasons, func(i, j int) bool {
 		return strings.ToLower(withSeasons[i].Title) < strings.ToLower(withSeasons[j].Title)
@@ -184,7 +227,166 @@ func buildSeriesFlowData(t *i18n.Translator, series []store.MediaStat, selected 
 			Selected: s.Title == chosen.Title,
 		})
 	}
-	return options, buildSeriesFlow(t, chosen)
+	return options, SeriesDetail{
+		Flow:    buildSeriesFlow(t, chosen),
+		Ratings: buildSeriesRatings(t, chosen, jellyfinURL),
+	}
+}
+
+// buildSeriesRatings lays out the episode rating heatmap of one series: one row
+// per season, one square per episode, plus the trend from the first to the last
+// rated season.
+func buildSeriesRatings(t *i18n.Translator, s store.MediaStat, jellyfinURL string) SeriesRatings {
+	out := SeriesRatings{Title: s.Title, Link: mediaLink(s, jellyfinURL)}
+	sum, rated, maxEpisodes := 0.0, 0, 0
+	var first, last float64
+	best, worst := store.EpisodeRating{}, store.EpisodeRating{}
+	bestSeason, worstSeason := 0, 0
+
+	for _, sn := range s.Seasons {
+		if len(sn.Ratings) == 0 {
+			continue
+		}
+		row := RatingRow{Label: seasonLabel(t, sn.Number), Avg: formatRating(sn.Rating)}
+		for _, ep := range sn.Ratings {
+			row.Cells = append(row.Cells, RatingCell{
+				Label:   strconv.Itoa(ep.Number),
+				Hint:    episodeHint(t, sn.Number, ep),
+				Fill:    ratingFill(ep.Rating),
+				Missing: !ep.Owned,
+			})
+			if ep.Rating <= 0 {
+				continue
+			}
+			sum += ep.Rating
+			rated++
+			if best.Rating == 0 || ep.Rating > best.Rating {
+				best, bestSeason = ep, sn.Number
+			}
+			if worst.Rating == 0 || ep.Rating < worst.Rating {
+				worst, worstSeason = ep, sn.Number
+			}
+		}
+		if len(row.Cells) > maxEpisodes {
+			maxEpisodes = len(row.Cells)
+		}
+		if sn.Rating > 0 {
+			if first == 0 {
+				first = sn.Rating
+			}
+			last = sn.Rating
+		}
+		out.Rows = append(out.Rows, row)
+	}
+	if rated == 0 {
+		return SeriesRatings{}
+	}
+
+	out.Available = true
+	out.Average = formatRating(sum / float64(rated))
+	for i := 1; i <= maxEpisodes; i++ {
+		out.Columns = append(out.Columns, strconv.Itoa(i))
+	}
+	if first > 0 && last > 0 && len(out.Rows) > 1 {
+		diff := last - first
+		out.TrendUp = diff >= 0
+		out.Trend = fmt.Sprintf("%+.1f", diff)
+	}
+	if best.Rating > 0 {
+		out.Best = t.T("stats.episodeRef", bestSeason, best.Number, best.Title, formatRating(best.Rating))
+	}
+	if worst.Rating > 0 {
+		out.Worst = t.T("stats.episodeRef", worstSeason, worst.Number, worst.Title, formatRating(worst.Rating))
+	}
+	return out
+}
+
+// seasonRatingRows builds the compact overview: one row per series, one square
+// per season coloured by that season's average rating.
+func seasonRatingRows(t *i18n.Translator, series []store.MediaStat, jellyfinURL string) []StatsSeasonRatings {
+	var out []StatsSeasonRatings
+	for _, s := range series {
+		row := StatsSeasonRatings{Title: s.Title, Link: mediaLink(s, jellyfinURL)}
+		sum, rated := 0.0, 0
+		for _, sn := range s.Seasons {
+			if sn.Rating <= 0 {
+				continue
+			}
+			row.Cells = append(row.Cells, RatingCell{
+				Label:   seasonCellLabel(sn.Number),
+				Hint:    t.T("stats.seasonRating", sn.Number, formatRating(sn.Rating)),
+				Fill:    ratingFill(sn.Rating),
+				Missing: sn.Episodes == 0,
+			})
+			sum += sn.Rating
+			rated++
+		}
+		if rated == 0 {
+			continue
+		}
+		row.Avg = formatRating(sum / float64(rated))
+		out = append(out, row)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Title) < strings.ToLower(out[j].Title) })
+	if len(out) > 25 {
+		out = out[:25]
+	}
+	return out
+}
+
+func seasonLabel(t *i18n.Translator, n int) string {
+	if n == 0 {
+		return t.T("stats.specials")
+	}
+	return t.T("stats.seasonShort", n)
+}
+
+func seasonFlowLabel(t *i18n.Translator, number, episodes int) string {
+	if number == 0 {
+		return t.T("stats.specialsEpisodes", episodes)
+	}
+	return t.T("stats.seasonEpisodes", number, episodes)
+}
+
+func seasonCellLabel(n int) string {
+	if n == 0 {
+		return "S"
+	}
+	return strconv.Itoa(n)
+}
+
+func episodeHint(t *i18n.Translator, season int, ep store.EpisodeRating) string {
+	rating := formatRating(ep.Rating)
+	if ep.Rating <= 0 {
+		rating = "\u2014"
+	}
+	hint := t.T("stats.episodeRef", season, ep.Number, ep.Title, rating)
+	if !ep.Owned {
+		hint += " \u00b7 " + t.T("stats.episodeMissing")
+	}
+	return hint
+}
+
+func formatRating(v float64) string {
+	return fmt.Sprintf("%.1f", v)
+}
+
+// ratingFill maps a TMDB rating onto the heatmap colour scale.
+func ratingFill(rating float64) string {
+	switch {
+	case rating >= 9:
+		return "bg-emerald-500"
+	case rating >= 8:
+		return "bg-lime-500"
+	case rating >= 7:
+		return "bg-amber-500"
+	case rating >= 6:
+		return "bg-orange-500"
+	case rating > 0:
+		return "bg-rose-500"
+	default:
+		return "bg-slate-700"
+	}
 }
 
 // buildSeriesFlow lays out the sankey: season bars on the left, sized by their
@@ -234,7 +436,7 @@ func buildSeriesFlow(t *i18n.Translator, s store.MediaStat) SeriesFlow {
 		flow.Seasons = append(flow.Seasons, FlowNode{
 			X: num(flowLeftX), Y: num(y), W: num(flowNodeW), H: num(h),
 			Fill:   c.Fill,
-			Label:  t.T("stats.seasonEpisodes", sn.Number, sn.Episodes),
+			Label:  seasonFlowLabel(t, sn.Number, sn.Episodes),
 			LabelX: num(flowLeftX - 10),
 			LabelY: num(y + h/2),
 			Anchor: "end",
@@ -270,11 +472,11 @@ func ribbon(ay0, ay1, by0, by1 float64) string {
 		num(x1), num(by1), num(mx), num(by1), num(mx), num(ay1), num(x0), num(ay1))
 }
 
-// BuildSeriesFlow builds the flow chart of a single series from a scan run, used
+// BuildSeriesDetail builds the charts of a single series from a scan run, used
 // by the dropdown-driven partial.
-func BuildSeriesFlow(t *i18n.Translator, run *store.ScanRun, title string) SeriesFlow {
+func BuildSeriesDetail(t *i18n.Translator, run *store.ScanRun, title, jellyfinURL string) SeriesDetail {
 	if run == nil {
-		return SeriesFlow{}
+		return SeriesDetail{}
 	}
 	var series []store.MediaStat
 	for _, m := range run.Media {
@@ -282,6 +484,6 @@ func BuildSeriesFlow(t *i18n.Translator, run *store.ScanRun, title string) Serie
 			series = append(series, m)
 		}
 	}
-	_, flow := buildSeriesFlowData(t, series, title)
-	return flow
+	_, detail := buildSeriesFlowData(t, series, title, jellyfinURL)
+	return detail
 }

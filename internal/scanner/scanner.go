@@ -190,7 +190,7 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			if err != nil {
 				s.log.Warn("tmdb movie lookup failed", "title", m.item.Name, "tmdbId", id, "err", err)
 			} else {
-				res.Media = append(res.Media, movieStat(movie, m.libID, libNames[m.libID]))
+				res.Media = append(res.Media, movieStat(movie, m.item, m.libID, libNames[m.libID]))
 				missingCount = s.evalCollection(ctx, m.libID, libNames[m.libID], m.item, movie, ownedMovie, processedCollections, &res)
 			}
 		}
@@ -306,6 +306,8 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		Genres:      genreNames(tv.Genres),
 		LibraryID:   libID,
 		LibraryName: libName,
+		TMDBID:      id,
+		JellyfinID:  item.ID,
 		Language:    tv.OriginalLanguage,
 		Country:     firstString(tv.OriginCountry),
 	}
@@ -327,7 +329,8 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		}
 		present[sn][en] = true
 	}
-	stat.Seasons = ownedSeasons(tv, present)
+	seasons := s.newSeasonCache(id)
+	stat.Seasons = ownedSeasons(ctx, tv, present, seasons, s.settings.Scan.EpisodeRatings)
 	for _, sn := range stat.Seasons {
 		stat.Episodes += sn.Episodes
 		stat.TotalEpisodes += sn.Total
@@ -346,7 +349,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 
 		if len(presentEps) == 0 {
 			// Possibly a whole missing season; confirm it has aired episodes.
-			aired := s.airedEpisodes(ctx, id, season.SeasonNumber)
+			aired := episodeNumbers(seasons.aired(ctx, season.SeasonNumber))
 			if len(aired) == 0 {
 				continue
 			}
@@ -378,7 +381,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 			continue // assume complete
 		}
 
-		aired := s.airedEpisodes(ctx, id, season.SeasonNumber)
+		aired := episodeNumbers(seasons.aired(ctx, season.SeasonNumber))
 		var missing []int
 		for _, en := range aired {
 			if !presentEps[en] {
@@ -413,21 +416,46 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 	return missingTotal
 }
 
-// airedEpisodes returns the episode numbers of a season that have already aired.
-func (s *Scanner) airedEpisodes(ctx context.Context, tvID int64, seasonNumber int) []int {
-	sd, err := s.td.Season(ctx, tvID, seasonNumber)
+// seasonCache fetches a series' season details at most once per season, so the
+// gap detection and the episode ratings share the same TMDB responses.
+type seasonCache struct {
+	s    *Scanner
+	tvID int64
+	byNo map[int][]tmdb.Episode
+}
+
+func (s *Scanner) newSeasonCache(tvID int64) *seasonCache {
+	return &seasonCache{s: s, tvID: tvID, byNo: map[int][]tmdb.Episode{}}
+}
+
+// aired returns the already-aired episodes of a season.
+func (c *seasonCache) aired(ctx context.Context, seasonNumber int) []tmdb.Episode {
+	if eps, ok := c.byNo[seasonNumber]; ok {
+		return eps
+	}
+	sd, err := c.s.td.Season(ctx, c.tvID, seasonNumber)
 	if err != nil {
-		s.log.Warn("tmdb season lookup failed", "tvId", tvID, "season", seasonNumber, "err", err)
+		c.s.log.Warn("tmdb season lookup failed", "tvId", c.tvID, "season", seasonNumber, "err", err)
+		c.byNo[seasonNumber] = nil
 		return nil
 	}
-	var out []int
+	var out []tmdb.Episode
 	for _, ep := range sd.Episodes {
-		if ep.EpisodeNumber == 0 && !s.settings.Scan.IncludeSpecials {
+		if ep.EpisodeNumber == 0 && !c.s.settings.Scan.IncludeSpecials {
 			continue
 		}
-		if !s.released(ep.AirDate) {
+		if !c.s.released(ep.AirDate) {
 			continue
 		}
+		out = append(out, ep)
+	}
+	c.byNo[seasonNumber] = out
+	return out
+}
+
+func episodeNumbers(eps []tmdb.Episode) []int {
+	out := make([]int, 0, len(eps))
+	for _, ep := range eps {
 		out = append(out, ep.EpisodeNumber)
 	}
 	return out
@@ -489,7 +517,7 @@ func yearOf(date string) string {
 	return ""
 }
 
-func movieStat(m tmdb.Movie, libID, libName string) store.MediaStat {
+func movieStat(m tmdb.Movie, item jellyfin.Item, libID, libName string) store.MediaStat {
 	st := store.MediaStat{
 		Type:        store.MediaMovie,
 		Title:       m.Title,
@@ -499,6 +527,8 @@ func movieStat(m tmdb.Movie, libID, libName string) store.MediaStat {
 		Genres:      genreNames(m.Genres),
 		LibraryID:   libID,
 		LibraryName: libName,
+		TMDBID:      m.ID,
+		JellyfinID:  item.ID,
 		Language:    m.OriginalLanguage,
 	}
 	if len(m.ProductionCountries) > 0 {
@@ -547,8 +577,9 @@ func firstString(xs []string) string {
 
 // ownedSeasons pairs the episodes present in Jellyfin with every season TMDB
 // knows about, so seasons that are entirely missing still show up in the
-// statistics. Seasons unknown to TMDB are appended.
-func ownedSeasons(tv tmdb.TVShow, present map[int]map[int]bool) []store.SeasonStat {
+// statistics. With ratings enabled every season is fetched from TMDB to record
+// the per-episode votes. Seasons unknown to TMDB are appended.
+func ownedSeasons(ctx context.Context, tv tmdb.TVShow, present map[int]map[int]bool, seasons *seasonCache, withRatings bool) []store.SeasonStat {
 	var out []store.SeasonStat
 	known := map[int]bool{}
 	for _, season := range tv.Seasons {
@@ -556,11 +587,15 @@ func ownedSeasons(tv tmdb.TVShow, present map[int]map[int]bool) []store.SeasonSt
 			continue
 		}
 		known[season.SeasonNumber] = true
-		out = append(out, store.SeasonStat{
+		st := store.SeasonStat{
 			Number:   season.SeasonNumber,
 			Episodes: len(present[season.SeasonNumber]),
 			Total:    season.EpisodeCount,
-		})
+		}
+		if withRatings {
+			st.Ratings, st.Rating = seasonRatings(seasons.aired(ctx, season.SeasonNumber), present[season.SeasonNumber])
+		}
+		out = append(out, st)
 	}
 	extra := make([]int, 0, len(present))
 	for sn := range present {
@@ -573,4 +608,30 @@ func ownedSeasons(tv tmdb.TVShow, present map[int]map[int]bool) []store.SeasonSt
 		out = append(out, store.SeasonStat{Number: sn, Episodes: len(present[sn]), Total: len(present[sn])})
 	}
 	return out
+}
+
+// seasonRatings converts TMDB episodes into rating cells plus the season
+// average over the episodes that carry a vote.
+func seasonRatings(eps []tmdb.Episode, present map[int]bool) ([]store.EpisodeRating, float64) {
+	if len(eps) == 0 {
+		return nil, 0
+	}
+	out := make([]store.EpisodeRating, 0, len(eps))
+	sum, rated := 0.0, 0
+	for _, ep := range eps {
+		out = append(out, store.EpisodeRating{
+			Number: ep.EpisodeNumber,
+			Title:  ep.Name,
+			Rating: ep.VoteAverage,
+			Owned:  present[ep.EpisodeNumber],
+		})
+		if ep.VoteAverage > 0 {
+			sum += ep.VoteAverage
+			rated++
+		}
+	}
+	if rated == 0 {
+		return out, 0
+	}
+	return out, sum / float64(rated)
 }

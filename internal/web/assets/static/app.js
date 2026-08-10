@@ -117,6 +117,30 @@
     }
   }
 
+  // Filter the series dropdown of the statistics page from a search box and
+  // load the first match right away.
+  function filterSeries() {
+    var box = document.getElementById("series-search");
+    var select = document.getElementById("series-select");
+    if (!box || !select) return;
+    var q = box.value.toLowerCase().trim();
+    var firstVisible = null;
+    var selectedVisible = false;
+    for (var i = 0; i < select.options.length; i++) {
+      var opt = select.options[i];
+      var match = !q || opt.text.toLowerCase().indexOf(q) !== -1;
+      opt.hidden = !match;
+      opt.disabled = !match;
+      if (!match) continue;
+      if (!firstVisible) firstVisible = opt;
+      if (opt.selected) selectedVisible = true;
+    }
+    if (!selectedVisible && firstVisible) {
+      firstVisible.selected = true;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var box = document.getElementById("finding-search");
     if (box) {
@@ -125,6 +149,10 @@
     var libSel = document.getElementById("finding-lib-filter");
     if (libSel) {
       libSel.addEventListener("change", filterFindings);
+    }
+    var seriesBox = document.getElementById("series-search");
+    if (seriesBox) {
+      seriesBox.addEventListener("input", filterSeries);
     }
     // Re-apply the filter right after any HTMX swap (polling, sorting, scanning)
     // so filtered-out rows never flash back in.

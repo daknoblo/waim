@@ -76,9 +76,10 @@ type TVShow struct {
 
 // Episode is a subset of an episode in a season response.
 type Episode struct {
-	EpisodeNumber int    `json:"episode_number"`
-	Name          string `json:"name"`
-	AirDate       string `json:"air_date"`
+	EpisodeNumber int     `json:"episode_number"`
+	Name          string  `json:"name"`
+	AirDate       string  `json:"air_date"`
+	VoteAverage   float64 `json:"vote_average"`
 }
 
 // Season is a subset of the /tv/{id}/season/{n} response.

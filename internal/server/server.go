@@ -101,7 +101,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /partials/status", s.handlePartialStatus)
 	mux.HandleFunc("GET /partials/findings", s.handlePartialFindings)
 	mux.HandleFunc("GET /partials/log", s.handlePartialLog)
-	mux.HandleFunc("GET /partials/series-flow", s.handlePartialSeriesFlow)
+	mux.HandleFunc("GET /partials/series-flow", s.handlePartialSeriesDetail)
 
 	mux.HandleFunc("GET /export/settings", s.handleExportSettings)
 	mux.HandleFunc("GET /export/sync", s.handleExportSync)

@@ -43,7 +43,13 @@ func (s *Server) statsData(r *http.Request) web.StatsData {
 		libTypes[l.ID] = l.Type
 	}
 	history, _ := s.store.SuccessfulRunTotals(ctx, 12)
-	d := web.BuildStats(t, run, findings, libTypes, history)
+	d := web.BuildStats(t, web.StatsInput{
+		Run:         run,
+		Findings:    findings,
+		LibTypes:    libTypes,
+		History:     history,
+		JellyfinURL: s.cfg.Get().Jellyfin.URL,
+	})
 	d.Layout = s.layout(r, web.NavStats)
 	return d
 }
@@ -137,11 +143,11 @@ func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
 	s.renderPartial(w, r, web.LogPanel(t, web.BuildLogViews(s.logs.Entries())))
 }
 
-func (s *Server) handlePartialSeriesFlow(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handlePartialSeriesDetail(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
 	run, _ := s.store.LatestSuccessfulRun(r.Context())
-	flow := web.BuildSeriesFlow(t, run, r.URL.Query().Get("series"))
-	s.render(w, r, web.SeriesFlowChart(t, flow))
+	detail := web.BuildSeriesDetail(t, run, r.URL.Query().Get("series"), s.cfg.Get().Jellyfin.URL)
+	s.render(w, r, web.SeriesDetailCharts(t, detail))
 }
 
 func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {

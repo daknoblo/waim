@@ -55,10 +55,11 @@ func TestBuildSeriesFlow(t *testing.T) {
 			{Number: 2, Episodes: 20, Total: 20},
 		},
 	}}
-	opts, flow := buildSeriesFlowData(tr, series, "")
+	opts, detail := buildSeriesFlowData(tr, series, "", "")
 	if len(opts) != 1 || !opts[0].Selected {
 		t.Fatalf("unexpected options: %+v", opts)
 	}
+	flow := detail.Flow
 	if !flow.Available || len(flow.Seasons) != 2 || len(flow.Links) != 2 {
 		t.Fatalf("unexpected flow: %+v", flow)
 	}
@@ -84,5 +85,41 @@ func TestFormatWatchTime(t *testing.T) {
 		if got := formatWatchTime(in); got != want {
 			t.Errorf("formatWatchTime(%d) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestBuildSeriesRatings(t *testing.T) {
+	tr := testTranslator(t)
+	s := store.MediaStat{
+		Type:     store.MediaSeries,
+		Title:    "Rated Show",
+		Episodes: 4,
+		Seasons: []store.SeasonStat{
+			{Number: 1, Episodes: 2, Total: 2, Rating: 7.0, Ratings: []store.EpisodeRating{
+				{Number: 1, Title: "Pilot", Rating: 6.8, Owned: true},
+				{Number: 2, Title: "Second", Rating: 7.2, Owned: true},
+			}},
+			{Number: 2, Episodes: 2, Total: 3, Rating: 8.5, Ratings: []store.EpisodeRating{
+				{Number: 1, Title: "Return", Rating: 8.4, Owned: true},
+				{Number: 2, Title: "Peak", Rating: 9.1, Owned: true},
+				{Number: 3, Title: "Gone", Rating: 8.0},
+			}},
+		},
+	}
+	r := buildSeriesRatings(tr, s, "")
+	if !r.Available || len(r.Rows) != 2 {
+		t.Fatalf("unexpected ratings: %+v", r)
+	}
+	if len(r.Columns) != 3 {
+		t.Errorf("want 3 episode columns, got %d", len(r.Columns))
+	}
+	if r.Trend != "+1.5" || !r.TrendUp {
+		t.Errorf("unexpected trend: %q (up=%v)", r.Trend, r.TrendUp)
+	}
+	if !strings.Contains(r.Best, "Peak") || !strings.Contains(r.Worst, "Pilot") {
+		t.Errorf("unexpected best/worst: %q / %q", r.Best, r.Worst)
+	}
+	if !r.Rows[1].Cells[2].Missing {
+		t.Error("episode that is not owned should be marked missing")
 	}
 }
