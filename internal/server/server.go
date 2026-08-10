@@ -3,6 +3,9 @@
 package server
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -141,6 +144,33 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, comp templ.Compo
 	if err := comp.Render(r.Context(), w); err != nil {
 		s.log.Error("render failed", "path", r.URL.Path, "err", err)
 	}
+}
+
+// viewTagHeader carries a fingerprint of a polled partial in both directions:
+// the client echoes the fingerprint it currently displays, the server answers
+// with the fingerprint of the freshly rendered markup.
+const viewTagHeader = "X-Waim-View"
+
+// renderPartial renders a polled partial and answers 204 No Content when the
+// markup is identical to what the client already shows. htmx skips the swap on
+// 204, so background polling no longer replaces unchanged DOM (which made the
+// dashboard flicker and jump while reading).
+func (s *Server) renderPartial(w http.ResponseWriter, r *http.Request, comp templ.Component) {
+	var buf bytes.Buffer
+	if err := comp.Render(r.Context(), &buf); err != nil {
+		s.log.Error("render failed", "path", r.URL.Path, "err", err)
+		http.Error(w, "render failed", http.StatusInternalServerError)
+		return
+	}
+	sum := sha256.Sum256(buf.Bytes())
+	tag := hex.EncodeToString(sum[:16])
+	w.Header().Set(viewTagHeader, tag)
+	if r.Header.Get(viewTagHeader) == tag {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

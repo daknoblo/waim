@@ -62,7 +62,7 @@ func (s *Server) handleGenerateSuggestions(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handlePartialSuggestions(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, web.SuggestionsContent(s.suggestionsData(r)))
+	s.renderPartial(w, r, web.SuggestionsContent(s.suggestionsData(r)))
 }
 
 func (s *Server) suggestionsConfigured() bool {
@@ -121,19 +121,19 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePartialStatus(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
-	s.render(w, r, web.StatusCard(t, s.statusView(r.Context(), t)))
+	s.renderPartial(w, r, web.StatusCard(t, s.statusView(r.Context(), t)))
 }
 
 func (s *Server) handlePartialFindings(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
 	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
 	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
-	s.render(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t, sortKey, dir), sortKey, dir))
+	s.renderPartial(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t, sortKey, dir), sortKey, dir))
 }
 
 func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
-	s.render(w, r, web.LogPanel(t, web.BuildLogViews(s.logs.Entries())))
+	s.renderPartial(w, r, web.LogPanel(t, web.BuildLogViews(s.logs.Entries())))
 }
 
 func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {

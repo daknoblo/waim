@@ -9,14 +9,7 @@ templ Dashboard(d DashboardData) {
 
 templ dashboardBody(d DashboardData) {
 	<section class="grid gap-4">
-		<div
-			id="status-card"
-			hx-get="/partials/status"
-			hx-trigger="every 3s"
-			hx-swap="outerHTML"
-		>
-			@StatusCard(d.Layout.T, d.Status)
-		</div>
+		@StatusCard(d.Layout.T, d.Status)
 
 		<div class="card">
 			<div class="mb-3 flex items-center justify-between">

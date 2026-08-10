@@ -87,6 +87,36 @@
     }
   }
 
+  // Fingerprint of the markup currently displayed per polled region. It is sent
+  // back on every polling GET so the server can answer 204 when nothing changed
+  // and htmx leaves the DOM untouched instead of re-swapping it.
+  var VIEW_TAG = "X-Waim-View";
+  var viewTags = {};
+
+  function regionID(detail) {
+    var el = detail.target || detail.elt;
+    return el && el.id ? el.id : "";
+  }
+
+  function onConfigRequest(e) {
+    var id = regionID(e.detail);
+    if (id && viewTags[id] && String(e.detail.verb).toLowerCase() === "get") {
+      e.detail.headers[VIEW_TAG] = viewTags[id];
+    }
+  }
+
+  function onAfterRequest(e) {
+    var id = regionID(e.detail);
+    var xhr = e.detail.xhr;
+    if (!id || !xhr) return;
+    var tag = xhr.getResponseHeader(VIEW_TAG);
+    if (tag) {
+      viewTags[id] = tag;
+    } else {
+      delete viewTags[id];
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var box = document.getElementById("finding-search");
     if (box) {
@@ -96,8 +126,12 @@
     if (libSel) {
       libSel.addEventListener("change", filterFindings);
     }
-    // Re-apply the filter after any HTMX swap (polling, sorting, scanning).
-    document.body.addEventListener("htmx:afterSettle", filterFindings);
+    // Re-apply the filter right after any HTMX swap (polling, sorting, scanning)
+    // so filtered-out rows never flash back in.
+    document.body.addEventListener("htmx:afterSwap", filterFindings);
+    // Skip swaps of unchanged polled regions (see viewTags above).
+    document.body.addEventListener("htmx:configRequest", onConfigRequest);
+    document.body.addEventListener("htmx:afterRequest", onAfterRequest);
     // Click-to-copy for finding names (delegated; survives HTMX swaps).
     document.body.addEventListener("click", onCopyClick);
     // Expandable rated lists on the statistics page (delegated).
