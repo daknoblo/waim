@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ type StatsData struct {
 	MissingUnits   int
 	MoviesScanned  int
 	SeriesScanned  int
+	SeriesEpisodes int
 	Completeness   int
 	Libraries      []StatsLibrary
 	ByKind         StatsByKind
@@ -30,11 +32,36 @@ type StatsData struct {
 	TopCollections []StatsTop
 	LibraryRatings []StatsLibraryRatings
 	FindingRatings []StatsLibraryRatings
+	SeriesFindings []StatsLibraryRatings
 	LongestMovies  []StatsRuntime
 	ShortestMovies []StatsRuntime
+	LongestSeries  []StatsRuntime
+	ShortestSeries []StatsRuntime
+	Sagas          []StatsRuntime
+	Facts          []StatsFact
 	Niches         []StatsNiche
 	Genres         []StatsBar
 	Years          []StatsBar
+	RatingSpread   []StatsBar
+	GenrePie       []PieSlice
+	YearPie        []PieSlice
+	SeriesOptions  []SeriesOption
+	Flow           SeriesFlow
+}
+
+// StatsFact is a single headline number with an explanatory label.
+type StatsFact struct {
+	Icon  string
+	Label string
+	Value string
+	Hint  string
+}
+
+// SeriesOption is a selectable series for the season flow diagram.
+type SeriesOption struct {
+	Title    string
+	Label    string
+	Selected bool
 }
 
 // StatsLibrary is a per-library statistics row.
@@ -79,10 +106,11 @@ type StatsLibraryRatings struct {
 	Lowest []StatsRated
 }
 
-// StatsRuntime is a movie ranked by runtime.
+// StatsRuntime is a title ranked by runtime.
 type StatsRuntime struct {
 	Title   string
 	Year    int
+	Detail  string
 	Runtime string
 }
 
@@ -93,11 +121,13 @@ type StatsNiche struct {
 	Reason string
 }
 
-// StatsBar is a labelled count with a relative bar percentage.
+// StatsBar is a labelled count with the bar width (share of the largest value)
+// and the share of the total, both in percent.
 type StatsBar struct {
 	Label string
 	Count int
 	Pct   int
+	Share int
 }
 
 // BuildStats computes the statistics view from the latest run and its findings.
@@ -192,20 +222,25 @@ func BuildStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding
 
 	computeMediaStats(&sd, run, t)
 	sd.FindingRatings = buildFindingRatings(findings)
+	sd.SeriesFindings = buildSeriesFindingRatings(findings, run.Media)
 
 	return sd
 }
 
 func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 	media := run.Media
-	var movies []store.MediaStat
+	var movies, series []store.MediaStat
 	genreCounts := map[string]int{}
 	decadeCounts := map[int]int{}
 	byLib := map[string][]store.MediaStat{}
 
 	for _, m := range media {
-		if m.Type == store.MediaMovie {
+		switch m.Type {
+		case store.MediaMovie:
 			movies = append(movies, m)
+		case store.MediaSeries:
+			series = append(series, m)
+			sd.SeriesEpisodes += m.Episodes
 		}
 		byLib[m.LibraryID] = append(byLib[m.LibraryID], m)
 		for _, g := range m.Genres {
@@ -250,6 +285,10 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 	sort.SliceStable(short, func(i, j int) bool { return short[i].Runtime < short[j].Runtime })
 	sd.ShortestMovies = toRuntime(short, 10)
 
+	sd.LongestSeries, sd.ShortestSeries = seriesByBingeTime(t, series)
+	sd.Sagas = sagasByRuntime(t, movies)
+	sd.SeriesOptions, sd.Flow = buildSeriesFlowData(t, series, "")
+
 	// Niche & classic movies: golden-age classics (pre-1960, the black-and-white
 	// era) and niche genres.
 	nicheGenres := map[string]bool{
@@ -290,6 +329,208 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator) {
 		decLabels[fmt.Sprintf("%ds", dec)] = c
 	}
 	sd.Years = topBars(decLabels, 0, sortByLabelAsc)
+
+	sd.GenrePie = pieSlices(sd.Genres)
+	sd.YearPie = pieSlices(sd.Years)
+	sd.RatingSpread = ratingSpread(media)
+	sd.Facts = buildFacts(t, movies, series, sd.Genres)
+}
+
+// seriesByBingeTime ranks series by the time needed to watch every owned
+// episode (episode runtime times owned episodes).
+func seriesByBingeTime(t *i18n.Translator, series []store.MediaStat) (longest, shortest []StatsRuntime) {
+	type binge struct {
+		stat    store.MediaStat
+		minutes int
+	}
+	var all []binge
+	for _, s := range series {
+		if s.Episodes == 0 || s.Runtime <= 0 {
+			continue
+		}
+		all = append(all, binge{stat: s, minutes: s.Episodes * s.Runtime})
+	}
+	if len(all) == 0 {
+		return nil, nil
+	}
+	toList := func(bs []binge) []StatsRuntime {
+		if len(bs) > 10 {
+			bs = bs[:10]
+		}
+		out := make([]StatsRuntime, 0, len(bs))
+		for _, b := range bs {
+			out = append(out, StatsRuntime{
+				Title:   b.stat.Title,
+				Year:    b.stat.Year,
+				Detail:  t.T("stats.seasonsEpisodes", len(b.stat.Seasons), b.stat.Episodes),
+				Runtime: formatWatchTime(b.minutes),
+			})
+		}
+		return out
+	}
+	desc := append([]binge(nil), all...)
+	sort.SliceStable(desc, func(i, j int) bool { return desc[i].minutes > desc[j].minutes })
+	asc := append([]binge(nil), all...)
+	sort.SliceStable(asc, func(i, j int) bool { return asc[i].minutes < asc[j].minutes })
+	return toList(desc), toList(asc)
+}
+
+// sagasByRuntime groups owned movies by their TMDB collection and ranks the
+// resulting sagas by the total runtime of the parts on the shelf.
+func sagasByRuntime(t *i18n.Translator, movies []store.MediaStat) []StatsRuntime {
+	type saga struct {
+		name    string
+		parts   int
+		minutes int
+		year    int
+	}
+	byID := map[int64]*saga{}
+	var order []int64
+	for _, m := range movies {
+		if m.CollectionID == 0 || m.Runtime <= 0 {
+			continue
+		}
+		s := byID[m.CollectionID]
+		if s == nil {
+			s = &saga{name: m.CollectionName, year: m.Year}
+			byID[m.CollectionID] = s
+			order = append(order, m.CollectionID)
+		}
+		s.parts++
+		s.minutes += m.Runtime
+		if m.Year > 0 && (s.year == 0 || m.Year < s.year) {
+			s.year = m.Year
+		}
+	}
+	var sagas []saga
+	for _, id := range order {
+		if byID[id].parts > 1 {
+			sagas = append(sagas, *byID[id])
+		}
+	}
+	sort.SliceStable(sagas, func(i, j int) bool { return sagas[i].minutes > sagas[j].minutes })
+	if len(sagas) > 10 {
+		sagas = sagas[:10]
+	}
+	out := make([]StatsRuntime, 0, len(sagas))
+	for _, s := range sagas {
+		out = append(out, StatsRuntime{
+			Title:   s.name,
+			Year:    s.year,
+			Detail:  t.T("stats.partsOwned", s.parts),
+			Runtime: formatWatchTime(s.minutes),
+		})
+	}
+	return out
+}
+
+// ratingSpread buckets every rated title into whole-point rating bands, the
+// distribution IMDb and TMDB show next to a rating.
+func ratingSpread(media []store.MediaStat) []StatsBar {
+	buckets := map[string]int{}
+	for _, m := range media {
+		if m.Rating <= 0 {
+			continue
+		}
+		b := int(m.Rating)
+		if b > 9 {
+			b = 9
+		}
+		buckets[fmt.Sprintf("%d–%d", b, b+1)] = buckets[fmt.Sprintf("%d–%d", b, b+1)] + 1
+	}
+	return topBars(buckets, 0, sortByLabelAsc)
+}
+
+// buildFacts assembles the headline numbers of the library.
+func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []StatsBar) []StatsFact {
+	movieMinutes := 0
+	for _, m := range movies {
+		movieMinutes += m.Runtime
+	}
+	seriesMinutes, episodes, seasons := 0, 0, 0
+	for _, s := range series {
+		seriesMinutes += s.Episodes * s.Runtime
+		episodes += s.Episodes
+		seasons += len(s.Seasons)
+	}
+
+	ratingSum, ratingCount := 0.0, 0
+	oldest, newest := store.MediaStat{}, store.MediaStat{}
+	for _, m := range append(append([]store.MediaStat(nil), movies...), series...) {
+		if m.Rating > 0 {
+			ratingSum += m.Rating
+			ratingCount++
+		}
+		if m.Year > 0 && (oldest.Year == 0 || m.Year < oldest.Year) {
+			oldest = m
+		}
+		if m.Year > newest.Year {
+			newest = m
+		}
+	}
+
+	var longestSeries store.MediaStat
+	for _, s := range series {
+		if len(s.Seasons) > len(longestSeries.Seasons) {
+			longestSeries = s
+		}
+	}
+
+	facts := []StatsFact{{
+		Icon:  "\u23F3",
+		Label: t.T("stats.factWatchTime"),
+		Value: orDash(formatWatchTime(movieMinutes + seriesMinutes)),
+		Hint:  t.T("stats.factWatchTimeHint", formatWatchTime(movieMinutes), formatWatchTime(seriesMinutes)),
+	}}
+	if ratingCount > 0 {
+		facts = append(facts, StatsFact{
+			Icon:  "\u2605",
+			Label: t.T("stats.factAvgRating"),
+			Value: fmt.Sprintf("%.1f", ratingSum/float64(ratingCount)),
+			Hint:  t.T("stats.factAvgRatingHint", ratingCount),
+		})
+	}
+	if len(series) > 0 && episodes > 0 {
+		facts = append(facts, StatsFact{
+			Icon:  "\U0001F4FA",
+			Label: t.T("stats.factEpisodes"),
+			Value: strconv.Itoa(episodes),
+			Hint:  t.T("stats.factEpisodesHint", seasons, episodes/len(series)),
+		})
+	}
+	if longestSeries.Title != "" {
+		facts = append(facts, StatsFact{
+			Icon:  "\U0001F3C6",
+			Label: t.T("stats.factMostSeasons"),
+			Value: longestSeries.Title,
+			Hint:  t.T("stats.seasonsEpisodes", len(longestSeries.Seasons), longestSeries.Episodes),
+		})
+	}
+	if oldest.Title != "" {
+		facts = append(facts, StatsFact{
+			Icon:  "\U0001F570",
+			Label: t.T("stats.factOldest"),
+			Value: oldest.Title,
+			Hint:  strconv.Itoa(oldest.Year),
+		})
+	}
+	if newest.Title != "" {
+		facts = append(facts, StatsFact{
+			Icon:  "\u2728",
+			Label: t.T("stats.factNewest"),
+			Value: newest.Title,
+			Hint:  strconv.Itoa(newest.Year),
+		})
+	}
+	if len(genres) > 0 {
+		facts = append(facts, StatsFact{
+			Icon:  "\U0001F3AD",
+			Label: t.T("stats.factTopGenre"),
+			Value: genres[0].Label,
+			Hint:  t.T("stats.factTopGenreHint", genres[0].Count, genres[0].Share),
+		})
+	}
+	return facts
 }
 
 func toRated(ms []store.MediaStat, n int) []StatsRated {
@@ -364,6 +605,80 @@ func buildFindingRatings(findings []store.Finding) []StatsLibraryRatings {
 	return out
 }
 
+// buildSeriesFindingRatings ranks the series that have gaps by their own TMDB
+// rating per library. Seasons and episodes carry no standalone rating, so the
+// rating of the owned series is taken from the scan's media stats.
+func buildSeriesFindingRatings(findings []store.Finding, media []store.MediaStat) []StatsLibraryRatings {
+	type ratedSeries struct {
+		title   string
+		year    int
+		rating  float64
+		missing int
+	}
+	stats := map[string]store.MediaStat{}
+	for _, m := range media {
+		if m.Type == store.MediaSeries {
+			stats[m.LibraryID+"\x00"+m.Title] = m
+		}
+	}
+
+	byLib := map[string]map[string]*ratedSeries{}
+	names := map[string]string{}
+	var order []string
+	for _, f := range findings {
+		if f.Kind != store.KindMissingSeason && f.Kind != store.KindMissingEpisodes {
+			continue
+		}
+		m, ok := stats[f.LibraryID+"\x00"+f.Title]
+		if !ok || m.Rating <= 0 {
+			continue
+		}
+		if byLib[f.LibraryID] == nil {
+			byLib[f.LibraryID] = map[string]*ratedSeries{}
+			names[f.LibraryID] = f.LibraryName
+			order = append(order, f.LibraryID)
+		}
+		entry := byLib[f.LibraryID][f.Title]
+		if entry == nil {
+			entry = &ratedSeries{title: f.Title, year: m.Year, rating: m.Rating}
+			byLib[f.LibraryID][f.Title] = entry
+		}
+		_, count, _ := findingMissing(f)
+		entry.missing += count
+	}
+
+	toRatedSeries := func(items []ratedSeries, n int) []StatsRated {
+		if len(items) > n {
+			items = items[:n]
+		}
+		out := make([]StatsRated, 0, len(items))
+		for _, it := range items {
+			out = append(out, StatsRated{Title: it.title, Year: it.year, Rating: fmt.Sprintf("%.1f", it.rating)})
+		}
+		return out
+	}
+
+	var out []StatsLibraryRatings
+	for _, id := range order {
+		items := make([]ratedSeries, 0, len(byLib[id]))
+		for _, v := range byLib[id] {
+			items = append(items, *v)
+		}
+		sort.SliceStable(items, func(i, j int) bool { return items[i].title < items[j].title })
+		top := append([]ratedSeries(nil), items...)
+		sort.SliceStable(top, func(i, j int) bool { return top[i].rating > top[j].rating })
+		low := append([]ratedSeries(nil), items...)
+		sort.SliceStable(low, func(i, j int) bool { return low[i].rating < low[j].rating })
+		out = append(out, StatsLibraryRatings{
+			Name:   names[id],
+			Color:  LibraryColor(id),
+			Top:    toRatedSeries(top, 50),
+			Lowest: toRatedSeries(low, 50),
+		})
+	}
+	return out
+}
+
 // yearInt parses a year string, returning 0 when it is empty or invalid.
 func yearInt(y string) int {
 	if n, err := strconv.Atoi(strings.TrimSpace(y)); err == nil && n > 0 {
@@ -390,9 +705,10 @@ const (
 
 func topBars(counts map[string]int, limit, mode int) []StatsBar {
 	bars := make([]StatsBar, 0, len(counts))
-	max := 0
+	max, total := 0, 0
 	for k, c := range counts {
 		bars = append(bars, StatsBar{Label: k, Count: c})
+		total += c
 		if c > max {
 			max = c
 		}
@@ -410,6 +726,9 @@ func topBars(counts map[string]int, limit, mode int) []StatsBar {
 		if max > 0 {
 			bars[i].Pct = bars[i].Count * 100 / max
 		}
+		if total > 0 {
+			bars[i].Share = int(math.Round(float64(bars[i].Count) / float64(total) * 100))
+		}
 	}
 	return bars
 }
@@ -424,6 +743,19 @@ func formatRuntime(min int) string {
 		return fmt.Sprintf("%dh %dm", h, m)
 	}
 	return fmt.Sprintf("%dm", m)
+}
+
+// formatWatchTime renders long totals with days, which runtime alone would hide.
+func formatWatchTime(min int) string {
+	if min <= 0 {
+		return ""
+	}
+	if min < 24*60 {
+		return formatRuntime(min)
+	}
+	d := min / (24 * 60)
+	h := (min % (24 * 60)) / 60
+	return fmt.Sprintf("%dd %dh", d, h)
 }
 
 func findingMissing(f store.Finding) (kind string, count int, title string) {

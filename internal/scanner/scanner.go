@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -296,7 +297,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		s.log.Warn("tmdb tv lookup failed", "title", item.Name, "tmdbId", id, "err", err)
 		return 0
 	}
-	res.Media = append(res.Media, store.MediaStat{
+	stat := store.MediaStat{
 		Type:        store.MediaSeries,
 		Title:       item.Name,
 		Year:        yearInt(tv.FirstAirDate),
@@ -305,11 +306,12 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		Genres:      genreNames(tv.Genres),
 		LibraryID:   libID,
 		LibraryName: libName,
-	})
+	}
 	imdbID, _ := item.ProviderID("Imdb")
 	eps, err := s.jf.Episodes(ctx, userID, item.ID)
 	if err != nil {
 		s.log.Warn("jellyfin episodes failed", "title", item.Name, "err", err)
+		res.Media = append(res.Media, stat)
 		return 0
 	}
 	present := map[int]map[int]bool{}
@@ -323,6 +325,11 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		}
 		present[sn][en] = true
 	}
+	stat.Seasons = ownedSeasons(tv, present)
+	for _, sn := range stat.Seasons {
+		stat.Episodes += sn.Episodes
+	}
+	res.Media = append(res.Media, stat)
 
 	missingTotal := 0
 	for _, season := range tv.Seasons {
@@ -480,7 +487,7 @@ func yearOf(date string) string {
 }
 
 func movieStat(m tmdb.Movie, libID, libName string) store.MediaStat {
-	return store.MediaStat{
+	st := store.MediaStat{
 		Type:        store.MediaMovie,
 		Title:       m.Title,
 		Year:        yearInt(m.ReleaseDate),
@@ -490,6 +497,11 @@ func movieStat(m tmdb.Movie, libID, libName string) store.MediaStat {
 		LibraryID:   libID,
 		LibraryName: libName,
 	}
+	if m.BelongsToCollection != nil {
+		st.CollectionID = m.BelongsToCollection.ID
+		st.CollectionName = m.BelongsToCollection.Name
+	}
+	return st
 }
 
 func genreNames(gs []tmdb.Genre) []string {
@@ -517,4 +529,30 @@ func firstInt(xs []int) int {
 		return xs[0]
 	}
 	return 0
+}
+
+// ownedSeasons pairs the episodes present in Jellyfin with the season list from
+// TMDB, keeping the TMDB season order. Seasons unknown to TMDB are appended.
+func ownedSeasons(tv tmdb.TVShow, present map[int]map[int]bool) []store.SeasonStat {
+	var out []store.SeasonStat
+	known := map[int]bool{}
+	for _, season := range tv.Seasons {
+		known[season.SeasonNumber] = true
+		owned := len(present[season.SeasonNumber])
+		if owned == 0 {
+			continue
+		}
+		out = append(out, store.SeasonStat{Number: season.SeasonNumber, Episodes: owned, Total: season.EpisodeCount})
+	}
+	extra := make([]int, 0, len(present))
+	for sn := range present {
+		if !known[sn] {
+			extra = append(extra, sn)
+		}
+	}
+	sort.Ints(extra)
+	for _, sn := range extra {
+		out = append(out, store.SeasonStat{Number: sn, Episodes: len(present[sn]), Total: len(present[sn])})
+	}
+	return out
 }

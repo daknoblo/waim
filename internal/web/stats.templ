@@ -1,6 +1,7 @@
 package web
 
 import "strconv"
+import "github.com/daknoblo/waim/internal/i18n"
 
 templ Stats(d StatsData) {
 	@Page(d.Layout, statsBody(d))
@@ -25,16 +26,16 @@ templ statsBody(d StatsData) {
 				<div class="card">
 					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.mediaSplit") }</h2>
 					<div class="grid grid-cols-2 gap-3">
-						@statCard("\U0001F3AC "+d.Layout.T.T("stats.movies"), strconv.Itoa(d.MoviesScanned))
-						@statCard("\U0001F4FA "+d.Layout.T.T("stats.series"), strconv.Itoa(d.SeriesScanned))
+						@statCardSub("\U0001F3AC "+d.Layout.T.T("stats.movies"), strconv.Itoa(d.MoviesScanned), "")
+						@statCardSub("\U0001F4FA "+d.Layout.T.T("stats.series"), strconv.Itoa(d.SeriesScanned), d.Layout.T.T("stats.withEpisodes", d.SeriesEpisodes))
 					</div>
 				</div>
 				<div class="card">
 					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.byKind") }</h2>
 					<div class="grid grid-cols-3 gap-3">
-						@statCard(d.Layout.T.T("finding.kind.missing_season"), strconv.Itoa(d.ByKind.MissingSeasons))
-						@statCard(d.Layout.T.T("finding.kind.missing_episodes"), strconv.Itoa(d.ByKind.MissingEpisodes))
-						@statCard(d.Layout.T.T("finding.kind.missing_collection"), strconv.Itoa(d.ByKind.MissingCollections))
+						@statCardCentered(d.Layout.T.T("finding.kind.missing_season"), strconv.Itoa(d.ByKind.MissingSeasons))
+						@statCardCentered(d.Layout.T.T("finding.kind.missing_episodes"), strconv.Itoa(d.ByKind.MissingEpisodes))
+						@statCardCentered(d.Layout.T.T("finding.kind.missing_collection"), strconv.Itoa(d.ByKind.MissingCollections))
 					</div>
 				</div>
 			</div>
@@ -84,16 +85,26 @@ templ statsBody(d StatsData) {
 				</div>
 			}
 
-			if len(d.FindingRatings) > 0 {
+			if len(d.FindingRatings) > 0 || len(d.SeriesFindings) > 0 {
 				<h2 class="mt-2 border-b border-slate-800 pb-1 text-base font-semibold text-slate-300">{ d.Layout.T.T("stats.ratingsFindings") }</h2>
 				<p class="-mt-2 text-sm text-slate-400">{ d.Layout.T.T("stats.ratingsFindingsHint") }</p>
 				for _, lr := range d.FindingRatings {
 					<div class="grid gap-4 lg:grid-cols-2">
-						@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.topRated"), lr.Top, d.Layout.T.T("stats.noFindings"), d.Layout.T.T("stats.showCount"))
-						@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.worstRated"), lr.Lowest, d.Layout.T.T("stats.noFindings"), d.Layout.T.T("stats.showCount"))
+						@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.topRatedMovies"), lr.Top, d.Layout.T.T("stats.noFindings"), d.Layout.T.T("stats.showCount"))
+						@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.worstRatedMovies"), lr.Lowest, d.Layout.T.T("stats.noFindings"), d.Layout.T.T("stats.showCount"))
+					</div>
+				}
+				for _, lr := range d.SeriesFindings {
+					<div class="grid gap-4 lg:grid-cols-2">
+						@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.topRatedSeries"), lr.Top, d.Layout.T.T("stats.noFindings"), d.Layout.T.T("stats.showCount"))
+						@ratedListLib(lr.Name, lr.Color, d.Layout.T.T("stats.worstRatedSeries"), lr.Lowest, d.Layout.T.T("stats.noFindings"), d.Layout.T.T("stats.showCount"))
 					</div>
 				}
 			}
+
+			<h2 class="mt-2 border-b border-slate-800 pb-1 text-base font-semibold text-slate-300">{ d.Layout.T.T("stats.general") }</h2>
+
+			@factsCard(d.Layout.T.T("stats.facts"), d.Facts, d.Layout.T.T("stats.noMedia"))
 
 			<div class="grid gap-4 lg:grid-cols-2">
 				@runtimeList(d.Layout.T.T("stats.longest"), d.LongestMovies, d.Layout.T.T("stats.noMedia"))
@@ -101,9 +112,25 @@ templ statsBody(d StatsData) {
 			</div>
 
 			<div class="grid gap-4 lg:grid-cols-2">
+				@runtimeList(d.Layout.T.T("stats.longestSeries"), d.LongestSeries, d.Layout.T.T("stats.noSeriesData"))
+				@runtimeList(d.Layout.T.T("stats.shortestSeries"), d.ShortestSeries, d.Layout.T.T("stats.noSeriesData"))
+			</div>
+
+			@runtimeList(d.Layout.T.T("stats.sagas"), d.Sagas, d.Layout.T.T("stats.noSagas"))
+
+			<div class="grid gap-4 lg:grid-cols-2">
+				@pieCard(d.Layout.T.T("stats.byGenre"), d.GenrePie, d.Layout.T.T("stats.noMedia"))
 				@barList(d.Layout.T.T("stats.byGenre"), d.Genres, d.Layout.T.T("stats.noMedia"))
+			</div>
+
+			<div class="grid gap-4 lg:grid-cols-2">
+				@pieCard(d.Layout.T.T("stats.byDecade"), d.YearPie, d.Layout.T.T("stats.noMedia"))
 				@barList(d.Layout.T.T("stats.byDecade"), d.Years, d.Layout.T.T("stats.noMedia"))
 			</div>
+
+			@barList(d.Layout.T.T("stats.ratingSpread"), d.RatingSpread, d.Layout.T.T("stats.noMedia"))
+
+			@seriesFlowCard(d.Layout.T, d.SeriesOptions, d.Flow)
 
 			@nicheList(d.Layout.T.T("stats.niches"), d.Layout.T.T("stats.nichesHint"), d.Niches, d.Layout.T.T("stats.noMedia"))
 		}
@@ -162,6 +189,9 @@ templ runtimeList(title string, items []StatsRuntime, empty string) {
 							if it.Year > 0 {
 								<span class="shrink-0 text-xs text-slate-500">{ strconv.Itoa(it.Year) }</span>
 							}
+							if it.Detail != "" {
+								<span class="badge shrink-0">{ it.Detail }</span>
+							}
 						</span>
 						<span class="shrink-0 text-slate-300">{ it.Runtime }</span>
 					</li>
@@ -181,15 +211,124 @@ templ barList(title string, items []StatsBar, empty string) {
 				for _, b := range items {
 					<div class="flex items-center gap-2">
 						<span class="w-28 shrink-0 truncate text-slate-300">{ b.Label }</span>
-						<div class="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
-							<div class="h-full bg-indigo-500" style={ "width:" + strconv.Itoa(b.Pct) + "%" }></div>
-						</div>
+						@meterBar(b.Pct, "fill-indigo-500", "h-2 flex-1")
 						<span class="w-8 shrink-0 text-right text-xs text-slate-400">{ strconv.Itoa(b.Count) }</span>
+						<span class="w-10 shrink-0 text-right text-xs text-slate-500">{ strconv.Itoa(b.Share) }%</span>
 					</div>
 				}
 			</div>
 		}
 	</div>
+}
+
+// meterBar draws a proportional bar as SVG: percentage widths live in
+// attributes, which the strict CSP allows (inline styles it does not).
+templ meterBar(pct int, fill, class string) {
+	<svg class={ class } preserveAspectRatio="none" aria-hidden="true">
+		<rect x="0" y="0" width="100%" height="100%" rx="3" class="fill-slate-800"></rect>
+		<rect x="0" y="0" width={ strconv.Itoa(pct) + "%" } height="100%" rx="3" class={ fill }></rect>
+	</svg>
+}
+
+templ pieCard(title string, slices []PieSlice, empty string) {
+	<div class="card">
+		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
+		if len(slices) == 0 {
+			<p class="text-sm text-slate-500">{ empty }</p>
+		} else {
+			<div class="flex flex-wrap items-center gap-5">
+				<svg viewBox="0 0 100 100" class="h-40 w-40 shrink-0" role="img" aria-label={ title }>
+					for _, s := range slices {
+						<path d={ s.Path } class={ s.Fill }>
+							<title>{ s.Label } — { strconv.Itoa(s.Count) } ({ strconv.Itoa(s.Share) }%)</title>
+						</path>
+					}
+				</svg>
+				<ul class="grid min-w-[12rem] flex-1 gap-1 text-sm">
+					for _, s := range slices {
+						<li class="flex items-center gap-2">
+							<span class={ "h-2.5 w-2.5 shrink-0 rounded-sm", s.Swatch }></span>
+							<span class="min-w-0 flex-1 truncate text-slate-300">{ s.Label }</span>
+							<span class="shrink-0 text-xs text-slate-500">{ strconv.Itoa(s.Count) } · { strconv.Itoa(s.Share) }%</span>
+						</li>
+					}
+				</ul>
+			</div>
+		}
+	</div>
+}
+
+templ factsCard(title string, facts []StatsFact, empty string) {
+	<div class="card">
+		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
+		if len(facts) == 0 {
+			<p class="text-sm text-slate-500">{ empty }</p>
+		} else {
+			<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+				for _, f := range facts {
+					<div class="rounded-lg bg-slate-900/60 px-3 py-2">
+						<div class="text-xs uppercase tracking-wide text-slate-500">{ f.Icon } { f.Label }</div>
+						<div class="mt-1 truncate text-lg font-semibold text-slate-100" title={ f.Value }>{ f.Value }</div>
+						if f.Hint != "" {
+							<div class="truncate text-xs text-slate-500">{ f.Hint }</div>
+						}
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ seriesFlowCard(t *i18n.Translator, options []SeriesOption, flow SeriesFlow) {
+	<div class="card">
+		<div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+			<div>
+				<h2 class="text-lg font-semibold">{ t.T("stats.seriesFlow") }</h2>
+				<p class="text-sm text-slate-400">{ t.T("stats.seriesFlowHint") }</p>
+			</div>
+			if len(options) > 0 {
+				<select
+					name="series"
+					class="select-filter max-w-xs"
+					aria-label={ t.T("stats.seriesFlow") }
+					hx-get="/partials/series-flow"
+					hx-target="#series-flow"
+					hx-swap="innerHTML"
+				>
+					for _, o := range options {
+						<option value={ o.Title } selected?={ o.Selected }>{ o.Label }</option>
+					}
+				</select>
+			}
+		</div>
+		<div id="series-flow">
+			@SeriesFlowChart(t, flow)
+		</div>
+	</div>
+}
+
+templ SeriesFlowChart(t *i18n.Translator, f SeriesFlow) {
+	if !f.Available {
+		<p class="text-sm text-slate-500">{ t.T("stats.noSeriesData") }</p>
+	} else {
+		<svg viewBox={ "0 0 720 " + strconv.Itoa(f.Height) } class="w-full" role="img" aria-label={ f.Title + " — " + f.Summary }>
+			for _, l := range f.Links {
+				<path d={ l.Path } class={ l.Fill } fill-opacity="0.3"></path>
+			}
+			for _, n := range f.Seasons {
+				@flowNode(n)
+			}
+			@flowNode(f.Total)
+		</svg>
+	}
+}
+
+templ flowNode(n FlowNode) {
+	<rect x={ n.X } y={ n.Y } width={ n.W } height={ n.H } rx="3" class={ n.Fill }></rect>
+	<text x={ n.LabelX } y={ n.LabelY } text-anchor={ n.Anchor } dominant-baseline="middle" class="fill-slate-300 text-xs">{ n.Label }</text>
+	if n.Sub != "" {
+		<text x={ n.LabelX } y={ n.SubY } text-anchor={ n.Anchor } dominant-baseline="middle" class="fill-slate-500 text-xs">{ n.Sub }</text>
+	}
 }
 
 templ nicheList(title, hint string, items []StatsNiche, empty string) {
@@ -214,13 +353,6 @@ templ nicheList(title, hint string, items []StatsNiche, empty string) {
 	</div>
 }
 
-templ statCard(label, value string) {
-	<div class="rounded-lg bg-slate-900/60 px-3 py-2">
-		<div class="text-xs uppercase tracking-wide text-slate-500">{ label }</div>
-		<div class="mt-1 text-lg font-semibold text-slate-100">{ value }</div>
-	</div>
-}
-
 templ statCardCentered(label, value string) {
 	<div class="rounded-lg bg-slate-900/60 px-3 py-2 text-center">
 		<div class="text-xs uppercase tracking-wide text-slate-500">{ label }</div>
@@ -228,11 +360,19 @@ templ statCardCentered(label, value string) {
 	</div>
 }
 
+templ statCardSub(label, value, sub string) {
+	<div class="rounded-lg bg-slate-900/60 px-3 py-2 text-center">
+		<div class="text-xs uppercase tracking-wide text-slate-500">{ label }</div>
+		<div class="mt-1 text-lg font-semibold text-slate-100">{ value }</div>
+		if sub != "" {
+			<div class="text-xs text-slate-400">{ sub }</div>
+		}
+	</div>
+}
+
 templ completenessBar(pct int) {
 	<div class="flex items-center gap-2">
-		<div class="h-2 w-24 overflow-hidden rounded-full bg-slate-800">
-			<div class="h-full bg-emerald-500" style={ "width:" + strconv.Itoa(pct) + "%" }></div>
-		</div>
+		@meterBar(pct, "fill-emerald-500", "h-2 w-24 shrink-0")
 		<span class="text-xs text-slate-400">{ strconv.Itoa(pct) }%</span>
 	</div>
 }

@@ -136,6 +136,13 @@ func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
 	s.renderPartial(w, r, web.LogPanel(t, web.BuildLogViews(s.logs.Entries())))
 }
 
+func (s *Server) handlePartialSeriesFlow(w http.ResponseWriter, r *http.Request) {
+	t := s.translator(r)
+	run, _ := s.store.LatestSuccessfulRun(r.Context())
+	flow := web.BuildSeriesFlow(t, run, r.URL.Query().Get("series"))
+	s.render(w, r, web.SeriesFlowChart(t, flow))
+}
+
 func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
