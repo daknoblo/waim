@@ -43,8 +43,13 @@ Huntarr or Missingarr.
   per-library quick filter.
 - **Statistics** page: completeness per library, most incomplete series and
   collections, top/lowest rated titles per library — in separate sections for
-  owned media and for missing titles (so you can decide what's worth getting),
-  each expandable up to 50 entries — plus genre/decade breakdowns.
+  owned media and for missing ones (movies *and* series, so you can decide
+  what's worth getting), each expandable up to 50 entries.
+- General statistics: library facts (total runtime, average rating, episode
+  completeness, specials share), biggest sagas and series binge times,
+  genre/decade donut charts, rating distribution, original language and
+  production country, average rating per genre, growth per scan, a season
+  completion heatmap and a sankey chart of episodes per season for any series.
 - **Suggestions** page: what to watch next from TMDB trending and
   recommendations, with optional AI-generated picks.
 - Optional **AI suggestions** via any OpenAI/Azure-compatible chat endpoint.

@@ -704,7 +704,7 @@ func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []S
 		Icon:  "\u23F3",
 		Label: t.T("stats.factWatchTime"),
 		Value: orDash(formatWatchTime(movieMinutes + seriesMinutes)),
-		Hint:  t.T("stats.factWatchTimeHint", formatWatchTime(movieMinutes), formatWatchTime(seriesMinutes)),
+		Hint:  t.T("stats.factWatchTimeHint", orDash(formatWatchTime(movieMinutes)), orDash(formatWatchTime(seriesMinutes))),
 	}}
 	if ratingCount > 0 {
 		facts = append(facts, StatsFact{
