@@ -71,10 +71,38 @@
     }
   }
 
+  // Reorder a rated list by the "<data attribute>:<direction>" of its dropdown.
+  function applySort(select) {
+    var card = select.closest ? select.closest(".card") : null;
+    if (!card) return;
+    var list = card.querySelector(".rated-list");
+    if (!list) return;
+    var parts = (select.value || "").split(":");
+    var attr = "data-" + parts[0];
+    var dir = parts[1] === "asc" ? 1 : -1;
+    var rows = Array.prototype.slice.call(list.querySelectorAll(".rated-row"));
+    rows.sort(function (a, b) {
+      var av = a.getAttribute(attr) || "";
+      var bv = b.getAttribute(attr) || "";
+      var an = parseFloat(av);
+      var bn = parseFloat(bv);
+      if (!isNaN(an) && !isNaN(bn)) return (an - bn) * dir;
+      return av.localeCompare(bv) * dir;
+    });
+    for (var i = 0; i < rows.length; i++) {
+      list.appendChild(rows[i]);
+    }
+    var limit = card.querySelector(".rated-limit");
+    if (limit) applyRatedLimit(limit);
+  }
+
   function onRatedLimitChange(e) {
     var t = e.target;
-    if (t && t.classList && t.classList.contains("rated-limit")) {
+    if (!t || !t.classList) return;
+    if (t.classList.contains("rated-limit")) {
       applyRatedLimit(t);
+    } else if (t.classList.contains("sort-list")) {
+      applySort(t);
     }
   }
 

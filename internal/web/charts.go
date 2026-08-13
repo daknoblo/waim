@@ -161,10 +161,11 @@ type RatingCell struct {
 
 // StatsSeasonRatings is one series row of the season rating overview.
 type StatsSeasonRatings struct {
-	Title string
-	Link  string
-	Avg   string
-	Cells []RatingCell
+	Title   string
+	Link    string
+	Avg     string
+	Seasons int
+	Cells   []RatingCell
 }
 
 // FlowNode is a rectangle of the flow chart with its pre-placed label.
@@ -309,28 +310,26 @@ func seasonRatingRows(t *i18n.Translator, series []store.MediaStat, jellyfinURL 
 		row := StatsSeasonRatings{Title: s.Title, Link: mediaLink(s, jellyfinURL)}
 		sum, rated := 0.0, 0
 		for _, sn := range s.Seasons {
-			if sn.Rating <= 0 {
-				continue
-			}
 			row.Cells = append(row.Cells, RatingCell{
 				Label:   ratingLabel(sn.Rating),
-				Hint:    t.T("stats.seasonRating", sn.Number, formatRating(sn.Rating)),
+				Hint:    t.T("stats.seasonRating", sn.Number, ratingLabel(sn.Rating)),
 				Fill:    ratingFill(sn.Rating),
 				Missing: sn.Episodes == 0,
 			})
+			if sn.Rating <= 0 {
+				continue
+			}
 			sum += sn.Rating
 			rated++
 		}
 		if rated == 0 {
 			continue
 		}
+		row.Seasons = len(row.Cells)
 		row.Avg = formatRating(sum / float64(rated))
 		out = append(out, row)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Title) < strings.ToLower(out[j].Title) })
-	if len(out) > 25 {
-		out = out[:25]
-	}
 	return out
 }
 

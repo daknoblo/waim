@@ -109,6 +109,34 @@ type SeriesOption struct {
 	Selected bool
 }
 
+// SortOption is an entry of a list's client-side sort dropdown. The value is a
+// "<data attribute>:<direction>" pair the front-end sorts rows by.
+type SortOption struct {
+	Value    string
+	Label    string
+	Selected bool
+}
+
+// seasonSortOptions are the orders offered for the season rating overview.
+func seasonSortOptions(t *i18n.Translator) []SortOption {
+	return []SortOption{
+		{Value: "title:asc", Label: t.T("stats.sortTitle"), Selected: true},
+		{Value: "rating:desc", Label: t.T("stats.sortRatingDesc")},
+		{Value: "rating:asc", Label: t.T("stats.sortRatingAsc")},
+		{Value: "seasons:desc", Label: t.T("stats.sortSeasons")},
+	}
+}
+
+// completionSortOptions are the orders offered for the completion heatmap.
+func completionSortOptions(t *i18n.Translator) []SortOption {
+	return []SortOption{
+		{Value: "pct:asc", Label: t.T("stats.sortIncomplete"), Selected: true},
+		{Value: "pct:desc", Label: t.T("stats.sortComplete")},
+		{Value: "missing:desc", Label: t.T("stats.sortMissing")},
+		{Value: "title:asc", Label: t.T("stats.sortTitle")},
+	}
+}
+
 // StatsLibrary is a per-library statistics row.
 type StatsLibrary struct {
 	Name          string
@@ -518,9 +546,6 @@ func seriesCompletion(t *i18n.Translator, series []store.MediaStat, jellyfinURL 
 		rows = append(rows, row)
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Pct < rows[j].Pct })
-	if len(rows) > 20 {
-		rows = rows[:20]
-	}
 	return rows, percent(ownedAll, totalAll)
 }
 
