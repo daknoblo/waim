@@ -19,7 +19,7 @@ LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Commit=$(COMMIT) \
 	-X github.com/daknoblo/waim/internal/version.Date=$(DATE)
 
-.PHONY: all generate css build run test vet tidy tools clean docker
+.PHONY: all generate css build run test vet tidy tools clean docker demo
 
 all: generate css build
 
@@ -43,6 +43,10 @@ build:
 run: build
 	$(BINARY)
 
+## Render the static GitHub Pages demo into ./dist.
+demo:
+	go run ./cmd/demo -out dist
+
 ## Run tests.
 test:
 	go test $(PKG)
@@ -64,4 +68,4 @@ docker:
 		-t waim:$(VERSION) .
 
 clean:
-	rm -rf bin out
+	rm -rf bin out dist

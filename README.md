@@ -1,10 +1,16 @@
 # waim — What Am I Missing?
 
+[![Demo](https://img.shields.io/badge/live-demo-6366f1?logo=githubpages&logoColor=white)](https://daknoblo.github.io/waim/)
 [![CI](https://github.com/daknoblo/waim/actions/workflows/ci.yml/badge.svg)](https://github.com/daknoblo/waim/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/daknoblo/waim)](https://github.com/daknoblo/waim/releases/latest)
 [![Go](https://img.shields.io/github/go-mod/go-version/daknoblo/waim)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GHCR](https://img.shields.io/badge/ghcr.io-waim-blue?logo=docker)](https://github.com/daknoblo/waim/pkgs/container/waim)
+
+> [!TIP]
+> **[Try the live demo →](https://daknoblo.github.io/waim/)** — the real UI
+> rendered with sample data, no server required. It is static: nothing is saved
+> and no scan runs there.
 
 > [!NOTE]
 > This project is built with heavy AI assistance. Every change goes through CI,
@@ -66,6 +72,9 @@ Huntarr or Missingarr.
 - Multi-arch images published to GitHub Container Registry.
 
 ## Screenshots
+
+Prefer clicking around? The **[live demo](https://daknoblo.github.io/waim/)**
+serves these pages with sample data.
 
 |  |  |
 | :--: | :--: |

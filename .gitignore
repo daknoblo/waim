@@ -1,6 +1,7 @@
 # Build output / local tooling binaries
 /bin/
 /out/
+/dist/
 /tailwindcss
 tailwindcss-*
 

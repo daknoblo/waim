@@ -38,8 +38,14 @@ make build      # build the static binary into ./bin/waim
 make test       # run tests
 make vet        # go vet
 make run        # build and run (needs WAIM_MASTER_KEY)
+make demo       # render the static GitHub Pages demo into ./dist
 make docker     # build the Docker image locally
 ```
+
+The demo site is the real UI rendered with sample data (`cmd/demo`): htmx
+attributes are stripped and routes are rewritten to file names, so it works from
+any static host. `.github/workflows/pages.yml` publishes it to GitHub Pages on
+every push to `main`.
 
 Run locally:
 

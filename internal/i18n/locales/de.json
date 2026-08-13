@@ -2,6 +2,9 @@
   "app.title": "waim",
   "app.tagline": "Was fehlt mir?",
 
+  "demo.banner": "Statische Demo mit Beispieldaten \u2014 hier wird nichts gespeichert und kein Scan ausgeführt.",
+  "demo.repo": "Quellcode & Einrichtung auf GitHub",
+
   "nav.dashboard": "Übersicht",
   "nav.stats": "Statistik",
   "nav.suggestions": "Vorschläge",
