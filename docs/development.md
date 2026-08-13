@@ -67,6 +67,14 @@ When changing user-facing strings, update **both** locale files
 (`internal/i18n/locales/en.json` and `internal/i18n/locales/de.json`) and use the
 `T(...)` helper in templates rather than hard-coding text.
 
+The layout is mobile-first: base classes target phones, `sm:`/`md:`/`lg:`
+variants restore the wider layouts. Below `md` the navigation collapses into the
+menu button handled in `assets/static/app.js`; below `sm` tables marked with
+`table-cards` render as stacked cards and take their labels from the
+`data-label` attribute of each cell. Because of the strict CSP there are no
+inline scripts or styles — behaviour goes into `app.js`, styling into
+`assets/input.css`.
+
 ## Linting
 
 ```bash

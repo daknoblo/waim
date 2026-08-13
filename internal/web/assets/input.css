@@ -8,37 +8,63 @@
   display: none !important;
 }
 
+@layer base {
+  button,
+  select,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
 @layer components {
   .card {
-    @apply rounded-xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20;
+    @apply min-w-0 rounded-xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20;
   }
 
   .nav-link {
-    @apply rounded-md px-3 py-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100;
+    @apply flex items-center rounded-md px-3 py-2.5 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 md:py-1.5;
   }
   .nav-link-active {
     @apply bg-slate-800 text-slate-100;
   }
 
+  /* Mobile menu: full-width rows with comfortable touch targets. */
+  .nav-panel {
+    @apply grid gap-1 border-t border-slate-800 py-3 text-sm md:hidden;
+  }
+  .nav-panel .nav-link {
+    @apply min-h-[2.75rem] text-base;
+  }
+  .nav-toggle {
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-800 text-slate-300 transition hover:bg-slate-800 hover:text-slate-100 md:hidden;
+  }
+
+  /* text-base below sm: iOS zooms into any control with a font under 16px. */
   .lang-select {
-    @apply rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300 outline-none transition hover:border-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500;
+    @apply min-h-[2.75rem] rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-base text-slate-300 outline-none transition hover:border-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:min-h-0 sm:text-xs;
   }
 
   .btn-primary {
-    @apply rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply min-h-[2.75rem] rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0;
   }
   .btn-ghost {
-    @apply rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white;
+    @apply inline-flex min-h-[2.75rem] items-center justify-center rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white sm:min-h-0;
   }
 
   .input {
-    @apply rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500;
+    @apply min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-base text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:min-h-0;
   }
   .select-filter {
-    @apply rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm text-slate-300 outline-none transition hover:border-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500;
+    @apply min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-base text-slate-300 outline-none transition hover:border-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:min-h-0 sm:text-sm;
   }
   .checkbox {
     @apply h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500;
+  }
+
+  /* Action bar that sticks to the bottom of the viewport on phones. */
+  .sticky-actions {
+    @apply sticky bottom-0 -mx-4 border-t border-slate-800 bg-slate-950/95 px-4 py-3 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
   }
 
   .badge {
@@ -78,4 +104,43 @@
 
 .copy-name.copied::after {
   content: " \2713";
+}
+
+/* Phone layout for wide tables: every row becomes a card, the header row is
+   dropped and each cell shows its column name from the data-label attribute.
+   The markup stays a real table, so htmx swaps and sorting keep working. */
+@media (max-width: 639px) {
+  .table-cards,
+  .table-cards tbody,
+  .table-cards tr,
+  .table-cards td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-cards thead {
+    display: none;
+  }
+
+  .table-cards tr {
+    @apply mb-2 rounded-lg bg-slate-900/60 px-3 py-2;
+  }
+  .table-cards tr:last-child {
+    @apply mb-0;
+  }
+
+  /* Neutralise the divide-y borders between rows, which would otherwise cut
+     through the cards. */
+  .table-cards tbody {
+    @apply divide-y-0;
+  }
+
+  .table-cards td {
+    @apply px-0 py-1;
+  }
+
+  .table-cards td[data-label]::before {
+    content: attr(data-label);
+    @apply mb-0.5 block text-[10px] uppercase tracking-wide text-slate-500;
+  }
 }

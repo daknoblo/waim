@@ -73,7 +73,7 @@ func suggestionsBody(d SuggestionsData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</h1><form hx-post=\"/suggestions/generate\" hx-target=\"#suggestions\" hx-swap=\"outerHTML\"><button type=\"submit\" class=\"btn-primary\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</h1><form hx-post=\"/suggestions/generate\" hx-target=\"#suggestions\" hx-swap=\"outerHTML\" class=\"w-full sm:w-auto\"><button type=\"submit\" class=\"btn-primary w-full sm:w-auto\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -346,7 +346,7 @@ func suggestionSection(title string, items []suggest.Item, empty string) templ.C
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<div class=\"grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<div class=\"grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

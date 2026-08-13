@@ -33,7 +33,7 @@ templ statsBody(d StatsData) {
 				</div>
 				<div class="card">
 					<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.byKind") }</h2>
-					<div class="grid grid-cols-3 gap-3">
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
 						@statCardCentered(d.Layout.T.T("finding.kind.missing_season"), strconv.Itoa(d.ByKind.MissingSeasons))
 						@statCardCentered(d.Layout.T.T("finding.kind.missing_episodes"), strconv.Itoa(d.ByKind.MissingEpisodes))
 						@statCardCentered(d.Layout.T.T("finding.kind.missing_collection"), strconv.Itoa(d.ByKind.MissingCollections))
@@ -44,7 +44,7 @@ templ statsBody(d StatsData) {
 			<div class="card">
 				<h2 class="mb-3 text-lg font-semibold">{ d.Layout.T.T("stats.perLibrary") }</h2>
 				<div class="overflow-x-auto">
-					<table class="w-full text-left text-sm">
+					<table class="table-cards w-full text-left text-sm">
 						<thead class="text-xs uppercase tracking-wide text-slate-500">
 							<tr>
 								<th class="px-3 py-2">{ d.Layout.T.T("dashboard.library") }</th>
@@ -59,11 +59,11 @@ templ statsBody(d StatsData) {
 							for _, l := range d.Libraries {
 								<tr>
 									<td class="px-3 py-2"><span class={ "badge", l.Color }>{ l.Name }</span></td>
-									<td class="px-3 py-2 text-slate-400">{ orDash(l.Type) }</td>
-									<td class="px-3 py-2 text-slate-300">{ strconv.Itoa(l.Scanned) } / { strconv.Itoa(l.Total) }</td>
-									<td class="px-3 py-2 text-slate-300">{ strconv.Itoa(l.ItemsWithGaps) }</td>
-									<td class="px-3 py-2 text-slate-300">{ strconv.Itoa(l.MissingUnits) }</td>
-									<td class="px-3 py-2">
+									<td class="px-3 py-2 text-slate-400" data-label={ d.Layout.T.T("stats.type") }>{ orDash(l.Type) }</td>
+									<td class="px-3 py-2 text-slate-300" data-label={ d.Layout.T.T("dashboard.scanned") }>{ strconv.Itoa(l.Scanned) } / { strconv.Itoa(l.Total) }</td>
+									<td class="px-3 py-2 text-slate-300" data-label={ d.Layout.T.T("stats.withGaps") }>{ strconv.Itoa(l.ItemsWithGaps) }</td>
+									<td class="px-3 py-2 text-slate-300" data-label={ d.Layout.T.T("dashboard.missing") }>{ strconv.Itoa(l.MissingUnits) }</td>
+									<td class="px-3 py-2" data-label={ d.Layout.T.T("stats.completeness") }>
 										@completenessBar(l.Completeness)
 									</td>
 								</tr>
@@ -153,17 +153,18 @@ templ statsBody(d StatsData) {
 }
 
 // titleLink renders a title as a link to Jellyfin or TMDB when one is known.
+// min-w-0 lets the truncation kick in inside flex rows on narrow screens.
 templ titleLink(title, link string) {
 	if link != "" {
 		<a
-			class="truncate font-medium text-slate-100 transition hover:text-indigo-300 hover:underline"
+			class="min-w-0 truncate font-medium text-slate-100 transition hover:text-indigo-300 hover:underline"
 			href={ templ.SafeURL(link) }
 			target="_blank"
 			rel="noreferrer noopener"
 			title={ title }
 		>{ title }</a>
 	} else {
-		<span class="truncate font-medium text-slate-100">{ title }</span>
+		<span class="min-w-0 truncate font-medium text-slate-100">{ title }</span>
 	}
 }
 
@@ -178,7 +179,7 @@ templ ratedListLib(libName string, color []string, kind string, items []StatsRat
 		} else {
 			<ol class="rated-list grid gap-1.5 text-sm">
 				for i, it := range items {
-					<li class="rated-row flex items-center justify-between gap-2" hidden?={ i >= 10 }>
+					<li class="rated-row flex min-w-0 items-center justify-between gap-2" hidden?={ i >= 10 }>
 						<span class="flex min-w-0 items-center gap-2">
 							<span class="w-5 shrink-0 text-right text-xs text-slate-600">{ strconv.Itoa(i + 1) }.</span>
 							@titleLink(it.Title, it.Link)
@@ -212,7 +213,7 @@ templ runtimeList(title string, items []StatsRuntime, empty string) {
 		} else {
 			<ol class="grid gap-1.5 text-sm">
 				for i, it := range items {
-					<li class="flex items-center justify-between gap-2">
+					<li class="flex min-w-0 items-center justify-between gap-2">
 						<span class="flex min-w-0 items-center gap-2">
 							<span class="w-5 shrink-0 text-right text-xs text-slate-600">{ strconv.Itoa(i + 1) }.</span>
 							@titleLink(it.Title, it.Link)
@@ -240,7 +241,7 @@ templ barList(title string, items []StatsBar, empty string) {
 			<div class="grid gap-1.5 text-sm">
 				for _, b := range items {
 					<div class="flex items-center gap-2">
-						<span class="w-28 shrink-0 truncate text-slate-300">{ b.Label }</span>
+						<span class="w-20 shrink-0 truncate text-slate-300 sm:w-28">{ b.Label }</span>
 						@meterBar(b.Pct, "fill-indigo-500", "h-2 flex-1")
 						<span class="w-8 shrink-0 text-right text-xs text-slate-400">{ strconv.Itoa(b.Count) }</span>
 						<span class="w-10 shrink-0 text-right text-xs text-slate-500">{ strconv.Itoa(b.Share) }%</span>
@@ -253,8 +254,10 @@ templ barList(title string, items []StatsBar, empty string) {
 
 // meterBar draws a proportional bar as SVG: percentage widths live in
 // attributes, which the strict CSP allows (inline styles it does not).
+// width="100%" keeps the SVG from claiming its intrinsic 300px in flex rows;
+// callers that set a width utility class still win over the attribute.
 templ meterBar(pct int, fill, class string) {
-	<svg class={ class } preserveAspectRatio="none" aria-hidden="true">
+	<svg class={ "min-w-0", class } width="100%" preserveAspectRatio="none" aria-hidden="true">
 		<rect x="0" y="0" width="100%" height="100%" rx="3" class="fill-slate-800"></rect>
 		<rect x="0" y="0" width={ strconv.Itoa(pct) + "%" } height="100%" rx="3" class={ fill }></rect>
 	</svg>
@@ -329,13 +332,13 @@ templ completionCard(t *i18n.Translator, rows []StatsCompletion, overall int) {
 			<div class="rated-list grid gap-1.5 text-sm">
 				for i, r := range rows {
 					<div
-						class="rated-row flex items-center gap-2"
+						class="rated-row flex flex-wrap items-center gap-2 sm:flex-nowrap"
 						hidden?={ i >= 10 }
 						data-title={ r.Title }
 						data-pct={ strconv.Itoa(r.Pct) }
 						data-missing={ strconv.Itoa(r.Total - r.Owned) }
 					>
-						<span class="w-44 shrink-0 truncate">
+						<span class="w-full shrink-0 truncate sm:w-44">
 							@titleLink(r.Title, r.Link)
 						</span>
 						<span class="flex flex-1 flex-wrap gap-1">
@@ -343,7 +346,7 @@ templ completionCard(t *i18n.Translator, rows []StatsCompletion, overall int) {
 								<span class={ "flex h-5 w-5 items-center justify-center rounded text-[10px] font-medium text-slate-950", c.Fill } title={ c.Hint }>{ c.Label }</span>
 							}
 						</span>
-						<span class="w-24 shrink-0 text-right text-xs text-slate-400">{ strconv.Itoa(r.Owned) } / { strconv.Itoa(r.Total) }</span>
+						<span class="w-20 shrink-0 text-right text-xs text-slate-400 sm:w-24">{ strconv.Itoa(r.Owned) } / { strconv.Itoa(r.Total) }</span>
 						<span class="w-10 shrink-0 text-right text-xs text-slate-500">{ strconv.Itoa(r.Pct) }%</span>
 					</div>
 				}
@@ -355,9 +358,9 @@ templ completionCard(t *i18n.Translator, rows []StatsCompletion, overall int) {
 
 // listControls adds client-side sorting and an expandable row limit to a list.
 templ listControls(t *i18n.Translator, sorts []SortOption, total int) {
-	<div class="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-800 pt-2 text-xs text-slate-400">
-		<span>{ t.T("stats.entries", total) }</span>
-		<label class="ml-2">{ t.T("stats.sortBy") }</label>
+	<div class="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-2 text-xs text-slate-400 sm:justify-end">
+		<span class="w-full sm:w-auto">{ t.T("stats.entries", total) }</span>
+		<label class="sm:ml-2">{ t.T("stats.sortBy") }</label>
 		<select class="sort-list lang-select" aria-label={ t.T("stats.sortBy") }>
 			for _, s := range sorts {
 				<option value={ s.Value } selected?={ s.Selected }>{ s.Label }</option>
@@ -383,7 +386,7 @@ templ genreRatingCard(title, hint string, items []StatsRatedGroup, empty string)
 			<div class="grid gap-1.5 text-sm">
 				for _, it := range items {
 					<div class="flex items-center gap-2">
-						<span class="w-28 shrink-0 truncate text-slate-300">{ it.Label }</span>
+						<span class="w-20 shrink-0 truncate text-slate-300 sm:w-28">{ it.Label }</span>
 						@meterBar(it.Pct, "fill-amber-500", "h-2 flex-1")
 						<span class="w-10 shrink-0 text-right text-xs text-amber-300">{ "\u2605 " + it.Rating }</span>
 						<span class="w-8 shrink-0 text-right text-xs text-slate-500">{ strconv.Itoa(it.Count) }</span>
@@ -425,19 +428,19 @@ templ seriesDetailCard(t *i18n.Translator, options []SeriesOption, detail Series
 				<p class="text-sm text-slate-400">{ t.T("stats.seriesFlowHint") }</p>
 			</div>
 			if len(options) > 0 {
-				<div class="flex flex-wrap items-center gap-2">
+				<div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
 					<input
 						id="series-search"
 						type="search"
 						autocomplete="off"
 						placeholder={ t.T("stats.seriesSearch") }
 						aria-label={ t.T("stats.seriesSearch") }
-						class="input py-1.5 text-sm"
+						class="input w-full py-1.5 sm:w-auto sm:text-sm"
 					/>
 					<select
 						id="series-select"
 						name="series"
-						class="select-filter max-w-xs"
+						class="select-filter w-full sm:max-w-xs"
 						aria-label={ t.T("stats.seriesFlow") }
 						hx-get="/partials/series-flow"
 						hx-target="#series-detail"
@@ -520,13 +523,13 @@ templ seasonRatingCard(t *i18n.Translator, rows []StatsSeasonRatings) {
 			<div class="rated-list grid gap-1.5 text-sm">
 				for i, r := range rows {
 					<div
-						class="rated-row flex items-center gap-2"
+						class="rated-row flex flex-wrap items-center gap-2 sm:flex-nowrap"
 						hidden?={ i >= 10 }
 						data-title={ r.Title }
 						data-rating={ r.Avg }
 						data-seasons={ strconv.Itoa(r.Seasons) }
 					>
-						<span class="w-44 shrink-0 truncate">
+						<span class="w-full shrink-0 truncate sm:w-44">
 							@titleLink(r.Title, r.Link)
 						</span>
 						<span class="flex flex-1 flex-wrap gap-1">
@@ -550,15 +553,17 @@ templ seriesFlowChart(t *i18n.Translator, f SeriesFlow) {
 	if !f.Available {
 		<p class="text-sm text-slate-500">{ t.T("stats.noSeriesData") }</p>
 	} else {
-		<svg viewBox={ "0 0 720 " + strconv.Itoa(f.Height) } class="w-full" role="img" aria-label={ f.Title + " — " + f.Summary }>
-			for _, l := range f.Links {
-				<path d={ l.Path } class={ l.Fill } fill-opacity="0.3"></path>
-			}
-			for _, n := range f.Seasons {
-				@flowNode(n)
-			}
-			@flowNode(f.Total)
-		</svg>
+		<div class="overflow-x-auto">
+			<svg viewBox={ "0 0 720 " + strconv.Itoa(f.Height) } class="w-full min-w-[42rem] sm:min-w-0" role="img" aria-label={ f.Title + " — " + f.Summary }>
+				for _, l := range f.Links {
+					<path d={ l.Path } class={ l.Fill } fill-opacity="0.3"></path>
+				}
+				for _, n := range f.Seasons {
+					@flowNode(n)
+				}
+				@flowNode(f.Total)
+			</svg>
+		</div>
 	}
 }
 
@@ -624,12 +629,12 @@ templ topList(title, metric string, items []StatsTop, empty string) {
 		} else {
 			<ul class="grid gap-2 text-sm">
 				for _, it := range items {
-					<li class="flex items-center justify-between gap-2">
+					<li class="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
 						<span class="flex min-w-0 items-center gap-2">
 							@titleLink(it.Title, it.Link)
 							<span class={ "badge shrink-0", it.Color }>{ it.Library }</span>
 						</span>
-						<span class="whitespace-nowrap text-slate-400">{ strconv.Itoa(it.Missing) } { metric }</span>
+						<span class="text-slate-400 sm:whitespace-nowrap">{ strconv.Itoa(it.Missing) } { metric }</span>
 					</li>
 				}
 			</ul>

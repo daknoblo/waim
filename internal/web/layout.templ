@@ -11,6 +11,26 @@ templ navLink(t *i18n.Translator, href, id, active, label string) {
 	</a>
 }
 
+// navLinks renders the page links shared by the desktop bar and the mobile panel.
+templ navLinks(l Layout) {
+	@navLink(l.T, "/", NavDashboard, l.Active, l.T.T("nav.dashboard"))
+	@navLink(l.T, "/suggestions", NavSuggestions, l.Active, l.T.T("nav.suggestions"))
+	@navLink(l.T, "/stats", NavStats, l.Active, l.T.T("nav.stats"))
+	@navLink(l.T, "/logs", NavLogs, l.Active, l.T.T("nav.logs"))
+	@navLink(l.T, "/settings", NavSettings, l.Active, l.T.T("nav.settings"))
+	@navLink(l.T, "/about", NavAbout, l.Active, l.T.T("nav.about"))
+}
+
+// navIcons holds both states of the mobile menu button; app.js toggles them.
+templ navIcons() {
+	<svg class="nav-icon-open h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+		<path d="M4 7h16M4 12h16M4 17h16"></path>
+	</svg>
+	<svg class="nav-icon-close h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" hidden>
+		<path d="M6 6l12 12M18 6L6 18"></path>
+	</svg>
+}
+
 templ Page(l Layout, body templ.Component) {
 	<!DOCTYPE html>
 	<html lang={ l.T.Locale() } class="h-full">
@@ -26,20 +46,33 @@ templ Page(l Layout, body templ.Component) {
 			<script src={ "/static/app.js?v=" + l.AssetVersion } defer></script>
 		</head>
 		<body class="min-h-full bg-slate-950 text-slate-100 antialiased">
-			<div class="mx-auto flex min-h-screen w-2/3 flex-col px-4">
-				<header class="flex flex-wrap items-center justify-between gap-4 py-5">
-					<div class="flex items-baseline gap-3">
-						<a href="/" class="text-2xl font-bold tracking-tight text-indigo-400 transition hover:text-indigo-300">{ l.T.T("app.title") }</a>
-						<span class="text-sm text-slate-400">{ l.T.T("app.tagline") }</span>
+			<div class="mx-auto flex min-h-screen w-full flex-col px-4 sm:px-6 lg:w-2/3 lg:px-4">
+				<header class="sticky top-0 z-30 -mx-4 border-b border-slate-800/80 bg-slate-950/95 px-4 backdrop-blur sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:backdrop-blur-none lg:-mx-4 lg:px-4">
+					<div class="flex items-center justify-between gap-4 py-4 md:flex-wrap md:py-5">
+						<div class="flex items-baseline gap-3">
+							<a href="/" class="text-2xl font-bold tracking-tight text-indigo-400 transition hover:text-indigo-300">{ l.T.T("app.title") }</a>
+							<span class="hidden text-sm text-slate-400 sm:inline">{ l.T.T("app.tagline") }</span>
+						</div>
+						<nav class="hidden items-center gap-1 text-sm md:flex">
+							@navLinks(l)
+							@languageSwitcher(l, "ml-2")
+						</nav>
+						<button
+							type="button"
+							id="nav-toggle"
+							class="nav-toggle"
+							aria-controls="nav-menu"
+							aria-expanded="false"
+							aria-label={ l.T.T("nav.menu") }
+							data-label-open={ l.T.T("nav.menu") }
+							data-label-close={ l.T.T("nav.menuClose") }
+						>
+							@navIcons()
+						</button>
 					</div>
-					<nav class="flex items-center gap-1 text-sm">
-						@navLink(l.T, "/", NavDashboard, l.Active, l.T.T("nav.dashboard"))
-						@navLink(l.T, "/suggestions", NavSuggestions, l.Active, l.T.T("nav.suggestions"))
-						@navLink(l.T, "/stats", NavStats, l.Active, l.T.T("nav.stats"))
-						@navLink(l.T, "/logs", NavLogs, l.Active, l.T.T("nav.logs"))
-						@navLink(l.T, "/settings", NavSettings, l.Active, l.T.T("nav.settings"))
-						@navLink(l.T, "/about", NavAbout, l.Active, l.T.T("nav.about"))
-						@languageSwitcher(l)
+					<nav id="nav-menu" class="nav-panel" hidden>
+						@navLinks(l)
+						@languageSwitcher(l, "mt-2")
 					</nav>
 				</header>
 				if l.MasterKeyMissing {
@@ -53,7 +86,7 @@ templ Page(l Layout, body templ.Component) {
 				<footer class="border-t border-slate-800 py-4 text-xs text-slate-500">
 					<div class="flex flex-wrap items-center justify-between gap-2">
 						<span>{ l.T.T("app.title") } · { l.Version }</span>
-						<a class="hover:text-slate-300" href={ templ.SafeURL(l.Repo) } target="_blank" rel="noreferrer noopener">{ l.Repo }</a>
+						<a class="break-all hover:text-slate-300" href={ templ.SafeURL(l.Repo) } target="_blank" rel="noreferrer noopener">{ l.Repo }</a>
 					</div>
 				</footer>
 			</div>
@@ -61,12 +94,12 @@ templ Page(l Layout, body templ.Component) {
 	</html>
 }
 
-templ languageSwitcher(l Layout) {
-	<form method="post" action="/locale" class="ml-2">
+templ languageSwitcher(l Layout, class string) {
+	<form method="post" action="/locale" class={ class }>
 		<select
 			name="locale"
 			aria-label={ l.T.T("settings.uiLanguage") }
-			class="lang-select"
+			class="lang-select w-full sm:w-auto"
 		>
 			for _, lang := range l.Languages {
 				<option value={ lang.Code } selected?={ lang.Active }>{ lang.Label }</option>

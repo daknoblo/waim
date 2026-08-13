@@ -109,7 +109,7 @@ func staticHTML(html string, t *i18n.Translator) string {
 	html = absAction.ReplaceAllString(html, `$1="#"`)
 	html = absHref.ReplaceAllString(html, `href="`+repoURL+`"`)
 
-	banner := `<div class="mx-auto w-2/3 px-4 pt-4"><div class="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-100">` +
+	banner := `<div class="mx-auto w-full px-4 pt-4 sm:px-6 lg:w-2/3 lg:px-4"><div class="rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-100">` +
 		templ.EscapeString(t.T("demo.banner")) +
 		` <a class="font-medium underline hover:text-white" href="` + repoURL + `">` + templ.EscapeString(t.T("demo.repo")) + `</a></div></div>`
 	if i := strings.Index(html, "<body"); i >= 0 {

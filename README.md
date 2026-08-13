@@ -68,6 +68,8 @@ Huntarr or Missingarr.
 - Export of settings (keys stay encrypted, never plaintext) and of the current
   sync state.
 - Bilingual UI (English / German) with an in-app language switch.
+- **Responsive layout**: on phones the navigation collapses into a menu button
+  and wide tables turn into stacked cards.
 - Activity log and live scan status in the dashboard.
 - Multi-arch images published to GitHub Container Registry.
 

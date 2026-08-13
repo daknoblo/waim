@@ -115,7 +115,53 @@
     }
   }
 
-  // Fingerprint of the markup currently displayed per polled region. It is sent
+  // Mobile navigation panel. The toggle lives here rather than in an inline
+  // handler so the strict CSP (script-src 'self') stays intact.
+  var desktopNav = window.matchMedia("(min-width: 768px)");
+
+  function setHidden(el, hidden) {
+    if (!el) return;
+    // Attribute rather than the .hidden property: SVG elements do not expose it.
+    if (hidden) {
+      el.setAttribute("hidden", "");
+    } else {
+      el.removeAttribute("hidden");
+    }
+  }
+
+  function setNavOpen(open) {
+    var btn = document.getElementById("nav-toggle");
+    var panel = document.getElementById("nav-menu");
+    if (!btn || !panel) return;
+    setHidden(panel, !open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.setAttribute(
+      "aria-label",
+      btn.getAttribute(open ? "data-label-close" : "data-label-open") || ""
+    );
+    setHidden(btn.querySelector(".nav-icon-open"), open);
+    setHidden(btn.querySelector(".nav-icon-close"), !open);
+  }
+
+  function onNavClick(e) {
+    var btn = e.target.closest ? e.target.closest("#nav-toggle") : null;
+    if (btn) {
+      setNavOpen(btn.getAttribute("aria-expanded") !== "true");
+      return;
+    }
+    // Close again when a link inside the panel is followed.
+    var link = e.target.closest ? e.target.closest("#nav-menu a") : null;
+    if (link) setNavOpen(false);
+  }
+
+  function onNavKeydown(e) {
+    if (e.key === "Escape") setNavOpen(false);
+  }
+
+  function onViewportChange(e) {
+    if (e.matches) setNavOpen(false);
+  }
+
   // back on every polling GET so the server can answer 204 when nothing changed
   // and htmx leaves the DOM untouched instead of re-swapping it.
   var VIEW_TAG = "X-Waim-View";
@@ -255,6 +301,14 @@
     document.body.addEventListener("htmx:afterRequest", onAfterRequest);
     // Click-to-copy for finding names (delegated; survives HTMX swaps).
     document.body.addEventListener("click", onCopyClick);
+    // Mobile navigation panel (delegated: toggle button and its links).
+    document.body.addEventListener("click", onNavClick);
+    document.addEventListener("keydown", onNavKeydown);
+    if (desktopNav.addEventListener) {
+      desktopNav.addEventListener("change", onViewportChange);
+    } else if (desktopNav.addListener) {
+      desktopNav.addListener(onViewportChange);
+    }
     // Expandable rated lists on the statistics page (delegated).
     document.body.addEventListener("change", onRatedLimitChange);
     // Language switcher (delegated).

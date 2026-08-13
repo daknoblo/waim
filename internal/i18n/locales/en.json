@@ -11,6 +11,8 @@
   "nav.logs": "Activity log",
   "nav.settings": "Settings",
   "nav.about": "About",
+  "nav.menu": "Open menu",
+  "nav.menuClose": "Close menu",
 
   "common.save": "Save",
   "common.saved": "Saved",
@@ -19,6 +21,10 @@
   "common.never": "Never",
   "common.none": "None",
   "common.minutes": "minutes",
+  "common.sortBy": "Sort by",
+  "common.sortDirection": "Sort direction",
+  "common.sortAsc": "Ascending",
+  "common.sortDesc": "Descending",
 
   "relative.now": "just now",
   "relative.soon": "shortly",

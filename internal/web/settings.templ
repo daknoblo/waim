@@ -24,9 +24,9 @@ templ settingsBody(d SettingsData) {
 		</div>
 
 		<div class="card grid gap-3">
-			<div class="flex items-center justify-between">
+			<div class="flex flex-wrap items-center justify-between gap-2">
 				<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.libraries") }</h2>
-				<button type="submit" formaction="/settings/refresh-libraries" class="btn-ghost">
+				<button type="submit" formaction="/settings/refresh-libraries" class="btn-ghost w-full sm:w-auto">
 					{ d.Layout.T.T("settings.refreshLibraries") }
 				</button>
 			</div>
@@ -118,9 +118,9 @@ templ settingsBody(d SettingsData) {
 
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.logging") }</h2>
-			<label class="grid gap-1 text-sm max-w-xs">
+			<label class="grid max-w-xs gap-1 text-sm">
 				<span class="text-slate-300">{ d.Layout.T.T("settings.logLevel") }</span>
-				<select name="log_level" class="input">
+				<select name="log_level" class="input w-full">
 					@logLevelOption(d.Layout.T, "info", d.Settings.LogLevel)
 					@logLevelOption(d.Layout.T, "warn", d.Settings.LogLevel)
 					@logLevelOption(d.Layout.T, "debug", d.Settings.LogLevel)
@@ -131,7 +131,7 @@ templ settingsBody(d SettingsData) {
 
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.uiLanguage") }</h2>
-			<select name="locale" class="input max-w-xs">
+			<select name="locale" class="input w-full max-w-xs">
 				for _, lang := range d.Layout.Languages {
 					<option value={ lang.Code } selected?={ lang.Active }>{ lang.Label }</option>
 				}
@@ -141,14 +141,14 @@ templ settingsBody(d SettingsData) {
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.exports") }</h2>
 			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.exportsHint") }</p>
-			<div class="flex flex-wrap gap-2">
+			<div class="grid gap-2 sm:flex sm:flex-wrap">
 				<a class="btn-ghost" href="/export/settings">{ d.Layout.T.T("settings.exportSettings") }</a>
 				<a class="btn-ghost" href="/export/sync">{ d.Layout.T.T("settings.exportSync") }</a>
 			</div>
 		</div>
 
-		<div class="flex justify-end">
-			<button type="submit" class="btn-primary">{ d.Layout.T.T("common.save") }</button>
+		<div class="sticky-actions flex justify-end">
+			<button type="submit" class="btn-primary w-full sm:w-auto">{ d.Layout.T.T("common.save") }</button>
 		</div>
 	</form>
 }

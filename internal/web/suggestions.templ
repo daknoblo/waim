@@ -10,8 +10,8 @@ templ suggestionsBody(d SuggestionsData) {
 	<section class="grid gap-4">
 		<div class="flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-lg font-semibold">{ d.Layout.T.T("nav.suggestions") }</h1>
-			<form hx-post="/suggestions/generate" hx-target="#suggestions" hx-swap="outerHTML">
-				<button type="submit" class="btn-primary" disabled?={ d.Running || !d.Configured }>
+			<form hx-post="/suggestions/generate" hx-target="#suggestions" hx-swap="outerHTML" class="w-full sm:w-auto">
+				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ d.Running || !d.Configured }>
 					{ d.Layout.T.T("suggestions.generate") }
 				</button>
 			</form>
@@ -58,7 +58,7 @@ templ suggestionSection(title string, items []suggest.Item, empty string) {
 		if len(items) == 0 {
 			<p class="text-sm text-slate-500">{ empty }</p>
 		} else {
-			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
 				for _, it := range items {
 					<a href={ templ.SafeURL(it.TMDBLink) } target="_blank" rel="noreferrer noopener" class="group flex gap-3 rounded-lg bg-slate-900/60 p-2 transition hover:bg-slate-800/60">
 						if it.PosterURL != "" {
