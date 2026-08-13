@@ -302,7 +302,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		Title:       item.Name,
 		Year:        yearInt(tv.FirstAirDate),
 		Rating:      tv.VoteAverage,
-		Runtime:     firstInt(tv.EpisodeRunTime),
+		Runtime:     avgInt(tv.EpisodeRunTime),
 		Genres:      genreNames(tv.Genres),
 		LibraryID:   libID,
 		LibraryName: libName,
@@ -330,11 +330,13 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		present[sn][en] = true
 	}
 	seasons := s.newSeasonCache(id)
-	stat.Seasons = ownedSeasons(ctx, tv, present, seasons, s.settings.Scan.EpisodeRatings)
+	stat.Seasons = ownedSeasons(ctx, tv, present, seasons, s.settings.Scan.EpisodeRatings, s.settings.Scan.IncludeSpecials)
 	for _, sn := range stat.Seasons {
 		stat.Episodes += sn.Episodes
 		stat.TotalEpisodes += sn.Total
 	}
+	stat.Runtime = episodeRuntime(tv, stat.Seasons)
+	stat.Minutes = seriesMinutes(stat.Seasons, stat.Runtime)
 	res.Media = append(res.Media, stat)
 
 	missingTotal := 0
@@ -561,11 +563,18 @@ func yearInt(date string) int {
 	return 0
 }
 
-func firstInt(xs []int) int {
-	if len(xs) > 0 {
-		return xs[0]
+func avgInt(xs []int) int {
+	sum, n := 0, 0
+	for _, x := range xs {
+		if x > 0 {
+			sum += x
+			n++
+		}
 	}
-	return 0
+	if n == 0 {
+		return 0
+	}
+	return sum / n
 }
 
 func firstString(xs []string) string {
@@ -578,12 +587,15 @@ func firstString(xs []string) string {
 // ownedSeasons pairs the episodes present in Jellyfin with every season TMDB
 // knows about, so seasons that are entirely missing still show up in the
 // statistics. With ratings enabled every season is fetched from TMDB to record
-// the per-episode votes. Seasons unknown to TMDB are appended.
-func ownedSeasons(ctx context.Context, tv tmdb.TVShow, present map[int]map[int]bool, seasons *seasonCache, withRatings bool) []store.SeasonStat {
+// the per-episode votes and runtimes. Seasons unknown to TMDB are appended.
+func ownedSeasons(ctx context.Context, tv tmdb.TVShow, present map[int]map[int]bool, seasons *seasonCache, withRatings, includeSpecials bool) []store.SeasonStat {
 	var out []store.SeasonStat
 	known := map[int]bool{}
 	for _, season := range tv.Seasons {
 		if season.EpisodeCount == 0 {
+			continue
+		}
+		if season.SeasonNumber == 0 && !includeSpecials {
 			continue
 		}
 		known[season.SeasonNumber] = true
@@ -599,15 +611,60 @@ func ownedSeasons(ctx context.Context, tv tmdb.TVShow, present map[int]map[int]b
 	}
 	extra := make([]int, 0, len(present))
 	for sn := range present {
-		if !known[sn] {
-			extra = append(extra, sn)
+		if known[sn] || (sn == 0 && !includeSpecials) {
+			continue
 		}
+		extra = append(extra, sn)
 	}
 	sort.Ints(extra)
 	for _, sn := range extra {
 		out = append(out, store.SeasonStat{Number: sn, Episodes: len(present[sn]), Total: len(present[sn])})
 	}
 	return out
+}
+
+// episodeRuntime returns the runtime of a single episode: TMDB's per-show value
+// when it has one, otherwise the average of the episodes actually seen.
+func episodeRuntime(tv tmdb.TVShow, seasons []store.SeasonStat) int {
+	if avg := avgInt(tv.EpisodeRunTime); avg > 0 {
+		return avg
+	}
+	sum, n := 0, 0
+	for _, sn := range seasons {
+		for _, ep := range sn.Ratings {
+			if ep.Minutes > 0 {
+				sum += ep.Minutes
+				n++
+			}
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / n
+}
+
+// seriesMinutes totals the runtime of the owned episodes, falling back to the
+// average episode runtime wherever TMDB has no per-episode value.
+func seriesMinutes(seasons []store.SeasonStat, fallback int) int {
+	total := 0
+	for _, sn := range seasons {
+		if len(sn.Ratings) == 0 {
+			total += sn.Episodes * fallback
+			continue
+		}
+		for _, ep := range sn.Ratings {
+			if !ep.Owned {
+				continue
+			}
+			if ep.Minutes > 0 {
+				total += ep.Minutes
+			} else {
+				total += fallback
+			}
+		}
+	}
+	return total
 }
 
 // seasonRatings converts TMDB episodes into rating cells plus the season
@@ -620,10 +677,11 @@ func seasonRatings(eps []tmdb.Episode, present map[int]bool) ([]store.EpisodeRat
 	sum, rated := 0.0, 0
 	for _, ep := range eps {
 		out = append(out, store.EpisodeRating{
-			Number: ep.EpisodeNumber,
-			Title:  ep.Name,
-			Rating: ep.VoteAverage,
-			Owned:  present[ep.EpisodeNumber],
+			Number:  ep.EpisodeNumber,
+			Title:   ep.Name,
+			Rating:  ep.VoteAverage,
+			Minutes: ep.Runtime,
+			Owned:   present[ep.EpisodeNumber],
 		})
 		if ep.VoteAverage > 0 {
 			sum += ep.VoteAverage

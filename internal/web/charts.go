@@ -250,7 +250,7 @@ func buildSeriesRatings(t *i18n.Translator, s store.MediaStat, jellyfinURL strin
 		row := RatingRow{Label: seasonLabel(t, sn.Number), Avg: formatRating(sn.Rating)}
 		for _, ep := range sn.Ratings {
 			row.Cells = append(row.Cells, RatingCell{
-				Label:   strconv.Itoa(ep.Number),
+				Label:   ratingLabel(ep.Rating),
 				Hint:    episodeHint(t, sn.Number, ep),
 				Fill:    ratingFill(ep.Rating),
 				Missing: !ep.Owned,
@@ -313,7 +313,7 @@ func seasonRatingRows(t *i18n.Translator, series []store.MediaStat, jellyfinURL 
 				continue
 			}
 			row.Cells = append(row.Cells, RatingCell{
-				Label:   seasonCellLabel(sn.Number),
+				Label:   ratingLabel(sn.Rating),
 				Hint:    t.T("stats.seasonRating", sn.Number, formatRating(sn.Rating)),
 				Fill:    ratingFill(sn.Rating),
 				Missing: sn.Episodes == 0,
@@ -348,19 +348,8 @@ func seasonFlowLabel(t *i18n.Translator, number, episodes int) string {
 	return t.T("stats.seasonEpisodes", number, episodes)
 }
 
-func seasonCellLabel(n int) string {
-	if n == 0 {
-		return "S"
-	}
-	return strconv.Itoa(n)
-}
-
 func episodeHint(t *i18n.Translator, season int, ep store.EpisodeRating) string {
-	rating := formatRating(ep.Rating)
-	if ep.Rating <= 0 {
-		rating = "\u2014"
-	}
-	hint := t.T("stats.episodeRef", season, ep.Number, ep.Title, rating)
+	hint := t.T("stats.episodeRef", season, ep.Number, ep.Title, formatRating(ep.Rating))
 	if !ep.Owned {
 		hint += " \u00b7 " + t.T("stats.episodeMissing")
 	}
@@ -369,6 +358,14 @@ func episodeHint(t *i18n.Translator, season int, ep store.EpisodeRating) string 
 
 func formatRating(v float64) string {
 	return fmt.Sprintf("%.1f", v)
+}
+
+// ratingLabel is the text inside a heatmap square; unrated entries show a dash.
+func ratingLabel(v float64) string {
+	if v <= 0 {
+		return "\u2014"
+	}
+	return formatRating(v)
 }
 
 // ratingFill maps a TMDB rating onto the heatmap colour scale.

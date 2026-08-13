@@ -297,7 +297,10 @@ templ factsCard(title string, facts []StatsFact, empty string) {
 			<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 				for _, f := range facts {
 					<div class="rounded-lg bg-slate-900/60 px-3 py-2">
-						<div class="text-xs uppercase tracking-wide text-slate-500">{ f.Icon } { f.Label }</div>
+						<div class="text-xs uppercase tracking-wide text-slate-500">
+							<span class={ f.IconClass }>{ f.Icon }</span>
+							{ f.Label }
+						</div>
 						<div class="mt-1 truncate text-lg font-semibold text-slate-100" title={ f.Value }>{ f.Value }</div>
 						if f.Hint != "" {
 							<div class="truncate text-xs text-slate-500">{ f.Hint }</div>
@@ -452,7 +455,7 @@ templ seriesRatingHeatmap(t *i18n.Translator, r SeriesRatings) {
 			<div class="flex items-center gap-1">
 				<span class="w-16 shrink-0"></span>
 				for _, c := range r.Columns {
-					<span class="w-5 shrink-0 text-center text-[10px] text-slate-600">{ c }</span>
+					<span class="w-9 shrink-0 text-center text-[10px] text-slate-600">{ c }</span>
 				}
 			</div>
 			for _, row := range r.Rows {
@@ -460,11 +463,11 @@ templ seriesRatingHeatmap(t *i18n.Translator, r SeriesRatings) {
 					<span class="w-16 shrink-0 truncate text-xs text-slate-400">{ row.Label }</span>
 					for _, c := range row.Cells {
 						<span
-							class={ "h-5 w-5 shrink-0 rounded", c.Fill, templ.KV("opacity-30", c.Missing) }
+							class={ "flex h-5 w-9 shrink-0 items-center justify-center rounded text-[10px] font-medium text-slate-950", c.Fill, templ.KV("opacity-40", c.Missing) }
 							title={ c.Hint }
-						></span>
+						>{ c.Label }</span>
 					}
-					<span class="ml-2 shrink-0 text-xs text-slate-400">{ "\u2605 " + row.Avg }</span>
+					<span class="ml-2 shrink-0 text-xs text-amber-300">{ "\u2605 " + row.Avg }</span>
 				</div>
 			}
 		</div>
@@ -496,7 +499,7 @@ templ seasonRatingCard(t *i18n.Translator, rows []StatsSeasonRatings) {
 						<span class="flex flex-1 flex-wrap gap-1">
 							for _, c := range r.Cells {
 								<span
-									class={ "flex h-5 w-5 items-center justify-center rounded text-[10px] font-medium text-slate-950", c.Fill, templ.KV("opacity-40", c.Missing) }
+									class={ "flex h-5 w-9 shrink-0 items-center justify-center rounded text-[10px] font-medium text-slate-950", c.Fill, templ.KV("opacity-40", c.Missing) }
 									title={ c.Hint }
 								>{ c.Label }</span>
 							}

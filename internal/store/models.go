@@ -27,6 +27,7 @@ type MediaStat struct {
 	Country        string       `json:"country,omitempty"`       // ISO 3166-1 production country
 	Episodes       int          `json:"episodes,omitempty"`      // owned episodes (series)
 	TotalEpisodes  int          `json:"totalEpisodes,omitempty"` // episodes known to TMDB (series)
+	Minutes        int          `json:"minutes,omitempty"`       // runtime of the owned episodes (series)
 	Seasons        []SeasonStat `json:"seasons,omitempty"`       // seasons known to TMDB (series)
 	CollectionID   int64        `json:"collectionId,omitempty"`  // TMDB collection (movies)
 	CollectionName string       `json:"collectionName,omitempty"`
@@ -44,10 +45,11 @@ type SeasonStat struct {
 
 // EpisodeRating is the TMDB rating of a single episode.
 type EpisodeRating struct {
-	Number int     `json:"number"`
-	Title  string  `json:"title,omitempty"`
-	Rating float64 `json:"rating"`
-	Owned  bool    `json:"owned,omitempty"`
+	Number  int     `json:"number"`
+	Title   string  `json:"title,omitempty"`
+	Rating  float64 `json:"rating"`
+	Minutes int     `json:"minutes,omitempty"`
+	Owned   bool    `json:"owned,omitempty"`
 }
 
 // Finding kinds.

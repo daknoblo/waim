@@ -141,6 +141,66 @@
     }
   }
 
+  // Live preview of the resulting TMDB request volume on the settings page.
+  function fillTemplate(tpl, values) {
+    return tpl.replace(/\{(\w+)\}/g, function (all, key) {
+      return key in values ? values[key] : all;
+    });
+  }
+
+  function num(value) {
+    return Math.round(value).toLocaleString();
+  }
+
+  function formatSpan(minutes) {
+    if (minutes < 90) return Math.round(minutes) + " min";
+    var hours = minutes / 60;
+    if (hours < 48) return Math.round(hours * 10) / 10 + " h";
+    return Math.round((hours / 24) * 10) / 10 + " d";
+  }
+
+  function fieldValue(name, fallback) {
+    var el = document.querySelector('[name="' + name + '"]');
+    if (!el) return fallback;
+    var v = parseFloat(el.value);
+    return isNaN(v) ? fallback : v;
+  }
+
+  function updateRequestEstimates() {
+    var rateOut = document.getElementById("tmdb-rate-estimate");
+    if (rateOut) {
+      var rps = fieldValue("scan_rate", 0);
+      rateOut.textContent = fillTemplate(rateOut.getAttribute("data-tpl") || "", {
+        rps: Math.round(rps * 10) / 10,
+        perMin: num(rps * 60),
+        perHour: num(rps * 3600),
+      });
+    }
+
+    var cacheOut = document.getElementById("cache-estimate");
+    if (!cacheOut) return;
+    var enabled = document.querySelector('[name="cache_refresh_enabled"]');
+    if (enabled && !enabled.checked) {
+      cacheOut.textContent = cacheOut.getAttribute("data-tpl-off") || "";
+      return;
+    }
+    var entries = parseInt(cacheOut.getAttribute("data-entries"), 10) || 0;
+    var interval = fieldValue("cache_refresh_interval", 0);
+    var percent = fieldValue("cache_refresh_percent", 0);
+    if (interval <= 0 || percent <= 0) {
+      cacheOut.textContent = "";
+      return;
+    }
+    var batch = Math.ceil((entries * percent) / 100);
+    cacheOut.textContent = fillTemplate(cacheOut.getAttribute("data-tpl") || "", {
+      entries: num(entries),
+      batch: num(batch),
+      interval: num(interval),
+      perHour: num((batch * 60) / interval),
+      full: formatSpan((100 / percent) * interval),
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var box = document.getElementById("finding-search");
     if (box) {
@@ -153,6 +213,11 @@
     var seriesBox = document.getElementById("series-search");
     if (seriesBox) {
       seriesBox.addEventListener("input", filterSeries);
+    }
+    if (document.getElementById("tmdb-rate-estimate")) {
+      updateRequestEstimates();
+      document.body.addEventListener("input", updateRequestEstimates);
+      document.body.addEventListener("change", updateRequestEstimates);
     }
     // Re-apply the filter right after any HTMX swap (polling, sorting, scanning)
     // so filtered-out rows never flash back in.

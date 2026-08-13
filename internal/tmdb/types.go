@@ -79,6 +79,7 @@ type Episode struct {
 	EpisodeNumber int     `json:"episode_number"`
 	Name          string  `json:"name"`
 	AirDate       string  `json:"air_date"`
+	Runtime       int     `json:"runtime"`
 	VoteAverage   float64 `json:"vote_average"`
 }
 

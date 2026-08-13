@@ -69,30 +69,51 @@ templ settingsBody(d SettingsData) {
 
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.scan") }</h2>
+			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.scanHint") }</p>
 			<div class="grid gap-3 sm:grid-cols-2">
 				@numberField(d.Layout.T.T("settings.interval"), "scan_interval", strconv.Itoa(d.Settings.Scan.IntervalMinutes), "1")
-				@numberField(d.Layout.T.T("settings.rateLimit"), "scan_rate", strconv.FormatFloat(d.Settings.Scan.TMDBRateLimitRPS, 'f', -1, 64), "0.1")
 			</div>
+			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.intervalHint") }</p>
 			@checkboxField(d.Layout.T.T("settings.runOnStart"), "scan_run_on_start", d.Settings.Scan.RunOnStart)
 			@checkboxField(d.Layout.T.T("settings.includeSpecials"), "scan_include_specials", d.Settings.Scan.IncludeSpecials)
-			@checkboxField(d.Layout.T.T("settings.episodeRatings"), "scan_episode_ratings", d.Settings.Scan.EpisodeRatings)
-			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.episodeRatingsHint") }</p>
+			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.includeSpecialsHint") }</p>
 		</div>
 
 		<div class="card grid gap-3">
-			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.cache") }</h2>
-			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.cacheHint") }</p>
-			@checkboxField(d.Layout.T.T("settings.cacheEnabled"), "cache_refresh_enabled", d.Settings.Cache.RefreshEnabled)
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdbUsage") }</h2>
+			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.tmdbUsageHint") }</p>
 			<div class="grid gap-3 sm:grid-cols-2">
-				@numberField(d.Layout.T.T("settings.cacheInterval"), "cache_refresh_interval", strconv.Itoa(d.Settings.Cache.RefreshIntervalMinutes), "1")
-				@numberField(d.Layout.T.T("settings.cachePercent"), "cache_refresh_percent", strconv.Itoa(d.Settings.Cache.RefreshPercent), "1")
+				@numberField(d.Layout.T.T("settings.rateLimit"), "scan_rate", strconv.FormatFloat(d.Settings.Scan.TMDBRateLimitRPS, 'f', -1, 64), "0.1")
 			</div>
-			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.cachePercentHint") }</p>
-			@checkboxField(d.Layout.T.T("settings.cacheCleanupEnabled"), "cache_cleanup_enabled", d.Settings.Cache.CleanupEnabled)
-			<div class="grid gap-3 sm:grid-cols-2">
-				@numberField(d.Layout.T.T("settings.cacheCleanupMaxAge"), "cache_cleanup_max_age", strconv.Itoa(d.Settings.Cache.CleanupMaxAgeDays), "1")
+			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.rateLimitHint") }</p>
+			<p id="tmdb-rate-estimate" class="text-xs text-indigo-300" data-tpl={ d.Layout.T.T("settings.rateEstimate") }></p>
+			@checkboxField(d.Layout.T.T("settings.episodeRatings"), "scan_episode_ratings", d.Settings.Scan.EpisodeRatings)
+			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.episodeRatingsHint") }</p>
+
+			<div class="mt-2 border-t border-slate-800 pt-3">
+				<h3 class="mb-1 font-medium text-slate-200">{ d.Layout.T.T("settings.cache") }</h3>
+				<p class="mb-3 text-sm text-slate-400">{ d.Layout.T.T("settings.cacheHint") }</p>
+				<div class="grid gap-3">
+					@checkboxField(d.Layout.T.T("settings.cacheEnabled"), "cache_refresh_enabled", d.Settings.Cache.RefreshEnabled)
+					<div class="grid gap-3 sm:grid-cols-2">
+						@numberField(d.Layout.T.T("settings.cacheInterval"), "cache_refresh_interval", strconv.Itoa(d.Settings.Cache.RefreshIntervalMinutes), "1")
+						@numberField(d.Layout.T.T("settings.cachePercent"), "cache_refresh_percent", strconv.Itoa(d.Settings.Cache.RefreshPercent), "1")
+					</div>
+					<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.cachePercentHint") }</p>
+					<p
+						id="cache-estimate"
+						class="text-xs text-indigo-300"
+						data-entries={ strconv.Itoa(d.CacheEntries) }
+						data-tpl={ d.Layout.T.T("settings.cacheEstimate") }
+						data-tpl-off={ d.Layout.T.T("settings.cacheEstimateOff") }
+					></p>
+					@checkboxField(d.Layout.T.T("settings.cacheCleanupEnabled"), "cache_cleanup_enabled", d.Settings.Cache.CleanupEnabled)
+					<div class="grid gap-3 sm:grid-cols-2">
+						@numberField(d.Layout.T.T("settings.cacheCleanupMaxAge"), "cache_cleanup_max_age", strconv.Itoa(d.Settings.Cache.CleanupMaxAgeDays), "1")
+					</div>
+					<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.cacheCleanupHint") }</p>
+				</div>
 			</div>
-			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.cacheCleanupHint") }</p>
 		</div>
 
 		<div class="card grid gap-3">

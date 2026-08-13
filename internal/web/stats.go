@@ -95,10 +95,11 @@ type StatsGrowth struct {
 
 // StatsFact is a single headline number with an explanatory label.
 type StatsFact struct {
-	Icon  string
-	Label string
-	Value string
-	Hint  string
+	Icon      string
+	IconClass string
+	Label     string
+	Value     string
+	Hint      string
 }
 
 // SeriesOption is a selectable series for the season flow diagram.
@@ -596,10 +597,11 @@ func seriesByBingeTime(t *i18n.Translator, series []store.MediaStat, jellyfinURL
 	}
 	var all []binge
 	for _, s := range series {
-		if s.Episodes == 0 || s.Runtime <= 0 {
+		minutes := bingeMinutes(s)
+		if minutes <= 0 {
 			continue
 		}
-		all = append(all, binge{stat: s, minutes: s.Episodes * s.Runtime})
+		all = append(all, binge{stat: s, minutes: minutes})
 	}
 	if len(all) == 0 {
 		return nil, nil
@@ -695,6 +697,16 @@ func ratingSpread(media []store.MediaStat) []StatsBar {
 	return topBars(buckets, 0, sortByLabelAsc)
 }
 
+// bingeMinutes is the time needed to watch every owned episode of a series. The
+// scanner records the real per-episode runtimes; older scans only knew the
+// average episode length.
+func bingeMinutes(m store.MediaStat) int {
+	if m.Minutes > 0 {
+		return m.Minutes
+	}
+	return m.Episodes * m.Runtime
+}
+
 // ownedSeasonCount counts regular seasons (specials excluded) that have at
 // least one episode on the shelf.
 func ownedSeasonCount(m store.MediaStat) int {
@@ -725,7 +737,7 @@ func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []S
 	}
 	seriesMinutes, episodes, seasons, specials := 0, 0, 0, 0
 	for _, s := range series {
-		seriesMinutes += s.Episodes * s.Runtime
+		seriesMinutes += bingeMinutes(s)
 		episodes += s.Episodes
 		seasons += ownedSeasonCount(s)
 		specials += specialEpisodes(s)
@@ -761,10 +773,11 @@ func buildFacts(t *i18n.Translator, movies, series []store.MediaStat, genres []S
 	}}
 	if ratingCount > 0 {
 		facts = append(facts, StatsFact{
-			Icon:  "\u2605",
-			Label: t.T("stats.factAvgRating"),
-			Value: fmt.Sprintf("%.1f", ratingSum/float64(ratingCount)),
-			Hint:  t.T("stats.factAvgRatingHint", ratingCount),
+			Icon:      "\u2605",
+			IconClass: "text-amber-300",
+			Label:     t.T("stats.factAvgRating"),
+			Value:     fmt.Sprintf("%.1f", ratingSum/float64(ratingCount)),
+			Hint:      t.T("stats.factAvgRatingHint", ratingCount),
 		})
 	}
 	if len(series) > 0 && episodes > 0 {

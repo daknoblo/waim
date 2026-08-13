@@ -20,6 +20,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message string, isErr bool, checks ...web.ConnCheck) {
 	cur := s.cfg.Get()
+	cacheEntries, _ := s.store.TMDBCacheCount(r.Context())
 	d := web.SettingsData{
 		Layout:         s.layout(r, web.NavSettings),
 		Settings:       cur,
@@ -27,6 +28,7 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message 
 		HasJellyfinKey: cur.Jellyfin.APIKey != "",
 		HasTMDBKey:     cur.TMDB.APIKey != "",
 		HasAIKey:       cur.AI.APIKey != "",
+		CacheEntries:   cacheEntries,
 		Message:        message,
 		IsError:        isErr,
 	}

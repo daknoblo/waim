@@ -87,28 +87,31 @@ turned off by default.
 | API key               | Stored encrypted, like the Jellyfin and TMDB keys.               |
 | Model                 | Model / deployment name to request.                              |
 
-### Scanning
+### Scanning (Jellyfin)
+
+When and how waim reads your Jellyfin libraries.
 
 | Field                  | Description                                                              |
 | ---------------------- | ------------------------------------------------------------------------ |
-| Scan interval (minutes) | How often to scan automatically. `0` means manual scans only.           |
+| Scan interval (minutes) | How often a scan starts automatically. One scan is a single pass over all enabled libraries; `0` means only the *Scan now* button starts one. |
 | Run a scan on startup  | Trigger one scan when the container starts.                              |
-| TMDB requests per second | Client-side rate limit for TMDB API calls.                            |
-| Include specials (season 0) | When enabled, specials are included in the comparison; off by default. |
-| Collect episode ratings | Loads every season of every series from TMDB so the statistics page can show the episode rating heatmap. The first scan takes noticeably longer (one request per season, bounded by the rate limit); afterwards the responses come from the local cache. Off by default. |
+| Include specials (season 0) | When enabled, specials count as gaps and appear in the statistics; off by default. |
 
-### Data refresh
+### TMDB requests & data refresh
 
-TMDB responses are cached locally in `waim.db` (`tmdb_cache` table), so scans and
-suggestions reuse data instead of re-fetching everything from TMDB. A background
-job keeps the cache fresh by re-fetching the oldest entries first, and a nightly
-cleanup (03:00) prunes entries no longer used by any scan or suggestion.
+Everything that talks to TMDB. Responses are cached locally in `waim.db`
+(`tmdb_cache` table), so scans and suggestions reuse data instead of re-fetching
+everything. A background job keeps the cache fresh by re-fetching the oldest
+entries first, and a nightly cleanup (03:00) prunes entries no longer used by any
+scan or suggestion.
 
 | Field                          | Description                                                                                          |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| TMDB requests per second       | Upper bound for **all** TMDB calls together (scans, suggestions, background refresh). The settings page previews the resulting requests per minute and hour while you type. |
+| Collect episode ratings        | Loads every season of every series from TMDB so the statistics page can show the episode rating heatmap and exact series runtimes. The first scan takes noticeably longer (one request per season, bounded by the rate limit); afterwards the responses come from the local cache. Off by default. |
 | Refresh cached TMDB data       | Master switch for the background refresher.                                                          |
 | Refresh interval (minutes)     | How often a refresh batch runs.                                                                      |
-| Share refreshed per run (%)    | Percentage of the oldest cache entries re-fetched each run. The defaults (1% every 15 min) spread a full refresh across the day. |
+| Share refreshed per run (%)    | Percentage of the oldest cache entries re-fetched each run. The defaults (1% every 15 min) spread a full refresh across the day. The settings page previews the request volume and how long a full refresh takes. |
 | Remove orphaned entries nightly | Master switch for the nightly cleanup.                                                              |
 | Remove entries unused for (days) | Cache entries not requested by any scan or suggestion for this many days are deleted (e.g. media removed from the library). |
 
