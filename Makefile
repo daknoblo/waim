@@ -19,7 +19,7 @@ LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Commit=$(COMMIT) \
 	-X github.com/daknoblo/waim/internal/version.Date=$(DATE)
 
-.PHONY: all generate css build run test vet tidy tools clean docker demo
+.PHONY: all generate css build run test vet tidy tools clean docker demo docs-version
 
 all: generate css build
 
@@ -46,6 +46,18 @@ run: build
 ## Render the static GitHub Pages demo into ./dist.
 demo:
 	go run ./cmd/demo -out dist
+
+## Point the pinned image examples in the docs at a release, e.g.
+## `make docs-version VERSION=v1.2.0`. Run this before creating the tag;
+## CI verifies that the docs match the newest tag.
+docs-version:
+	@echo "$(VERSION)" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$$' \
+		|| (echo "usage: make docs-version VERSION=vX.Y.Z (got '$(VERSION)')" && exit 1)
+	@files=$$(grep -rlE 'ghcr\.io/daknoblo/waim:v[0-9]+\.[0-9]+\.[0-9]+' README.md docs/ || true); \
+	test -n "$$files" || (echo "error: no pinned image version found in README.md or docs/" && exit 1); \
+	sed -i.bak -E 's|(ghcr\.io/daknoblo/waim:)v[0-9]+\.[0-9]+\.[0-9]+|\1$(VERSION)|g' $$files
+	@find README.md docs -name '*.bak' -delete
+	@echo "docs now pin $(VERSION)"
 
 ## Run tests.
 test:

@@ -22,6 +22,9 @@ jobs:
     steps:
       - name: "\U0001F4E5 Check out repository"
         uses: actions/checkout@v7
+        with:
+          # Full history so the version check below can see the release tags.
+          fetch-depth: 0
 
       - name: "\U0001F527 Set up Go (version from go.mod, with module cache)"
         uses: actions/setup-go@v7
@@ -45,6 +48,25 @@ jobs:
           ./tailwindcss -c tailwind.config.js -i internal/web/assets/input.css -o internal/web/assets/static/app.css --minify
           git diff --exit-code -- internal/web/assets/static/app.css \
             || (echo "::error::Compiled app.css is stale. Run 'make css' and commit the result." && exit 1)
+
+      - name: "\U0001F50D Check the documented image version matches the latest tag"
+        run: |
+          latest=$(git tag --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then
+            echo "No release tag yet — nothing to check."
+            exit 0
+          fi
+          documented=$(grep -rhoE 'ghcr\.io/daknoblo/waim:v[0-9]+\.[0-9]+\.[0-9]+' README.md docs/ \
+            | sed 's/.*://' | sort -u || true)
+          if [ -z "$documented" ]; then
+            echo "No pinned version referenced in the docs — nothing to check."
+            exit 0
+          fi
+          if [ "$documented" != "$latest" ]; then
+            echo "::error::Docs pin $(echo "$documented" | tr '\n' ' ')but the latest tag is $latest. Run 'make docs-version VERSION=$latest' and commit the result (before creating the next tag)."
+            exit 1
+          fi
+          echo "Docs pin $latest — up to date."
 
       - name: "\U0001F9EA Static analysis (go vet)"
         run: go vet ./...

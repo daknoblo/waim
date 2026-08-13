@@ -86,7 +86,8 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
 ## Continuous integration
 
 - `.github/workflows/ci.yml` — verifies generated templ code and CSS are up to
-  date, runs `go vet`, golangci-lint, race-enabled tests and a build.
+  date, checks the docs pin the newest release tag, runs `go vet`,
+  golangci-lint, race-enabled tests and a build.
 - `.github/workflows/release.yml` — builds and pushes multi-arch images to
   `ghcr.io`. `main` → `:latest`, git tags → semver tags, every commit → a
   `sha-…` tag. Images are scanned with Trivy.
@@ -97,4 +98,11 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
   image plus an immutable `sha-…` tag for rollbacks.
 - Use short-lived feature branches and pull requests against `main`; CI runs on
   every PR.
-- Create a `vX.Y.Z` tag to publish a pinned, versioned image.
+- To publish a pinned, versioned image:
+  1. `make docs-version VERSION=vX.Y.Z` — points the pinned image examples in
+     the docs at the release.
+  2. Commit and push the result.
+  3. Create and push the `vX.Y.Z` tag.
+
+  The order matters: CI fails when the docs still pin an older version than the
+  newest tag, so the docs update has to land before the tag.
