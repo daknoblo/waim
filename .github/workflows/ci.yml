@@ -51,12 +51,19 @@ jobs:
 
       - name: "\U0001F50D Check the documented image version matches the latest tag"
         run: |
-          latest=$(git tag --sort=-v:refname | head -n1)
+          # ghcr.io only carries plain semver tags: docker/metadata-action's
+          # {{version}} strips a leading "v", so ":v1.2.3" would be a 404.
+          if grep -rnE 'ghcr\.io/daknoblo/waim:v[0-9]' README.md docs/; then
+            echo "::error::Docs pin a v-prefixed image tag, but ghcr.io publishes plain semver tags (e.g. 1.2.3)."
+            exit 1
+          fi
+          latest=$(git tag --list | sed 's/^v//' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
           if [ -z "$latest" ]; then
             echo "No release tag yet — nothing to check."
             exit 0
           fi
-          documented=$(grep -rhoE 'ghcr\.io/daknoblo/waim:v[0-9]+\.[0-9]+\.[0-9]+' README.md docs/ \
+          documented=$(grep -rhoE 'ghcr\.io/daknoblo/waim:[0-9]+\.[0-9]+\.[0-9]+' README.md docs/ \
             | sed 's/.*://' | sort -u || true)
           if [ -z "$documented" ]; then
             echo "No pinned version referenced in the docs — nothing to check."

@@ -5,7 +5,10 @@ name: Publish Docker Image (ghcr.io)
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    # Release tags are plain semver (1.2.3) to match the published image tags.
+    # v-prefixed tags stay accepted so an out-of-habit `v1.2.3` still publishes
+    # instead of silently doing nothing.
+    tags: ["[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+"]
 
 env:
   REGISTRY: ghcr.io
@@ -43,7 +46,16 @@ jobs:
 
       - name: "\U0001F551 Compute build version"
         id: buildmeta
-        run: echo "version=$(date -u +v%Y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
+        # Tag builds report the release version, so the About page and the
+        # startup log match the image tag. Branch builds keep a build stamp.
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(date -u +%Y%m%d-%H%M)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build version: $version"
 
       - name: "\U0001F3F7\uFE0F Determine image tags & labels"
         id: meta

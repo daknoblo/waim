@@ -99,10 +99,15 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
 - Use short-lived feature branches and pull requests against `main`; CI runs on
   every PR.
 - To publish a pinned, versioned image:
-  1. `make docs-version VERSION=vX.Y.Z` — points the pinned image examples in
+  1. `make docs-version VERSION=X.Y.Z` — points the pinned image examples in
      the docs at the release.
   2. Commit and push the result.
-  3. Create and push the `vX.Y.Z` tag.
+  3. Create and push the `X.Y.Z` tag.
 
   The order matters: CI fails when the docs still pin an older version than the
   newest tag, so the docs update has to land before the tag.
+
+  Tags are plain semver without a `v` prefix, matching the published image tags
+  — `docker/metadata-action` strips a leading `v`, so `ghcr.io/...:v1.2.3` would
+  never exist. A `v`-prefixed tag still triggers a release and is normalised to
+  `1.2.3`, but the plain form is the convention.

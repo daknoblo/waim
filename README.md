@@ -109,7 +109,8 @@ load your libraries, select the ones to scan, and save.
 | Tag                            | Source        | Purpose                       |
 | ------------------------------ | ------------- | ----------------------------- |
 | `ghcr.io/daknoblo/waim:latest` | `main`        | Current build of `main`       |
-| `ghcr.io/daknoblo/waim:vX.Y.Z` | git tag       | Pinned versions               |
+| `ghcr.io/daknoblo/waim:X.Y.Z`  | git tag       | Pinned versions               |
+| `ghcr.io/daknoblo/waim:X.Y`    | git tag       | Latest patch of a minor line  |
 | `ghcr.io/daknoblo/waim:sha-…`  | every commit  | Exact commit, for rollbacks   |
 
 ## Configuration

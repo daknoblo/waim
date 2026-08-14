@@ -3,7 +3,7 @@
 # 1. Copy this file to docker-compose.yml.
 # 2. Set a strong WAIM_MASTER_KEY (used to encrypt stored API keys).
 #    Prefer a Docker secret or an .env file that is NOT committed.
-# 3. Pin a tag if you want reproducible deploys (`vX.Y.Z` or `sha-…`);
+# 3. Pin a tag if you want reproducible deploys (`X.Y.Z` or `sha-…`);
 #    `latest` always tracks the current build of the main branch.
 # 4. Configure Jellyfin and TMDB in the web UI at http://<host>:8080.
 
