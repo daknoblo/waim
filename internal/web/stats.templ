@@ -613,34 +613,69 @@ templ upcomingCard(t *i18n.Translator, u StatsUpcoming) {
 			<h2 class="text-lg font-semibold">{ t.T("stats.upcomingTitle") }</h2>
 			<p class="text-sm text-slate-400">{ t.T("stats.upcomingHint") }</p>
 		</div>
-		if !u.Available {
-			<p class="text-sm text-slate-500">{ t.T("stats.upcomingEmpty") }</p>
-		} else {
-			<div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
-				@statCardCentered(t.T("stats.upcomingTotal"), strconv.Itoa(u.Total))
-				@statCardCentered("\U0001F39E "+t.T("stats.upcomingEpisodes"), strconv.Itoa(u.Episodes))
-				@statCardCentered("\U0001F3AC "+t.T("stats.upcomingMovies"), strconv.Itoa(u.Movies))
-				@statCardSub(t.T("stats.upcomingNext"), orDash(u.NextLabel), u.NextTitle)
-			</div>
-			@upcomingTimelineChart(t, u.Timeline)
-			<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3 text-xs text-slate-400">
-				<label for="upcoming-filter">{ t.T("stats.upcomingFilter") }</label>
-				<select id="upcoming-filter" class="upcoming-filter select-filter" aria-label={ t.T("stats.upcomingFilter") }>
-					for _, f := range u.Filters {
-						<option value={ f.Value } selected?={ f.Selected }>{ f.Label }</option>
-					}
-				</select>
-				if u.Truncated > 0 {
-					<span class="ml-auto">{ t.T("stats.upcomingTruncated", u.Truncated) }</span>
+		<div id="upcoming-content">
+			@UpcomingContent(t, u)
+		</div>
+	</div>
+}
+
+// UpcomingContent is the swap target of the range and type dropdowns.
+templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
+	if !u.HasAny {
+		<p class="text-sm text-slate-500">{ t.T("stats.upcomingEmpty") }</p>
+	} else {
+		<div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+			@statCardCentered(t.T("stats.upcomingTotal"), strconv.Itoa(u.Total))
+			@statCardCentered("\U0001F39E "+t.T("stats.upcomingEpisodes"), strconv.Itoa(u.Episodes))
+			@statCardCentered("\U0001F3AC "+t.T("stats.upcomingMovies"), strconv.Itoa(u.Movies))
+			@statCardSub(t.T("stats.upcomingNext"), orDash(u.NextLabel), u.NextTitle)
+		</div>
+		@upcomingTimelineChart(t, u.Timeline)
+		<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3 text-xs text-slate-400">
+			<label for="upcoming-range">{ t.T("stats.upcomingRange") }</label>
+			<select
+				id="upcoming-range"
+				name="range"
+				class="select-filter"
+				aria-label={ t.T("stats.upcomingRange") }
+				hx-get="/partials/upcoming"
+				hx-target="#upcoming-content"
+				hx-swap="innerHTML"
+				hx-include="#upcoming-type"
+			>
+				for _, o := range u.Ranges {
+					<option value={ o.Value } selected?={ o.Selected }>{ o.Label }</option>
 				}
-			</div>
-			<div id="upcoming-groups" class="mt-3 grid gap-4">
+			</select>
+			<label for="upcoming-type" class="ml-2">{ t.T("stats.upcomingFilter") }</label>
+			<select
+				id="upcoming-type"
+				name="type"
+				class="select-filter"
+				aria-label={ t.T("stats.upcomingFilter") }
+				hx-get="/partials/upcoming"
+				hx-target="#upcoming-content"
+				hx-swap="innerHTML"
+				hx-include="#upcoming-range"
+			>
+				for _, o := range u.Types {
+					<option value={ o.Value } selected?={ o.Selected }>{ o.Label }</option>
+				}
+			</select>
+			if u.Truncated > 0 {
+				<span class="ml-auto">{ t.T("stats.upcomingTruncated", u.Truncated) }</span>
+			}
+		</div>
+		if !u.Available {
+			<p class="mt-3 text-sm text-slate-500">{ t.T("stats.upcomingEmptyRange") }</p>
+		} else {
+			<div class="mt-3 grid gap-3">
 				for _, g := range u.Groups {
 					@upcomingGroupBlock(g)
 				}
 			</div>
 		}
-	</div>
+	}
 }
 
 // upcomingTimelineChart plots every dated release on a linear time axis. The
@@ -674,10 +709,10 @@ templ upcomingTimelineChart(t *i18n.Translator, tl UpcomingTimeline) {
 
 templ upcomingGroupBlock(g UpcomingGroup) {
 	<div class="upcoming-group">
-		<h3 class="mb-2 border-b border-slate-800 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+		<h3 class="mb-1.5 border-b border-slate-800 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
 			{ g.Label } <span class="font-normal text-slate-600">{ strconv.Itoa(g.Count) }</span>
 		</h3>
-		<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+		<div class="flex gap-2 overflow-x-auto pb-1">
 			for _, it := range g.Items {
 				@upcomingTile(it)
 			}
@@ -690,20 +725,17 @@ templ upcomingTile(it UpcomingEntry) {
 		href={ templ.SafeURL(it.Link) }
 		target="_blank"
 		rel="noreferrer noopener"
-		class="upcoming-item group min-w-0"
-		data-type={ it.MediaType }
+		title={ it.Hint }
+		class="group w-20 shrink-0"
 	>
 		if it.PosterURL != "" {
 			<img src={ it.PosterURL } alt="" loading="lazy" class="aspect-[2/3] w-full rounded object-cover"/>
 		} else {
-			<div class="flex aspect-[2/3] w-full items-center justify-center rounded bg-slate-800 text-2xl">{ it.Icon }</div>
+			<div class="flex aspect-[2/3] w-full items-center justify-center rounded bg-slate-800 text-lg">{ it.Icon }</div>
 		}
-		<div class="mt-1 truncate text-xs font-medium text-slate-200 group-hover:underline">{ it.Title }</div>
-		<div class="truncate text-[11px] text-slate-500">{ it.Sub }</div>
-		<div class="truncate text-[11px] text-indigo-300">{ it.DateLabel }</div>
-		if it.Countdown != "" {
-			<div class="truncate text-[11px] text-slate-500">{ it.Countdown }</div>
-		}
+		<div class="mt-1 truncate text-[11px] font-medium text-slate-200 group-hover:underline">{ it.Title }</div>
+		<div class="truncate text-[10px] text-slate-500">{ it.Sub }</div>
+		<div class="truncate text-[10px] text-indigo-300">{ it.DateLabel }</div>
 	</a>
 }
 

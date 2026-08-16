@@ -103,28 +103,6 @@
       applyRatedLimit(t);
     } else if (t.classList.contains("sort-list")) {
       applySort(t);
-    } else if (t.classList.contains("upcoming-filter")) {
-      applyUpcomingFilter(t);
-    }
-  }
-
-  // Filter the upcoming releases by media type, hiding groups that end up empty.
-  function applyUpcomingFilter(select) {
-    var want = select.value;
-    var groups = document.querySelectorAll("#upcoming-groups .upcoming-group");
-    for (var i = 0; i < groups.length; i++) {
-      var items = groups[i].querySelectorAll(".upcoming-item");
-      var visible = 0;
-      for (var j = 0; j < items.length; j++) {
-        var match = want === "all" || items[j].getAttribute("data-type") === want;
-        setHidden(items[j], !match);
-        if (match) visible++;
-      }
-      setHidden(groups[i], visible === 0);
-    }
-    var markers = document.querySelectorAll("#upcoming-timeline [data-type]");
-    for (var k = 0; k < markers.length; k++) {
-      setHidden(markers[k], want !== "all" && markers[k].getAttribute("data-type") !== want);
     }
   }
 

@@ -157,6 +157,13 @@ func (s *Server) handlePartialSeriesDetail(w http.ResponseWriter, r *http.Reques
 	s.render(w, r, web.SeriesDetailCharts(t, detail))
 }
 
+func (s *Server) handlePartialUpcoming(w http.ResponseWriter, r *http.Request) {
+	t := s.translator(r)
+	run, _ := s.store.LatestSuccessfulRun(r.Context())
+	q := web.NormalizeUpcomingQuery(r.URL.Query().Get("range"), r.URL.Query().Get("type"))
+	s.render(w, r, web.UpcomingContent(t, web.BuildUpcomingSection(t, run, q)))
+}
+
 func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)

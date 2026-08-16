@@ -1,6 +1,7 @@
 package web
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -57,7 +58,8 @@ type TimelineMarker struct {
 
 // StatsUpcoming is the "coming up" section of the statistics page.
 type StatsUpcoming struct {
-	Available bool
+	HasAny    bool // the run recorded upcoming releases at all
+	Available bool // the current selection has releases
 	Total     int
 	Episodes  int
 	Movies    int
@@ -66,7 +68,8 @@ type StatsUpcoming struct {
 	Truncated int
 	Timeline  UpcomingTimeline
 	Groups    []UpcomingGroup
-	Filters   []UpcomingFilter
+	Ranges    []UpcomingFilter
+	Types     []UpcomingFilter
 }
 
 // UpcomingGroup bundles the releases of one timeframe.
@@ -76,24 +79,59 @@ type UpcomingGroup struct {
 	Items []UpcomingEntry
 }
 
-// UpcomingEntry is one tile of the poster grid. Consecutive episodes of the
+// UpcomingEntry is one tile of the poster row. Consecutive episodes of the
 // same season collapse into a single entry.
 type UpcomingEntry struct {
 	MediaType string
 	Title     string
 	Sub       string
 	DateLabel string
-	Countdown string
+	Hint      string
 	PosterURL string
 	Icon      string
 	Link      string
 }
 
-// UpcomingFilter is an option of the media type filter.
+// UpcomingFilter is an option of one of the section's dropdowns.
 type UpcomingFilter struct {
 	Value    string
 	Label    string
 	Selected bool
+}
+
+// UpcomingQuery is the current selection of the upcoming section.
+type UpcomingQuery struct {
+	Range string // 30 | 90 | 180 | 365 | all
+	Type  string // all | series | movie
+}
+
+const (
+	upcomingRangeAll     = "all"
+	upcomingTypeAll      = "all"
+	upcomingDefaultRange = "90"
+)
+
+var upcomingRanges = []string{"30", upcomingDefaultRange, "180", "365", upcomingRangeAll}
+
+// NormalizeUpcomingQuery clamps user input to the supported options.
+func NormalizeUpcomingQuery(rangeV, typeV string) UpcomingQuery {
+	q := UpcomingQuery{Range: upcomingDefaultRange, Type: upcomingTypeAll}
+	if slices.Contains(upcomingRanges, rangeV) {
+		q.Range = rangeV
+	}
+	if typeV == store.MediaSeries || typeV == store.MediaMovie {
+		q.Type = typeV
+	}
+	return q
+}
+
+// days returns the selected window in days, or 0 for the unlimited range.
+func (q UpcomingQuery) days() int {
+	n, err := strconv.Atoi(q.Range)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // upcomingAgg accumulates the episodes of one season into a single tile.
@@ -106,17 +144,44 @@ type upcomingAgg struct {
 	dated    bool
 }
 
+// BuildUpcomingSection builds the "coming up" section for a scan run, which is
+// what the HTMX partial re-renders when a dropdown changes.
+func BuildUpcomingSection(t *i18n.Translator, run *store.ScanRun, q UpcomingQuery) StatsUpcoming {
+	if run == nil {
+		return StatsUpcoming{}
+	}
+	return buildUpcoming(t, run.Upcoming, time.Now(), q)
+}
+
 // buildUpcoming turns the announced releases of a scan into the section model.
-func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time) StatsUpcoming {
-	su := StatsUpcoming{}
-	if len(items) == 0 {
+func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time, q UpcomingQuery) StatsUpcoming {
+	su := StatsUpcoming{HasAny: len(items) > 0}
+	if !su.HasAny {
 		return su
 	}
 	today := dayOf(now)
+	su.Ranges = upcomingRangeOptions(t, q.Range)
+	su.Types = upcomingTypeOptions(t, q.Type)
+
+	var cutoff time.Time
+	if d := q.days(); d > 0 {
+		cutoff = today.AddDate(0, 0, d)
+	}
 
 	byKey := map[string]*upcomingAgg{}
 	var order []string
 	for _, it := range items {
+		if q.Type != upcomingTypeAll && it.MediaType != q.Type {
+			continue
+		}
+		d, dated := parseUpcomingDate(it.ReleaseDate)
+		if !cutoff.IsZero() {
+			// A window selects by date, so undated entries only show up in the
+			// unlimited range.
+			if !dated || d.After(cutoff) {
+				continue
+			}
+		}
 		switch it.MediaType {
 		case store.MediaSeries:
 			su.Episodes++
@@ -126,7 +191,6 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 		key := upcomingKey(it)
 		agg, ok := byKey[key]
 		if !ok {
-			d, dated := parseUpcomingDate(it.ReleaseDate)
 			agg = &upcomingAgg{item: it, firstEp: it.EpisodeNumber, lastEp: it.EpisodeNumber, date: d, dated: dated}
 			byKey[key] = agg
 			order = append(order, key)
@@ -138,7 +202,7 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 		if it.EpisodeNumber > agg.lastEp {
 			agg.lastEp = it.EpisodeNumber
 		}
-		if d, dated := parseUpcomingDate(it.ReleaseDate); dated && (!agg.dated || d.Before(agg.date)) {
+		if dated && (!agg.dated || d.Before(agg.date)) {
 			agg.date, agg.dated = d, true
 			agg.item = it
 		}
@@ -171,11 +235,6 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 
 	su.Timeline = buildUpcomingTimeline(t, aggs, today)
 	su.Groups = upcomingGroups(t, aggs, today)
-	su.Filters = []UpcomingFilter{
-		{Value: "all", Label: t.T("stats.upcomingFilterAll"), Selected: true},
-		{Value: store.MediaSeries, Label: t.T("stats.upcomingFilterSeries")},
-		{Value: store.MediaMovie, Label: t.T("stats.upcomingFilterMovies")},
-	}
 	for _, a := range aggs {
 		if a.dated {
 			su.NextTitle = upcomingTitle(a)
@@ -184,6 +243,31 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 		}
 	}
 	return su
+}
+
+func upcomingRangeOptions(t *i18n.Translator, selected string) []UpcomingFilter {
+	out := make([]UpcomingFilter, 0, len(upcomingRanges))
+	for _, r := range upcomingRanges {
+		label := t.T("stats.upcomingRangeAll")
+		if r != upcomingRangeAll {
+			label = t.T("stats.upcomingRangeDays", mustAtoi(r))
+		}
+		out = append(out, UpcomingFilter{Value: r, Label: label, Selected: r == selected})
+	}
+	return out
+}
+
+func upcomingTypeOptions(t *i18n.Translator, selected string) []UpcomingFilter {
+	return []UpcomingFilter{
+		{Value: upcomingTypeAll, Label: t.T("stats.upcomingFilterAll"), Selected: selected == upcomingTypeAll},
+		{Value: store.MediaSeries, Label: t.T("stats.upcomingFilterSeries"), Selected: selected == store.MediaSeries},
+		{Value: store.MediaMovie, Label: t.T("stats.upcomingFilterMovies"), Selected: selected == store.MediaMovie},
+	}
+}
+
+func mustAtoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
 }
 
 func upcomingGroups(t *i18n.Translator, aggs []*upcomingAgg, today time.Time) []UpcomingGroup {
@@ -231,7 +315,11 @@ func upcomingEntry(t *i18n.Translator, a *upcomingAgg, today time.Time) Upcoming
 	}
 	if a.dated {
 		e.DateLabel = dateLabel(t, a.date)
-		e.Countdown = upcomingCountdown(t, a.date, today)
+	}
+	// The tiles are narrow, so the full context lives in the tooltip.
+	e.Hint = e.Title + " \u00b7 " + e.Sub + " \u00b7 " + e.DateLabel
+	if a.dated {
+		e.Hint += " (" + upcomingCountdown(t, a.date, today) + ")"
 	}
 	return e
 }

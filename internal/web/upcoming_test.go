@@ -35,7 +35,7 @@ func upcomingFixture() []store.UpcomingItem {
 
 func TestBuildUpcomingGroupsAndCounts(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	u := buildUpcoming(testTranslator(t), upcomingFixture(), now)
+	u := buildUpcoming(testTranslator(t), upcomingFixture(), now, NormalizeUpcomingQuery("all", ""))
 
 	if !u.Available {
 		t.Fatal("Available = false, want true")
@@ -70,7 +70,7 @@ func TestBuildUpcomingGroupsAndCounts(t *testing.T) {
 
 func TestBuildUpcomingTimelineGeometry(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	tl := buildUpcoming(testTranslator(t), upcomingFixture(), now).Timeline
+	tl := buildUpcoming(testTranslator(t), upcomingFixture(), now, NormalizeUpcomingQuery("all", "")).Timeline
 
 	if !tl.Available {
 		t.Fatal("Available = false, want true")
@@ -116,8 +116,75 @@ func TestBuildUpcomingTimelineGeometry(t *testing.T) {
 }
 
 func TestBuildUpcomingEmpty(t *testing.T) {
-	u := buildUpcoming(testTranslator(t), nil, time.Now())
-	if u.Available || u.Timeline.Available {
+	u := buildUpcoming(testTranslator(t), nil, time.Now(), NormalizeUpcomingQuery("", ""))
+	if u.HasAny || u.Available || u.Timeline.Available {
 		t.Errorf("empty input should not be available: %+v", u)
+	}
+}
+
+func TestNormalizeUpcomingQuery(t *testing.T) {
+	cases := []struct {
+		rangeV, typeV string
+		want          UpcomingQuery
+	}{
+		{"", "", UpcomingQuery{"90", "all"}},
+		{"30", "series", UpcomingQuery{"30", "series"}},
+		{"all", "movie", UpcomingQuery{"all", "movie"}},
+		{"7", "anything", UpcomingQuery{"90", "all"}}, // unsupported input falls back
+	}
+	for _, c := range cases {
+		if got := NormalizeUpcomingQuery(c.rangeV, c.typeV); got != c.want {
+			t.Errorf("NormalizeUpcomingQuery(%q, %q) = %+v, want %+v", c.rangeV, c.typeV, got, c.want)
+		}
+	}
+}
+
+func TestBuildUpcomingFilters(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	tr := testTranslator(t)
+
+	// A window drops the undated entry and anything past the cutoff.
+	u := buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("30", ""))
+	if !u.HasAny || !u.Available {
+		t.Fatalf("30-day range should still have entries: %+v", u)
+	}
+	if u.Total != 3 || u.Movies != 0 {
+		t.Errorf("30-day range: total=%d movies=%d, want 3/0", u.Total, u.Movies)
+	}
+
+	// The type filter narrows both the counters and the timeline.
+	u = buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("all", "movie"))
+	if u.Episodes != 0 || u.Movies != 2 {
+		t.Errorf("movie filter: episodes=%d movies=%d, want 0/2", u.Episodes, u.Movies)
+	}
+	if len(u.Timeline.Markers) != 1 {
+		t.Errorf("movie filter: %d markers, want 1 (the undated part is off-axis)", len(u.Timeline.Markers))
+	}
+
+	// An empty selection keeps the controls so the range can be widened again.
+	u = buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("30", "movie"))
+	if !u.HasAny || u.Available {
+		t.Errorf("empty selection: HasAny=%v Available=%v, want true/false", u.HasAny, u.Available)
+	}
+	if len(u.Ranges) == 0 || len(u.Types) == 0 {
+		t.Error("empty selection should still offer the dropdown options")
+	}
+}
+
+func TestUpcomingOptionsMarkSelection(t *testing.T) {
+	u := buildUpcoming(testTranslator(t), upcomingFixture(), time.Now(), NormalizeUpcomingQuery("180", "series"))
+	var gotRange, gotType string
+	for _, o := range u.Ranges {
+		if o.Selected {
+			gotRange = o.Value
+		}
+	}
+	for _, o := range u.Types {
+		if o.Selected {
+			gotType = o.Value
+		}
+	}
+	if gotRange != "180" || gotType != "series" {
+		t.Errorf("selected options = %q / %q, want 180 / series", gotRange, gotType)
 	}
 }

@@ -328,7 +328,7 @@ func BuildStats(t *i18n.Translator, in StatsInput) StatsData {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	sd.Upcoming = buildUpcoming(t, run.Upcoming, now)
+	sd.Upcoming = buildUpcoming(t, run.Upcoming, now, NormalizeUpcomingQuery("", ""))
 
 	return sd
 }
