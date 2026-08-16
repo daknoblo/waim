@@ -1,6 +1,7 @@
 # Builds the multi-arch Docker image, publishes it to GitHub Container Registry
-# (main -> :latest, tags -> versioned) and scans it for vulnerabilities.
-name: Publish Docker Image (ghcr.io)
+# (main -> :latest, tags -> versioned), scans it for vulnerabilities and opens a
+# GitHub Release for feature versions.
+name: Publish Release (ghcr.io)
 
 on:
   push:
@@ -100,3 +101,33 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-results.sarif
+
+  release:
+    name: Create GitHub Release
+    # Only feature versions (X.Y.0) get a release page. Patch tags such as
+    # 1.1.7 still publish an image, they just do not add release noise.
+    if: github.ref_type == 'tag' && endsWith(github.ref_name, '.0')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: "\U0001F4E5 Check out repository"
+        uses: actions/checkout@v7
+        with:
+          # Full history and tag objects, so the annotated tag message is readable.
+          fetch-depth: 0
+
+      - name: "\U0001F4DD Publish the release"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Annotated tags carry hand-written notes; lightweight ones fall back
+          # to the changelog GitHub generates from the commits.
+          if [ "$(git for-each-ref "refs/tags/$TAG" --format='%(objecttype)')" = "tag" ]; then
+            notes=--notes-from-tag
+          else
+            notes=--generate-notes
+          fi
+          gh release create "$TAG" --verify-tag --title "waim ${TAG#v}" "$notes"
