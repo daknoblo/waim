@@ -4,6 +4,7 @@ package version
 import (
 	"regexp"
 	"runtime/debug"
+	"strings"
 )
 
 // These values are overridden at build time using -ldflags, e.g.:
@@ -51,4 +52,11 @@ var semver = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 // plain semver, every other build carries a date stamp or "dev".
 func (i Info) IsRelease() bool {
 	return semver.MatchString(i.Version)
+}
+
+// IsFeatureRelease reports whether a GitHub Release page exists for this build.
+// The release workflow only opens one for X.Y.0; patch tags publish an image
+// and nothing else.
+func (i Info) IsFeatureRelease() bool {
+	return i.IsRelease() && strings.HasSuffix(i.Version, ".0")
 }
