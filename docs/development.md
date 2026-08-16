@@ -38,6 +38,7 @@ make build      # build the static binary into ./bin/waim
 make test       # run tests
 make vet        # go vet
 make run        # build and run (needs WAIM_MASTER_KEY)
+make seed       # fill ./appdata with a synthetic scan run
 make demo       # render the static GitHub Pages demo into ./dist
 make docker     # build the Docker image locally
 ```
@@ -55,6 +56,19 @@ WAIM_MASTER_KEY=dev-secret WAIM_ADDR=:8080 make run
 
 Locally, waim stores its data in `./appdata` (gitignored) in the working
 directory. Then open <http://localhost:8080>.
+
+Without a Jellyfin server the pages stay empty, which makes UI work on the
+statistics page awkward. `make seed` writes a database with a synthetic scan
+run — titles, gaps, ratings and announced releases — so every card has data:
+
+```bash
+make seed                      # into ./appdata
+make seed SEED_OUT=/tmp/waim   # somewhere else, e.g. to mount into a container
+make seed SEED_FORCE=1         # overwrite an existing database
+```
+
+It refuses to overwrite an existing database unless `SEED_FORCE=1`, and its
+random seed is fixed so screenshots stay comparable between runs.
 
 ## Editing the UI
 

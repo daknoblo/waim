@@ -14,12 +14,14 @@ VERSION ?= $(shell date -u +%Y%m%d-%H%M)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
+SEED_OUT ?= appdata
+
 LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Version=$(VERSION) \
 	-X github.com/daknoblo/waim/internal/version.Commit=$(COMMIT) \
 	-X github.com/daknoblo/waim/internal/version.Date=$(DATE)
 
-.PHONY: all generate css build run test vet tidy tools clean docker demo docs-version
+.PHONY: all generate css build run test vet tidy tools clean docker demo docs-version seed
 
 all: generate css build
 
@@ -46,6 +48,12 @@ run: build
 ## Render the static GitHub Pages demo into ./dist.
 demo:
 	go run ./cmd/demo -out dist
+
+## Fill a database with a synthetic scan run so the UI can be reviewed without a
+## Jellyfin server, e.g. `make seed` or `make seed SEED_OUT=/tmp/waim`. Refuses
+## to clobber an existing database unless SEED_FORCE=1.
+seed:
+	go run ./cmd/seed -out $(SEED_OUT) $(if $(SEED_FORCE),-force,)
 
 ## Point the pinned image examples in the docs at a release, e.g.
 ## `make docs-version VERSION=1.2.0`. Run this before creating the tag;
