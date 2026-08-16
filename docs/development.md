@@ -41,6 +41,7 @@ make run        # build and run (needs WAIM_MASTER_KEY)
 make seed       # fill ./appdata with a synthetic scan run
 make demo       # render the static GitHub Pages demo into ./dist
 make docker     # build the Docker image locally
+make release VERSION=1.3.0   # pin the docs, commit and tag (push stays manual)
 ```
 
 The demo site is the real UI rendered with sample data (`cmd/demo`): htmx
@@ -112,14 +113,23 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
   image plus an immutable `sha-…` tag for rollbacks.
 - Use short-lived feature branches and pull requests against `main`; CI runs on
   every PR.
-- To publish a pinned, versioned image:
-  1. `make docs-version VERSION=X.Y.Z` — points the pinned image examples in
-     the docs at the release.
-  2. Commit and push the result.
-  3. Create and push the `X.Y.Z` tag.
+- To publish a pinned, versioned image, use `make release VERSION=X.Y.Z`. It
+  regenerates the assets, pins the docs, commits that change and creates the
+  annotated tag, then prints the push commands — pushing stays manual. Without
+  `MESSAGE="..."` it opens `$EDITOR` for the tag annotation, which becomes the
+  body of the GitHub Release.
 
-  The order matters: CI fails when the docs still pin an older version than the
-  newest tag, so the docs update has to land before the tag.
+  It refuses to run on a dirty working tree, because CI rejects stale
+  `*_templ.go` or `app.css` files, and it refuses to reuse an existing tag.
+
+  The steps behind it, should you need them by hand: `make docs-version
+  VERSION=X.Y.Z`, commit, then tag. The order matters — CI fails when the docs
+  still pin an older version than the newest tag.
+
+- **Patch tags are test builds, minor tags are releases.** `1.2.1` publishes an
+  image you can pin in Compose but creates no GitHub Release; only `X.Y.0` does
+  (see the `release` job in `release.yml`). To try a build without any tag at
+  all, pin the `sha-…` image of the commit.
 
   Tags are plain semver without a `v` prefix, matching the published image tags
   — `docker/metadata-action` strips a leading `v`, so `ghcr.io/...:v1.2.3` would

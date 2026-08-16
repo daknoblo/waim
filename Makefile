@@ -21,7 +21,7 @@ LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Commit=$(COMMIT) \
 	-X github.com/daknoblo/waim/internal/version.Date=$(DATE)
 
-.PHONY: all generate css build run test vet tidy tools clean docker demo docs-version seed
+.PHONY: all generate css build run test vet tidy tools clean docker demo docs-version seed release
 
 all: generate css build
 
@@ -66,6 +66,34 @@ docs-version:
 	sed -i.bak -E 's|(ghcr\.io/daknoblo/waim:)v?[0-9]+\.[0-9]+\.[0-9]+|\1$(VERSION)|g' $$files
 	@find README.md docs -name '*.bak' -delete
 	@echo "docs now pin $(VERSION)"
+
+## Prepare a release: regenerate assets, pin the docs, commit and create the
+## annotated tag. Pushing stays manual, so there is a point of no return you
+## control. `make release VERSION=1.3.0` opens $$EDITOR for the notes (they
+## become the GitHub Release body for X.Y.0 tags); pass MESSAGE="..." to skip
+## the editor, which is what you want for throwaway test tags.
+release: generate css
+	@echo "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$' \
+		|| (echo "usage: make release VERSION=X.Y.Z (got '$(VERSION)')" && exit 1)
+	@if git rev-parse -q --verify "refs/tags/$(VERSION)" >/dev/null; then \
+		echo "error: tag $(VERSION) already exists"; exit 1; \
+	fi
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "error: working tree is not clean — commit everything first"; \
+		echo "(regenerated *_templ.go or app.css? CI rejects stale ones)"; \
+		git status --short; exit 1; \
+	fi
+	@$(MAKE) --no-print-directory docs-version VERSION=$(VERSION)
+	@git add README.md docs
+	@git diff --cached --quiet || git commit -q -m "docs: pin $(VERSION)"
+	@if [ -n "$(MESSAGE)" ]; then \
+		git tag -a "$(VERSION)" -m "$(MESSAGE)"; \
+	else \
+		git tag -a "$(VERSION)"; \
+	fi
+	@echo
+	@echo "tag $(VERSION) created. Publish with:"
+	@echo "  git push origin main && git push origin $(VERSION)"
 
 ## Run tests.
 test:
