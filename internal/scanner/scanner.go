@@ -41,6 +41,7 @@ type Result struct {
 	ItemsScanned     int
 	Libraries        []store.LibrarySummary
 	Media            []store.MediaStat
+	Upcoming         []store.UpcomingItem
 }
 
 // Reporter receives live progress updates during a scan.
@@ -220,6 +221,7 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 	for _, libID := range order {
 		res.Libraries = append(res.Libraries, *summaries[libID])
 	}
+	sortUpcoming(res.Upcoming)
 
 	return res, nil
 }
@@ -250,6 +252,24 @@ func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, ite
 			continue
 		}
 		if !s.released(p.ReleaseDate) {
+			poster := p.PosterPath
+			if poster == "" {
+				poster = col.PosterPath
+			}
+			res.Upcoming = append(res.Upcoming, store.UpcomingItem{
+				Kind:         store.UpcomingCollectionPart,
+				MediaType:    store.MediaMovie,
+				Title:        p.Title,
+				SourceTitle:  col.Name,
+				SourceTMDBID: col.ID,
+				TMDBID:       p.ID,
+				ReleaseDate:  strings.TrimSpace(p.ReleaseDate),
+				PosterPath:   poster,
+				Overview:     p.Overview,
+				Rating:       p.VoteAverage,
+				LibraryID:    libID,
+				LibraryName:  libName,
+			})
 			continue
 		}
 		missing = append(missing, missingPart{
@@ -415,43 +435,137 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		})
 		missingTotal += len(missing)
 	}
+	s.collectUpcomingEpisodes(tv, item, libID, libName, seasons, res)
 	return missingTotal
 }
 
+// collectUpcomingEpisodes records the announced episodes of an owned series.
+// The season details were already fetched for the gap detection, so this costs
+// no additional TMDB requests; next_episode_to_air covers announced seasons
+// that TMDB does not list episodes for yet.
+func (s *Scanner) collectUpcomingEpisodes(tv tmdb.TVShow, item jellyfin.Item, libID, libName string, seasons *seasonCache, res *Result) {
+	seen := map[[2]int]bool{}
+	add := func(ep tmdb.Episode) {
+		key := [2]int{ep.SeasonNumber, ep.EpisodeNumber}
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		res.Upcoming = append(res.Upcoming, store.UpcomingItem{
+			Kind:          store.UpcomingEpisode,
+			MediaType:     store.MediaSeries,
+			Title:         ep.Name,
+			SourceTitle:   item.Name,
+			SourceTMDBID:  tv.ID,
+			TMDBID:        tv.ID,
+			SeasonNumber:  ep.SeasonNumber,
+			EpisodeNumber: ep.EpisodeNumber,
+			ReleaseDate:   strings.TrimSpace(ep.AirDate),
+			PosterPath:    tv.PosterPath,
+			Rating:        tv.VoteAverage,
+			LibraryID:     libID,
+			LibraryName:   libName,
+			JellyfinID:    item.ID,
+		})
+	}
+	for _, ep := range seasons.upcoming() {
+		add(ep)
+	}
+	if next := tv.NextEpisodeToAir; next != nil && strings.TrimSpace(next.AirDate) != "" && !s.released(next.AirDate) {
+		if next.SeasonNumber != 0 || s.settings.Scan.IncludeSpecials {
+			add(*next)
+		}
+	}
+}
+
+// sortUpcoming orders releases chronologically, with undated entries last.
+func sortUpcoming(items []store.UpcomingItem) {
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := items[i], items[j]
+		if (a.ReleaseDate == "") != (b.ReleaseDate == "") {
+			return b.ReleaseDate == ""
+		}
+		if a.ReleaseDate != b.ReleaseDate {
+			return a.ReleaseDate < b.ReleaseDate
+		}
+		if a.SourceTitle != b.SourceTitle {
+			return a.SourceTitle < b.SourceTitle
+		}
+		if a.SeasonNumber != b.SeasonNumber {
+			return a.SeasonNumber < b.SeasonNumber
+		}
+		return a.EpisodeNumber < b.EpisodeNumber
+	})
+}
+
 // seasonCache fetches a series' season details at most once per season, so the
-// gap detection and the episode ratings share the same TMDB responses.
+// gap detection, the episode ratings and the upcoming releases share the same
+// TMDB responses.
 type seasonCache struct {
-	s    *Scanner
-	tvID int64
-	byNo map[int][]tmdb.Episode
+	s            *Scanner
+	tvID         int64
+	loaded       map[int]bool
+	airedByNo    map[int][]tmdb.Episode
+	upcomingByNo map[int][]tmdb.Episode
 }
 
 func (s *Scanner) newSeasonCache(tvID int64) *seasonCache {
-	return &seasonCache{s: s, tvID: tvID, byNo: map[int][]tmdb.Episode{}}
+	return &seasonCache{
+		s:            s,
+		tvID:         tvID,
+		loaded:       map[int]bool{},
+		airedByNo:    map[int][]tmdb.Episode{},
+		upcomingByNo: map[int][]tmdb.Episode{},
+	}
 }
 
-// aired returns the already-aired episodes of a season.
-func (c *seasonCache) aired(ctx context.Context, seasonNumber int) []tmdb.Episode {
-	if eps, ok := c.byNo[seasonNumber]; ok {
-		return eps
+// load fetches a season once and splits its episodes into aired and upcoming.
+func (c *seasonCache) load(ctx context.Context, seasonNumber int) {
+	if c.loaded[seasonNumber] {
+		return
 	}
+	c.loaded[seasonNumber] = true
 	sd, err := c.s.td.Season(ctx, c.tvID, seasonNumber)
 	if err != nil {
 		c.s.log.Warn("tmdb season lookup failed", "tvId", c.tvID, "season", seasonNumber, "err", err)
-		c.byNo[seasonNumber] = nil
-		return nil
+		return
 	}
-	var out []tmdb.Episode
 	for _, ep := range sd.Episodes {
 		if ep.EpisodeNumber == 0 && !c.s.settings.Scan.IncludeSpecials {
 			continue
 		}
-		if !c.s.released(ep.AirDate) {
+		if c.s.released(ep.AirDate) {
+			c.airedByNo[seasonNumber] = append(c.airedByNo[seasonNumber], ep)
 			continue
 		}
-		out = append(out, ep)
+		if strings.TrimSpace(ep.AirDate) == "" {
+			continue
+		}
+		if ep.SeasonNumber == 0 {
+			ep.SeasonNumber = seasonNumber
+		}
+		c.upcomingByNo[seasonNumber] = append(c.upcomingByNo[seasonNumber], ep)
 	}
-	c.byNo[seasonNumber] = out
+}
+
+// aired returns the already-aired episodes of a season.
+func (c *seasonCache) aired(ctx context.Context, seasonNumber int) []tmdb.Episode {
+	c.load(ctx, seasonNumber)
+	return c.airedByNo[seasonNumber]
+}
+
+// upcoming returns the dated but not yet aired episodes of every season
+// fetched so far, ordered by season number.
+func (c *seasonCache) upcoming() []tmdb.Episode {
+	nums := make([]int, 0, len(c.upcomingByNo))
+	for n := range c.upcomingByNo {
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	var out []tmdb.Episode
+	for _, n := range nums {
+		out = append(out, c.upcomingByNo[n]...)
+	}
 	return out
 }
 

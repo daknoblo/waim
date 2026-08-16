@@ -119,8 +119,50 @@ func demoRun() *store.ScanRun {
 			{ID: libMovies, Name: "Movies", Scanned: moviesTotal, Total: moviesTotal, Missing: 1},
 			{ID: libSeries, Name: "Series", Scanned: seriesTotal, Total: seriesTotal, Missing: 15},
 		},
-		Media: media,
+		Media:    media,
+		Upcoming: demoUpcoming(),
 	}
+}
+
+// demoUpcoming spreads a handful of announced releases over the coming months
+// so the timeline and the poster grid have something to render.
+func demoUpcoming() []store.UpcomingItem {
+	day := func(offset int) string {
+		return time.Now().AddDate(0, 0, offset).Format("2006-01-02")
+	}
+	var out []store.UpcomingItem
+	episode := func(series string, tmdbID int64, season, ep, offset int) {
+		out = append(out, store.UpcomingItem{
+			Kind: store.UpcomingEpisode, MediaType: store.MediaSeries,
+			Title: fmt.Sprintf("Episode %d", ep), SourceTitle: series,
+			SourceTMDBID: tmdbID, TMDBID: tmdbID, SeasonNumber: season, EpisodeNumber: ep,
+			ReleaseDate: day(offset), LibraryID: libSeries, LibraryName: "Series",
+			JellyfinID: fmt.Sprintf("demo-series-%d", tmdbID),
+		})
+	}
+	for i := 0; i < 6; i++ {
+		episode("Signal Lost", 405, 3, i+1, 3+i*7)
+	}
+	for i := 0; i < 4; i++ {
+		episode("Chronicles of the Deep", 401, 5, i+1, 26+i*7)
+	}
+	for i := 0; i < 3; i++ {
+		episode("Neon Harbour", 402, 4, i+1, 118+i*7)
+	}
+	out = append(out,
+		store.UpcomingItem{
+			Kind: store.UpcomingCollectionPart, MediaType: store.MediaMovie,
+			Title: "The Cartographer: Southern Cross", SourceTitle: "The Cartographer Trilogy",
+			SourceTMDBID: 900, TMDBID: 310, ReleaseDate: day(64), Rating: 0,
+			LibraryID: libMovies, LibraryName: "Movies",
+		},
+		store.UpcomingItem{
+			Kind: store.UpcomingCollectionPart, MediaType: store.MediaMovie,
+			Title: "The Cartographer: Last Meridian", SourceTitle: "The Cartographer Trilogy",
+			SourceTMDBID: 900, TMDBID: 311, LibraryID: libMovies, LibraryName: "Movies",
+		},
+	)
+	return out
 }
 
 func clampRating(v float64) float64 {
@@ -247,6 +289,10 @@ func demoSuggestions(t *i18n.Translator) web.SuggestionsData {
 			TMDBLink: fmt.Sprintf("https://www.themoviedb.org/%s/%d", kind, id),
 		}
 	}
+	dated := func(it suggest.Item, offsetDays int) suggest.Item {
+		it.ReleaseDate = time.Now().AddDate(0, 0, offsetDays).Format("2006-01-02")
+		return it
+	}
 	return web.SuggestionsData{
 		Layout:     demoLayout(t, web.NavSuggestions),
 		Configured: true,
@@ -262,6 +308,17 @@ func demoSuggestions(t *i18n.Translator) web.SuggestionsData {
 			Similar: []suggest.Item{
 				item("tv", "Cold Harbour", "2020", "8.4", "Because you own Neon Harbour.", 504),
 				item("movie", "Atlas of Small Things", "2015", "7.7", "Because you own The Cartographer.", 505),
+			},
+			UpcomingTaste: []suggest.Item{
+				dated(item("tv", "Deepwater Reckoning", "2026", "", "", 506), 21),
+				dated(item("tv", "The Long Winter Watch", "2026", "", "", 507), 55),
+				dated(item("movie", "Cartograph", "2026", "", "", 508), 84),
+				dated(item("movie", "Nightglass", "2027", "", "", 509), 190),
+			},
+			UpcomingRegion: []suggest.Item{
+				dated(item("movie", "Harbour Lights", "2026", "", "", 510), 7),
+				dated(item("movie", "Static Bloom", "2026", "", "", 511), 35),
+				dated(item("tv", "Paper Lanterns: Encore", "2026", "", "", 512), 14),
 			},
 			AI: []suggest.AIItem{
 				{Title: "The Salt Road", Type: "movie", Year: "2019", Reason: "Slow-burn desert thriller in the vein of your documentary picks.", SearchLink: "https://www.themoviedb.org/search?query=The+Salt+Road"},

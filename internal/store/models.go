@@ -52,6 +52,33 @@ type EpisodeRating struct {
 	Owned   bool    `json:"owned,omitempty"`
 }
 
+// UpcomingItem is an announced release derived from a title already in the
+// library: a future episode of an owned series or an unreleased part of an
+// owned movie collection.
+type UpcomingItem struct {
+	Kind          string  `json:"kind"`      // episode | collection_part
+	MediaType     string  `json:"mediaType"` // series | movie
+	Title         string  `json:"title"`
+	SourceTitle   string  `json:"sourceTitle"` // owned series / collection it derives from
+	SourceTMDBID  int64   `json:"sourceTmdbId,omitempty"`
+	TMDBID        int64   `json:"tmdbId,omitempty"`
+	SeasonNumber  int     `json:"seasonNumber,omitempty"`
+	EpisodeNumber int     `json:"episodeNumber,omitempty"`
+	ReleaseDate   string  `json:"releaseDate,omitempty"` // ISO 8601 date, empty when unannounced
+	PosterPath    string  `json:"posterPath,omitempty"`
+	Overview      string  `json:"overview,omitempty"`
+	Rating        float64 `json:"rating,omitempty"`
+	LibraryID     string  `json:"libraryId,omitempty"`
+	LibraryName   string  `json:"libraryName,omitempty"`
+	JellyfinID    string  `json:"jellyfinId,omitempty"`
+}
+
+// Upcoming kinds.
+const (
+	UpcomingEpisode        = "episode"
+	UpcomingCollectionPart = "collection_part"
+)
+
 // Finding kinds.
 const (
 	KindMissingSeason     = "missing_season"
@@ -84,6 +111,7 @@ type ScanRun struct {
 	MissingCount     int              `json:"missingCount"`
 	Libraries        []LibrarySummary `json:"libraries,omitempty"`
 	Media            []MediaStat      `json:"media,omitempty"`
+	Upcoming         []UpcomingItem   `json:"upcoming,omitempty"`
 }
 
 // Duration returns the run duration, or 0 if it has not finished.

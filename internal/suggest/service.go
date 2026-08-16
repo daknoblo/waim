@@ -28,19 +28,22 @@ const (
 	sampleSize    = 12 // owned titles per media type used for recommendations
 	trendingTake  = 12
 	similarTake   = 18
+	upcomingTake  = 12
+	topGenres     = 3 // library genres fed into the discover endpoints
 	aiOwnedNames  = 40
 	generateLimit = 5 * time.Minute
 )
 
 // Item is a display-ready TMDB suggestion.
 type Item struct {
-	MediaType string
-	Title     string
-	Year      string
-	Rating    string
-	Overview  string
-	PosterURL string
-	TMDBLink  string
+	MediaType   string
+	Title       string
+	Year        string
+	Rating      string
+	Overview    string
+	PosterURL   string
+	TMDBLink    string
+	ReleaseDate string
 }
 
 // AIItem is a display-ready AI suggestion.
@@ -54,13 +57,15 @@ type AIItem struct {
 
 // Result is a cached set of suggestions.
 type Result struct {
-	Trending     []Item
-	Similar      []Item
-	AI           []AIItem
-	AIEnabled    bool
-	GeneratedAt  time.Time
-	BasedOnRunID int64
-	Errors       []string
+	Trending       []Item
+	Similar        []Item
+	UpcomingTaste  []Item
+	UpcomingRegion []Item
+	AI             []AIItem
+	AIEnabled      bool
+	GeneratedAt    time.Time
+	BasedOnRunID   int64
+	Errors         []string
 }
 
 // Service builds and caches suggestions.
@@ -126,7 +131,8 @@ func (s *Service) Generate() {
 		s.mu.Lock()
 		s.result = res
 		s.mu.Unlock()
-		s.log.Info("suggestions generated", "trending", len(res.Trending), "similar", len(res.Similar), "ai", len(res.AI))
+		s.log.Info("suggestions generated", "trending", len(res.Trending), "similar", len(res.Similar),
+			"upcoming", len(res.UpcomingTaste)+len(res.UpcomingRegion), "ai", len(res.AI))
 	}()
 }
 
@@ -192,6 +198,7 @@ func (s *Service) build(ctx context.Context) *Result {
 
 	res.Trending = s.buildTrending(ctx, td, ownedTV, ownedMovie, res)
 	res.Similar = s.buildSimilar(ctx, td, sampleTV, sampleMovie, ownedTV, ownedMovie, res)
+	res.UpcomingTaste, res.UpcomingRegion = s.buildUpcoming(ctx, td, ownedTV, ownedMovie, res)
 	if res.AIEnabled {
 		res.AI = s.buildAI(ctx, settings.AI, seriesNames, movieNames, res)
 	}
@@ -253,6 +260,103 @@ func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, s
 	}
 
 	out := append(rankScores(tvScores, "series", similarTake/2), rankScores(movieScores, "movie", similarTake/2)...)
+	return out
+}
+
+// buildUpcoming returns announced titles the library does not have yet: one set
+// matching the library's dominant genres, one set of general releases for the
+// configured region.
+func (s *Service) buildUpcoming(ctx context.Context, td *tmdb.Client, ownedTV, ownedMovie map[int64]bool, res *Result) (taste, region []Item) {
+	from := time.Now()
+	tvNames, movieNames := s.libraryGenres(ctx)
+
+	if ids := genreIDs(ctx, td.TVGenres, tvNames, res, "tmdb tv genres"); len(ids) > 0 || len(tvNames) == 0 {
+		if tv, err := td.DiscoverUpcomingTV(ctx, ids, from); err != nil {
+			res.Errors = append(res.Errors, "tmdb upcoming tv: "+err.Error())
+		} else {
+			taste = append(taste, dedupeTake(tv, "series", ownedTV, upcomingTake/2)...)
+		}
+	}
+	if ids := genreIDs(ctx, td.MovieGenres, movieNames, res, "tmdb movie genres"); len(ids) > 0 || len(movieNames) == 0 {
+		if mv, err := td.DiscoverUpcomingMovies(ctx, ids, from); err != nil {
+			res.Errors = append(res.Errors, "tmdb upcoming movies: "+err.Error())
+		} else {
+			taste = append(taste, dedupeTake(mv, "movie", ownedMovie, upcomingTake/2)...)
+		}
+	}
+
+	if mv, err := td.UpcomingMovies(ctx); err != nil {
+		res.Errors = append(res.Errors, "tmdb movie releases: "+err.Error())
+	} else {
+		region = append(region, dedupeTake(mv, "movie", ownedMovie, upcomingTake/2)...)
+	}
+	if tv, err := td.OnTheAirTV(ctx); err != nil {
+		res.Errors = append(res.Errors, "tmdb on the air: "+err.Error())
+	} else {
+		region = append(region, dedupeTake(tv, "series", ownedTV, upcomingTake/2)...)
+	}
+	return taste, region
+}
+
+// libraryGenres returns the most common genre names per media type of the last
+// successful scan.
+func (s *Service) libraryGenres(ctx context.Context) (tv, movie []string) {
+	run, err := s.store.LatestSuccessfulRun(ctx)
+	if err != nil || run == nil {
+		return nil, nil
+	}
+	tvCounts := map[string]int{}
+	movieCounts := map[string]int{}
+	for _, m := range run.Media {
+		counts := movieCounts
+		if m.Type == store.MediaSeries {
+			counts = tvCounts
+		}
+		for _, g := range m.Genres {
+			counts[g]++
+		}
+	}
+	return topKeys(tvCounts, topGenres), topKeys(movieCounts, topGenres)
+}
+
+func topKeys(counts map[string]int, n int) []string {
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.SliceStable(keys, func(i, j int) bool {
+		if counts[keys[i]] != counts[keys[j]] {
+			return counts[keys[i]] > counts[keys[j]]
+		}
+		return keys[i] < keys[j]
+	})
+	if len(keys) > n {
+		keys = keys[:n]
+	}
+	return keys
+}
+
+// genreIDs maps genre names recorded during a scan onto TMDB genre IDs. Scans
+// store names only, so the genre list has to be resolved at request time.
+func genreIDs(ctx context.Context, list func(context.Context) ([]tmdb.Genre, error), names []string, res *Result, label string) []int {
+	if len(names) == 0 {
+		return nil
+	}
+	all, err := list(ctx)
+	if err != nil {
+		res.Errors = append(res.Errors, label+": "+err.Error())
+		return nil
+	}
+	byName := make(map[string]int, len(all))
+	for _, g := range all {
+		byName[strings.ToLower(g.Name)] = g.ID
+	}
+	var out []int
+	for _, n := range names {
+		if id, ok := byName[strings.ToLower(n)]; ok {
+			out = append(out, id)
+		}
+	}
 	return out
 }
 
@@ -338,6 +442,10 @@ func toItem(m tmdb.MediaResult, mediaType string) Item {
 		Title:     m.DisplayTitle(),
 		Year:      m.Year(),
 		Overview:  truncate(m.Overview, 220),
+	}
+	it.ReleaseDate = m.ReleaseDate
+	if it.ReleaseDate == "" {
+		it.ReleaseDate = m.FirstAirDate
 	}
 	if m.VoteAverage > 0 {
 		it.Rating = fmt.Sprintf("%.1f", m.VoteAverage)

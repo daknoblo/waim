@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/store"
@@ -55,6 +56,7 @@ type StatsData struct {
 	Growth         []StatsGrowth
 	SeriesOptions  []SeriesOption
 	Detail         SeriesDetail
+	Upcoming       StatsUpcoming
 }
 
 // StatsCompletion is one series row of the season completion heatmap.
@@ -214,6 +216,7 @@ type StatsInput struct {
 	LibTypes    map[string]string // library ID -> Jellyfin collection type
 	History     []store.RunTotals
 	JellyfinURL string
+	Now         time.Time // zero value falls back to the current time
 }
 
 // BuildStats computes the statistics view from the latest run and its findings.
@@ -321,6 +324,11 @@ func BuildStats(t *i18n.Translator, in StatsInput) StatsData {
 	sd.FindingRatings = buildFindingRatings(findings)
 	sd.SeriesFindings = buildSeriesFindingRatings(findings, run.Media, in.JellyfinURL)
 	sd.Growth = buildGrowth(in.History)
+	now := in.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	sd.Upcoming = buildUpcoming(t, run.Upcoming, now)
 
 	return sd
 }

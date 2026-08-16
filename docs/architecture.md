@@ -62,15 +62,18 @@ server and the TMDB API.
 3. For each movie/series it resolves a TMDB ID (provider ID first, then a
    title/year search) via the **TMDB client** (rate-limited).
 4. It compares TMDB's seasons/episodes and collection parts against what is
-   present in Jellyfin.
+   present in Jellyfin. Episodes and collection parts that have not been
+   released yet are recorded as *upcoming* releases instead of gaps — they come
+   from the same TMDB responses, so this costs no additional requests.
 5. Findings are written to **SQLite**; the run is marked complete.
 6. The **dashboard** displays the latest run's findings, status and log,
    refreshed via HTMX polling.
 
 The **statistics** and **suggestions** pages are derived from the same persisted
-scan data. Suggestions additionally query TMDB (trending and recommendations)
-and, when enabled, the configured AI endpoint, building the "owned" set live from
-Jellyfin so already-present titles are filtered out.
+scan data. Suggestions additionally query TMDB (trending, recommendations and
+the discover endpoints for upcoming titles) and, when enabled, the configured AI
+endpoint, building the "owned" set live from Jellyfin so already-present titles
+are filtered out.
 
 ## Encryption model
 

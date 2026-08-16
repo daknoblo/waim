@@ -249,7 +249,7 @@ func (s *Scheduler) runScan(ctx context.Context) {
 
 	if scanErr != nil {
 		_ = s.store.FinishScanRun(ctx, runID, store.StatusError, scanErr.Error(),
-			result.LibrariesScanned, result.ItemsScanned, 0, result.Libraries, result.Media)
+			result.LibrariesScanned, result.ItemsScanned, 0, result.Libraries, result.Media, result.Upcoming)
 		s.setStatus(func(st *Status) {
 			st.State = StateIdle
 			st.LastFinished = &finished
@@ -263,7 +263,7 @@ func (s *Scheduler) runScan(ctx context.Context) {
 		s.log.Error("failed to persist findings", "runId", runID, "err", err)
 	}
 	if err := s.store.FinishScanRun(ctx, runID, store.StatusSuccess, "",
-		result.LibrariesScanned, result.ItemsScanned, len(result.Findings), result.Libraries, result.Media); err != nil {
+		result.LibrariesScanned, result.ItemsScanned, len(result.Findings), result.Libraries, result.Media, result.Upcoming); err != nil {
 		s.log.Error("failed to finish scan run", "runId", runID, "err", err)
 	}
 	_ = s.store.PruneRuns(ctx, 20)
@@ -275,7 +275,7 @@ func (s *Scheduler) runScan(ctx context.Context) {
 		st.LastError = ""
 	})
 	s.log.Info("scan finished", "runId", runID, "libraries", result.LibrariesScanned,
-		"items", result.ItemsScanned, "missing", len(result.Findings))
+		"items", result.ItemsScanned, "missing", len(result.Findings), "upcoming", len(result.Upcoming))
 }
 
 func (s *Scheduler) setStatus(mut func(*Status)) {

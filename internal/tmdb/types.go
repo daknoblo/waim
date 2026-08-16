@@ -15,6 +15,10 @@ type Genre struct {
 	Name string `json:"name"`
 }
 
+type genreResponse struct {
+	Genres []Genre `json:"genres"`
+}
+
 // Country is a production country reference.
 type Country struct {
 	Code string `json:"iso_3166_1"`
@@ -41,6 +45,8 @@ type CollectionPart struct {
 	Title       string  `json:"title"`
 	ReleaseDate string  `json:"release_date"`
 	VoteAverage float64 `json:"vote_average"`
+	PosterPath  string  `json:"poster_path"`
+	Overview    string  `json:"overview"`
 }
 
 // Collection is a subset of the /collection/{id} response.
@@ -67,6 +73,10 @@ type TVShow struct {
 	VoteAverage      float64         `json:"vote_average"`
 	PosterPath       string          `json:"poster_path"`
 	FirstAirDate     string          `json:"first_air_date"`
+	LastAirDate      string          `json:"last_air_date"`
+	Status           string          `json:"status"`
+	InProduction     bool            `json:"in_production"`
+	NextEpisodeToAir *Episode        `json:"next_episode_to_air"`
 	EpisodeRunTime   []int           `json:"episode_run_time"`
 	OriginalLanguage string          `json:"original_language"`
 	OriginCountry    []string        `json:"origin_country"`
@@ -74,8 +84,10 @@ type TVShow struct {
 	Seasons          []SeasonSummary `json:"seasons"`
 }
 
-// Episode is a subset of an episode in a season response.
+// Episode is a subset of an episode in a season response. It also models the
+// next_episode_to_air object of /tv/{id}, which carries a season number.
 type Episode struct {
+	SeasonNumber  int     `json:"season_number"`
 	EpisodeNumber int     `json:"episode_number"`
 	Name          string  `json:"name"`
 	AirDate       string  `json:"air_date"`

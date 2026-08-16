@@ -282,3 +282,93 @@ func (c *Client) recommendations(ctx context.Context, kind string, id int64) ([]
 	}
 	return resp.Results, nil
 }
+
+// MovieGenres returns the TMDB movie genre list, used to map the genre names
+// recorded during a scan back to the IDs the discover endpoints expect.
+func (c *Client) MovieGenres(ctx context.Context) ([]Genre, error) {
+	return c.genres(ctx, "movie")
+}
+
+// TVGenres returns the TMDB TV genre list.
+func (c *Client) TVGenres(ctx context.Context) ([]Genre, error) {
+	return c.genres(ctx, "tv")
+}
+
+func (c *Client) genres(ctx context.Context, kind string) ([]Genre, error) {
+	var resp genreResponse
+	if err := c.get(ctx, "/genre/"+kind+"/list", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Genres, nil
+}
+
+// DiscoverUpcomingMovies returns popular movies released on or after the given
+// date, optionally narrowed to the given genres.
+func (c *Client) DiscoverUpcomingMovies(ctx context.Context, genreIDs []int, after time.Time) ([]MediaResult, error) {
+	q := discoverQuery(genreIDs)
+	q.Set("primary_release_date.gte", weekAnchor(after))
+	q.Set("include_adult", "false")
+	if c.region != "" {
+		q.Set("region", c.region)
+	}
+	return c.discover(ctx, "movie", q)
+}
+
+// DiscoverUpcomingTV returns popular TV shows first airing on or after the
+// given date, optionally narrowed to the given genres.
+func (c *Client) DiscoverUpcomingTV(ctx context.Context, genreIDs []int, after time.Time) ([]MediaResult, error) {
+	q := discoverQuery(genreIDs)
+	q.Set("first_air_date.gte", weekAnchor(after))
+	return c.discover(ctx, "tv", q)
+}
+
+// UpcomingMovies returns the theatrical releases scheduled for the configured
+// region.
+func (c *Client) UpcomingMovies(ctx context.Context) ([]MediaResult, error) {
+	q := url.Values{}
+	if c.region != "" {
+		q.Set("region", c.region)
+	}
+	var resp mediaResponse
+	if err := c.get(ctx, "/movie/upcoming", q, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+// OnTheAirTV returns the TV shows airing new episodes over the next week.
+func (c *Client) OnTheAirTV(ctx context.Context) ([]MediaResult, error) {
+	var resp mediaResponse
+	if err := c.get(ctx, "/tv/on_the_air", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+func (c *Client) discover(ctx context.Context, kind string, q url.Values) ([]MediaResult, error) {
+	var resp mediaResponse
+	if err := c.get(ctx, "/discover/"+kind, q, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+func discoverQuery(genreIDs []int) url.Values {
+	q := url.Values{}
+	q.Set("sort_by", "popularity.desc")
+	if len(genreIDs) > 0 {
+		ids := make([]string, 0, len(genreIDs))
+		for _, id := range genreIDs {
+			ids = append(ids, strconv.Itoa(id))
+		}
+		q.Set("with_genres", strings.Join(ids, "|")) // pipe means OR
+	}
+	return q
+}
+
+// weekAnchor snaps a date to the preceding Monday. The date is part of the
+// cache key, so anchoring it keeps the cache from growing by one entry per day.
+func weekAnchor(t time.Time) string {
+	offset := (int(t.Weekday()) + 6) % 7
+	return t.AddDate(0, 0, -offset).Format("2006-01-02")
+}

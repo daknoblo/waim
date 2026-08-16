@@ -162,3 +162,88 @@ func TestScanFindsGaps(t *testing.T) {
 		t.Errorf("missing-collection findings = %d, want 1", gotCollection)
 	}
 }
+
+func TestScanCollectsUpcoming(t *testing.T) {
+	jf := &fakeJF{
+		items: map[string][]jellyfin.Item{
+			"lib1": {
+				{ID: "m1", Name: "Movie X", Type: "Movie", ProviderIDs: map[string]string{"Tmdb": "200"}},
+				{ID: "s1", Name: "Show A", Type: "Series", ProviderIDs: map[string]string{"Tmdb": "100"}},
+			},
+		},
+		episodes: map[string][]jellyfin.Item{
+			"s1": {{Type: "Episode", ParentIndexNumber: intptr(1), IndexNumber: intptr(1)}},
+		},
+	}
+	td := &fakeTMDB{
+		movies: map[int64]tmdb.Movie{
+			200: {ID: 200, Title: "Movie X", BelongsToCollection: &tmdb.CollectionRef{ID: 500, Name: "X Collection"}},
+		},
+		collections: map[int64]tmdb.Collection{
+			500: {ID: 500, Name: "X Collection", PosterPath: "/col.jpg", Parts: []tmdb.CollectionPart{
+				{ID: 200, Title: "Movie X", ReleaseDate: "2018-01-01"},
+				{ID: 202, Title: "Movie X 3", ReleaseDate: "2026-06-01", PosterPath: "/x3.jpg"},
+				{ID: 203, Title: "Movie X 4"}, // announced without a date
+			}},
+		},
+		tv: map[int64]tmdb.TVShow{
+			100: {
+				ID: 100, Name: "Show A", PosterPath: "/show.jpg",
+				Seasons: []tmdb.SeasonSummary{
+					{SeasonNumber: 1, EpisodeCount: 1},
+					{SeasonNumber: 2, EpisodeCount: 2},
+					{SeasonNumber: 3, EpisodeCount: 0}, // announced, no episodes listed yet
+				},
+				NextEpisodeToAir: &tmdb.Episode{SeasonNumber: 3, EpisodeNumber: 1, Name: "Return", AirDate: "2026-09-01"},
+			},
+		},
+		seasons: map[string]tmdb.Season{
+			"100-1": {SeasonNumber: 1, Episodes: []tmdb.Episode{
+				{EpisodeNumber: 1, AirDate: "2020-01-01"},
+			}},
+			"100-2": {SeasonNumber: 2, Episodes: []tmdb.Episode{
+				{EpisodeNumber: 1, Name: "Tide", AirDate: "2026-03-05"},
+				{EpisodeNumber: 2, Name: "Undertow", AirDate: "2026-03-12"},
+			}},
+		},
+	}
+
+	settings := config.Settings{Libraries: []config.Library{{ID: "lib1", Name: "Mixed", Enabled: true}}}
+	s := New(jf, td, settings, nil)
+	s.now = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
+
+	res, err := s.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(res.Upcoming) != 5 {
+		t.Fatalf("Upcoming = %d entries, want 5: %+v", len(res.Upcoming), res.Upcoming)
+	}
+	// Dated entries come first, in chronological order; undated ones last.
+	wantDates := []string{"2026-03-05", "2026-03-12", "2026-06-01", "2026-09-01", ""}
+	for i, want := range wantDates {
+		if got := res.Upcoming[i].ReleaseDate; got != want {
+			t.Errorf("Upcoming[%d].ReleaseDate = %q, want %q", i, got, want)
+		}
+	}
+	if got := res.Upcoming[0]; got.Kind != store.UpcomingEpisode || got.SeasonNumber != 2 ||
+		got.EpisodeNumber != 1 || got.SourceTitle != "Show A" || got.PosterPath != "/show.jpg" {
+		t.Errorf("first upcoming episode = %+v", got)
+	}
+	if got := res.Upcoming[3]; got.SeasonNumber != 3 || got.Title != "Return" {
+		t.Errorf("next_episode_to_air entry = %+v", got)
+	}
+	if got := res.Upcoming[2]; got.Kind != store.UpcomingCollectionPart ||
+		got.MediaType != store.MediaMovie || got.SourceTitle != "X Collection" || got.PosterPath != "/x3.jpg" {
+		t.Errorf("upcoming collection part = %+v", got)
+	}
+	if got := res.Upcoming[4].PosterPath; got != "/col.jpg" {
+		t.Errorf("undated part poster = %q, want the collection poster", got)
+	}
+	// Unreleased parts must not show up as gaps.
+	for _, f := range res.Findings {
+		if f.Kind == store.KindMissingCollection {
+			t.Errorf("unreleased parts produced a missing-collection finding: %+v", f)
+		}
+	}
+}

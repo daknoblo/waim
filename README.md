@@ -51,13 +51,18 @@ Huntarr or Missingarr.
   collections, top/lowest rated titles per library — in separate sections for
   owned media and for missing ones (movies *and* series, so you can decide
   what's worth getting), each expandable up to 50 entries.
+- **Coming up** section: announced episodes of the series you own and
+  unreleased entries of your movie collections, on a release timeline plus a
+  poster grid grouped by timeframe. Collected during the regular scan, so it
+  costs no extra TMDB requests.
 - General statistics: library facts (total runtime, average rating, episode
   completeness, specials share), biggest sagas and series binge times,
   genre/decade donut charts, rating distribution, original language and
   production country, average rating per genre, growth per scan, a season
   completion heatmap and a sankey chart of episodes per season for any series.
 - **Suggestions** page: what to watch next from TMDB trending and
-  recommendations, with optional AI-generated picks.
+  recommendations, upcoming releases matching your most-watched genres and
+  theatrical/on-air releases for your region, with optional AI-generated picks.
 - Optional **AI suggestions** via any OpenAI/Azure-compatible chat endpoint.
 - Configurable TMDB request rate limit.
 - Local TMDB response cache with an incremental background refresher (spread
