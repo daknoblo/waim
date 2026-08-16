@@ -304,6 +304,7 @@
 
   "about.title": "Über",
   "about.commit": "Commit",
+  "about.tag": "Tag",
   "about.database": "Datenbankgröße",
   "about.config": "Konfigurationsgröße",
   "about.goVersion": "Go",

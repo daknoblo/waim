@@ -112,8 +112,10 @@ type SettingsData struct {
 type AboutData struct {
 	Layout     Layout
 	Version    string
-	Commit     string
-	CommitURL  string
+	VersionURL string // release page, empty for untagged builds
+	Ref        string // the release tag, or the short commit for untagged builds
+	RefURL     string
+	RefIsTag   bool
 	DBSize     string
 	ConfigSize string
 	GoVersion  string

@@ -1,7 +1,10 @@
 // Package version exposes build-time metadata injected via -ldflags.
 package version
 
-import "runtime/debug"
+import (
+	"regexp"
+	"runtime/debug"
+)
 
 // These values are overridden at build time using -ldflags, e.g.:
 //
@@ -40,4 +43,12 @@ func Get() Info {
 // String returns a compact human-readable build string.
 func (i Info) String() string {
 	return i.Version + " (" + i.Commit + ", built " + i.Date + ")"
+}
+
+var semver = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// IsRelease reports whether the build came from a release tag: those carry
+// plain semver, every other build carries a date stamp or "dev".
+func (i Info) IsRelease() bool {
+	return semver.MatchString(i.Version)
 }

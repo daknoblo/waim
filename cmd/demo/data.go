@@ -371,9 +371,11 @@ func demoSettings(t *i18n.Translator) web.SettingsData {
 func demoAbout(t *i18n.Translator) web.AboutData {
 	return web.AboutData{
 		Layout:     demoLayout(t, web.NavAbout),
-		Version:    "demo",
-		Commit:     "0000000000",
-		CommitURL:  repoURL,
+		Version:    "1.2.0",
+		VersionURL: repoURL + "/releases/tag/1.2.0",
+		Ref:        "1.2.0",
+		RefURL:     repoURL + "/tree/1.2.0",
+		RefIsTag:   true,
 		DBSize:     web.HumanSize(18 << 20),
 		ConfigSize: web.HumanSize(2048),
 		GoVersion:  "go1.25",

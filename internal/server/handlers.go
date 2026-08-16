@@ -89,26 +89,33 @@ func (s *Server) suggestionsData(r *http.Request) web.SuggestionsData {
 }
 
 func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
-	commit := s.info.Commit
-	short := commit
-	if len(short) > 10 {
-		short = short[:10]
-	}
-	commitURL := ""
-	if commit != "" && commit != "unknown" {
-		commitURL = repoURL + "/commit/" + commit
-	}
 	dbPath := s.store.Path()
 	dbSize := fileSize(dbPath) + fileSize(dbPath+"-wal") + fileSize(dbPath+"-shm")
 	d := web.AboutData{
 		Layout:     s.layout(r, web.NavAbout),
 		Version:    s.info.Version,
-		Commit:     short,
-		CommitURL:  commitURL,
 		DBSize:     web.HumanSize(dbSize),
 		ConfigSize: web.HumanSize(fileSize(s.cfg.Path())),
 		GoVersion:  s.info.GoVer,
 		Repo:       repoURL,
+	}
+	// Release builds point at the release notes and the tagged source; every
+	// other build only has a commit to offer.
+	if s.info.IsRelease() {
+		d.VersionURL = repoURL + "/releases/tag/" + s.info.Version
+		d.Ref = s.info.Version
+		d.RefURL = repoURL + "/tree/" + s.info.Version
+		d.RefIsTag = true
+	} else {
+		commit := s.info.Commit
+		if len(commit) > 10 {
+			d.Ref = commit[:10]
+		} else {
+			d.Ref = commit
+		}
+		if commit != "" && commit != "unknown" {
+			d.RefURL = repoURL + "/commit/" + commit
+		}
 	}
 	s.render(w, r, web.About(d))
 }
