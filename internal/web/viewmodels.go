@@ -78,6 +78,7 @@ type DashboardData struct {
 	Logs      []LogEntryView
 	Sort      string
 	Dir       string
+	DataState string
 }
 
 // LibraryFilter is a selectable library for the dashboard findings filter.

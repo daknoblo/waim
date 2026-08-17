@@ -10,6 +10,23 @@ func orDash(s string) string {
 	return s
 }
 
+// boolAttr renders a boolean as the string an ARIA attribute expects.
+func boolAttr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+// upcomingDirectionValue is the direction the section currently shows, used to
+// carry the selection along when a dropdown fires.
+func upcomingDirectionValue(u StatsUpcoming) string {
+	if u.Past {
+		return UpcomingPast
+	}
+	return UpcomingForward
+}
+
 // nextDir returns the sort direction to use when a column header is clicked:
 // clicking the active column toggles the direction, otherwise ascending.
 func nextDir(col, curSort, curDir string) string {
@@ -73,4 +90,26 @@ func LibraryColor(id string) []string {
 		h *= 16777619
 	}
 	return libraryPalette[int(h%uint32(len(libraryPalette)))]
+}
+
+// Data states describe why a view has nothing to show. Only DataReady allows a
+// statement about the library itself; the others mean the data simply is not
+// there yet, which must never be presented as "nothing found".
+const (
+	DataUnconfigured = "unconfigured"  // Jellyfin, TMDB or the library selection is missing
+	DataScanning     = "scanning"      // a scan is running and no successful one finished yet
+	DataNeverScanned = "never-scanned" // configured, but no successful scan yet
+	DataReady        = "ready"         // a successful scan is available
+)
+
+// dataStateKey maps a data state to the message explaining why a view is empty.
+func dataStateKey(state string) string {
+	switch state {
+	case DataUnconfigured:
+		return "common.stateUnconfigured"
+	case DataScanning:
+		return "common.stateScanning"
+	default:
+		return "common.stateNeverScanned"
+	}
 }

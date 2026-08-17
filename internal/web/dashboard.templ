@@ -30,7 +30,7 @@ templ dashboardBody(d DashboardData) {
 				autocomplete="off"
 				class="input mb-3 w-full"
 			/>
-			@FindingsTable(d.Layout.T, d.Findings, d.Sort, d.Dir)
+			@FindingsTable(d.Layout.T, d.Findings, d.Sort, d.Dir, d.DataState)
 		</div>
 	</section>
 }
@@ -102,10 +102,14 @@ templ stat(label, value string) {
 	</div>
 }
 
-templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir string) {
+templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state string) {
 	<div id="findings" hx-get={ "/partials/findings?sort=" + sortKey + "&dir=" + dir } hx-trigger="every 5s" hx-swap="outerHTML">
 		if len(rows) == 0 {
-			<p class="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{ t.T("dashboard.noFindings") }</p>
+			if state == DataReady {
+				<p class="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{ t.T("dashboard.noFindings") }</p>
+			} else {
+				<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ t.T(dataStateKey(state)) }</p>
+			}
 		} else {
 			@mobileSortBar(t, sortKey, dir)
 			<div class="overflow-x-auto">
