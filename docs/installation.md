@@ -16,7 +16,7 @@ waim is distributed as a multi-arch container image (`linux/amd64`,
 
 ```bash
 docker pull ghcr.io/daknoblo/waim:latest   # current build of the main branch
-docker pull ghcr.io/daknoblo/waim:1.3.0   # a specific version tag
+docker pull ghcr.io/daknoblo/waim:1.4.0   # a specific version tag
 ```
 
 ## Running with Docker
