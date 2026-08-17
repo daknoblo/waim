@@ -107,6 +107,11 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
 - `.github/workflows/release.yml` — builds and pushes multi-arch images to
   `ghcr.io`. `main` → `:latest`, git tags → semver tags, every commit → a
   `sha-…` tag. Images are scanned with Trivy.
+- `.github/workflows/prune-images.yml` — weekly retention for the `sha-…`
+  images, keeping the newest 20. Version tags and `:latest` are never touched,
+  and untagged versions are left alone because they are the per-architecture
+  children of the multi-arch manifests. Run it manually with `dry-run` first if
+  you change the retention.
 
 ## Branching & releases
 
