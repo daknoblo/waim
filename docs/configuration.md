@@ -4,14 +4,14 @@
 
 All settings are managed in the web UI (**Settings** page) and persisted to
 `config.json` inside the data directory. API keys are **always stored
-encrypted** and never written in plaintext.
+encrypted** and never written in plaintext. The encryption key is generated on
+first start and kept as `master.key` next to `config.json`.
 
 ## `config.json` schema
 
 ```jsonc
 {
-  "schemaVersion": 1,
-  "salt": "<base64>",          // non-secret salt for key derivation
+  "schemaVersion": 2,
   "locale": "en",              // default UI language: "en" or "de"
   "logLevel": "info",          // log verbosity: "info", "warn" or "debug"
   "jellyfin": {
@@ -154,7 +154,8 @@ Until `config.json` is loaded at startup, waim logs at `info` level.
 
 ## Exports
 
-- **Export settings** — downloads `config.json` with API keys still encrypted
-  (or omitted if encryption is disabled). Plaintext keys are never exported.
+- **Export settings** — downloads `config.json` with API keys still encrypted.
+  Plaintext keys are never exported, so the file is only usable on an instance
+  that has the matching `master.key`.
 - **Export sync state** — downloads the latest successful scan and its findings
   as JSON. This contains no secrets.

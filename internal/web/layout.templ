@@ -75,9 +75,9 @@ templ Page(l Layout, body templ.Component) {
 						@languageSwitcher(l, "mt-2")
 					</nav>
 				</header>
-				if l.MasterKeyMissing {
+				if l.KeysUnreadable {
 					<div class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-						{ l.T.T("warning.noMasterKey") }
+						{ l.T.T("warning.keysUnreadable") }
 					</div>
 				}
 				<main class="flex-1 pb-10">

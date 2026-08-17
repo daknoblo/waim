@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 // stored only in their encrypted form.
 type stored struct {
 	SchemaVersion int    `json:"schemaVersion"`
-	Salt          string `json:"salt"` // base64, not secret
 	Locale        string `json:"locale"`
 	LogLevel      string `json:"logLevel"`
 
@@ -44,81 +42,80 @@ type stored struct {
 	Libraries []Library     `json:"libraries"`
 }
 
+// KeyFileName is the name of the file inside the data directory that holds the
+// automatically generated encryption key.
+const KeyFileName = "master.key"
+
 // Manager loads and persists the configuration and transparently handles
 // encryption of API keys. It is safe for concurrent use.
 type Manager struct {
-	mu       sync.RWMutex
-	path     string
-	salt     []byte
-	cipher   *crypto.Cipher
-	settings Settings
+	mu             sync.RWMutex
+	path           string
+	keyPath        string
+	cipher         *crypto.Cipher
+	keyCreated     bool
+	keysUnreadable bool
+	settings       Settings
 }
 
-// Load reads (or initialises) the configuration in dataDir. The masterKey is
-// used to derive the encryption key; if it is empty, encryption is disabled and
-// any previously encrypted API keys will be unavailable until a key is set.
+// Load reads (or initialises) the configuration in dataDir.
+//
+// The encryption key is read from dataDir/master.key and generated on first
+// start. Losing that file makes previously stored API keys undecryptable; they
+// are then reported via KeysUnreadable and must be entered again.
 //
 // The returned Manager always contains a usable Settings value, even on first
 // run, in which case a fresh config file is written.
-func Load(dataDir, masterKey string) (*Manager, error) {
+func Load(dataDir string) (*Manager, error) {
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return nil, fmt.Errorf("config: create data dir: %w", err)
 	}
 	path := filepath.Join(dataDir, "config.json")
 
-	m := &Manager{path: path}
+	m := &Manager{path: path, keyPath: filepath.Join(dataDir, KeyFileName)}
+
+	cipher, created, err := crypto.LoadOrCreateKeyFile(m.keyPath)
+	if err != nil {
+		return nil, err
+	}
+	m.cipher = cipher
+	m.keyCreated = created
 
 	st, err := readStored(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
-		// First run: start from defaults and a fresh salt.
+		// First run: start from defaults.
 		st = storedFromSettings(Defaults())
 	case err != nil:
 		return nil, err
 	}
 
-	// Ensure a salt exists.
-	if st.Salt == "" {
-		salt, gerr := crypto.NewSalt()
-		if gerr != nil {
-			return nil, gerr
-		}
-		st.Salt = base64.StdEncoding.EncodeToString(salt)
-		m.salt = salt
-	} else {
-		salt, derr := base64.StdEncoding.DecodeString(st.Salt)
-		if derr != nil {
-			return nil, fmt.Errorf("config: decode salt: %w", derr)
-		}
-		m.salt = salt
-	}
+	m.settings, m.keysUnreadable = m.decryptStored(st)
 
-	// Build the cipher (or a disabled one when no master key is provided).
-	if masterKey == "" {
-		m.cipher = crypto.NewDisabled()
-	} else {
-		c, cerr := crypto.New(masterKey, m.salt)
-		if cerr != nil {
-			return nil, cerr
-		}
-		m.cipher = c
-	}
-
-	m.settings = m.decryptStored(st)
-
-	// Persist on first run or to backfill a freshly generated salt.
+	// Persist on first run and to upgrade the on-disk schema.
 	if err := m.persist(st); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-// CipherEnabled reports whether API keys can be encrypted/decrypted.
-func (m *Manager) CipherEnabled() bool {
+// KeyCreated reports whether the encryption key was generated during Load.
+func (m *Manager) KeyCreated() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.cipher.Enabled()
+	return m.keyCreated
 }
+
+// KeysUnreadable reports whether stored API keys exist that cannot be decrypted
+// with the current encryption key. They have to be entered again.
+func (m *Manager) KeysUnreadable() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.keysUnreadable
+}
+
+// KeyPath returns the path of the encryption key file.
+func (m *Manager) KeyPath() string { return m.keyPath }
 
 // Path returns the config file path.
 func (m *Manager) Path() string { return m.path }
@@ -140,61 +137,56 @@ func (m *Manager) Save(s Settings) error {
 	defer m.mu.Unlock()
 
 	st := storedFromSettings(s)
-	st.Salt = base64.StdEncoding.EncodeToString(m.salt)
 
-	if m.cipher.Enabled() {
-		jEnc, err := m.cipher.Encrypt(s.Jellyfin.APIKey)
-		if err != nil {
-			return fmt.Errorf("config: encrypt jellyfin key: %w", err)
-		}
-		tEnc, err := m.cipher.Encrypt(s.TMDB.APIKey)
-		if err != nil {
-			return fmt.Errorf("config: encrypt tmdb key: %w", err)
-		}
-		aEnc, err := m.cipher.Encrypt(s.AI.APIKey)
-		if err != nil {
-			return fmt.Errorf("config: encrypt ai key: %w", err)
-		}
-		st.Jellyfin.APIKeyEnc = jEnc
-		st.TMDB.APIKeyEnc = tEnc
-		st.AI.APIKeyEnc = aEnc
-	} else if s.Jellyfin.APIKey != "" || s.TMDB.APIKey != "" || s.AI.APIKey != "" {
-		return crypto.ErrNoKey
+	jEnc, err := m.cipher.Encrypt(s.Jellyfin.APIKey)
+	if err != nil {
+		return fmt.Errorf("config: encrypt jellyfin key: %w", err)
 	}
+	tEnc, err := m.cipher.Encrypt(s.TMDB.APIKey)
+	if err != nil {
+		return fmt.Errorf("config: encrypt tmdb key: %w", err)
+	}
+	aEnc, err := m.cipher.Encrypt(s.AI.APIKey)
+	if err != nil {
+		return fmt.Errorf("config: encrypt ai key: %w", err)
+	}
+	st.Jellyfin.APIKeyEnc = jEnc
+	st.TMDB.APIKeyEnc = tEnc
+	st.AI.APIKeyEnc = aEnc
 
 	if err := m.persist(st); err != nil {
 		return err
 	}
 	m.settings = s.Clone()
+	// Every stored ciphertext has just been rewritten with the current key.
+	m.keysUnreadable = false
 	return nil
 }
 
 // ExportStored returns the on-disk representation as JSON. API keys remain in
-// their encrypted form (or empty if encryption is disabled). This never leaks
-// plaintext secrets.
+// their encrypted form and can only be decrypted by an instance that has the
+// same key file. This never leaks plaintext secrets.
 func (m *Manager) ExportStored() ([]byte, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	st := storedFromSettings(m.settings)
-	st.Salt = base64.StdEncoding.EncodeToString(m.salt)
-	if m.cipher.Enabled() {
-		if jEnc, err := m.cipher.Encrypt(m.settings.Jellyfin.APIKey); err == nil {
-			st.Jellyfin.APIKeyEnc = jEnc
-		}
-		if tEnc, err := m.cipher.Encrypt(m.settings.TMDB.APIKey); err == nil {
-			st.TMDB.APIKeyEnc = tEnc
-		}
-		if aEnc, err := m.cipher.Encrypt(m.settings.AI.APIKey); err == nil {
-			st.AI.APIKeyEnc = aEnc
-		}
+	if jEnc, err := m.cipher.Encrypt(m.settings.Jellyfin.APIKey); err == nil {
+		st.Jellyfin.APIKeyEnc = jEnc
+	}
+	if tEnc, err := m.cipher.Encrypt(m.settings.TMDB.APIKey); err == nil {
+		st.TMDB.APIKeyEnc = tEnc
+	}
+	if aEnc, err := m.cipher.Encrypt(m.settings.AI.APIKey); err == nil {
+		st.AI.APIKeyEnc = aEnc
 	}
 	return json.MarshalIndent(st, "", "  ")
 }
 
 // decryptStored converts an on-disk representation into in-memory settings,
 // decrypting API keys when possible. Decryption failures are tolerated and
-// leave the corresponding key empty so the app can still start.
-func (m *Manager) decryptStored(st stored) Settings {
+// leave the corresponding key empty so the app can still start; the second
+// return value then reports that unreadable ciphertext was found.
+func (m *Manager) decryptStored(st stored) (Settings, bool) {
 	s := Settings{
 		Locale:    NormalizeLocale(st.Locale),
 		LogLevel:  NormalizeLogLevel(st.LogLevel),
@@ -210,17 +202,18 @@ func (m *Manager) decryptStored(st stored) Settings {
 	s.AI.Endpoint = st.AI.Endpoint
 	s.AI.Model = st.AI.Model
 
-	if m.cipher.Enabled() {
-		if v, err := m.cipher.Decrypt(st.Jellyfin.APIKeyEnc); err == nil {
-			s.Jellyfin.APIKey = v
+	unreadable := false
+	decrypt := func(enc string) string {
+		v, err := m.cipher.Decrypt(enc)
+		if err != nil {
+			unreadable = true
+			return ""
 		}
-		if v, err := m.cipher.Decrypt(st.TMDB.APIKeyEnc); err == nil {
-			s.TMDB.APIKey = v
-		}
-		if v, err := m.cipher.Decrypt(st.AI.APIKeyEnc); err == nil {
-			s.AI.APIKey = v
-		}
+		return v
 	}
+	s.Jellyfin.APIKey = decrypt(st.Jellyfin.APIKeyEnc)
+	s.TMDB.APIKey = decrypt(st.TMDB.APIKeyEnc)
+	s.AI.APIKey = decrypt(st.AI.APIKeyEnc)
 
 	// Backfill defaults for zero values that should not be empty.
 	def := Defaults()
@@ -254,12 +247,12 @@ func (m *Manager) decryptStored(st stored) Settings {
 	if s.Libraries == nil {
 		s.Libraries = []Library{}
 	}
-	return s
+	return s, unreadable
 }
 
 // persist atomically writes the stored representation to disk. The temp file is
 // fsynced before the rename so a crash or power loss cannot leave a truncated
-// config (which would lose the salt and with it every encrypted API key).
+// config.
 func (m *Manager) persist(st stored) error {
 	st.SchemaVersion = SchemaVersion
 	data, err := json.MarshalIndent(st, "", "  ")

@@ -73,18 +73,21 @@ func run() error {
 	logger.Info("starting waim", "version", version.Get().String())
 
 	dataDir := config.DataDir()
-	masterKey := os.Getenv("WAIM_MASTER_KEY")
-	if strings.TrimSpace(masterKey) == "" {
-		logger.Warn("WAIM_MASTER_KEY is not set; API keys cannot be stored until it is configured")
-	}
 
-	cfg, err := config.Load(dataDir, masterKey)
+	cfg, err := config.Load(dataDir)
 	if err != nil {
 		return err
 	}
 	// Apply the configured log level (overrides the startup default).
 	levelVar.Set(config.ParseLogLevel(cfg.Get().LogLevel))
-	logger.Info("configuration loaded", "dataDir", dataDir, "encryption", cfg.CipherEnabled(), "logLevel", cfg.Get().LogLevel)
+	logger.Info("configuration loaded", "dataDir", dataDir, "logLevel", cfg.Get().LogLevel)
+	if cfg.KeyCreated() {
+		logger.Info("generated a new encryption key", "keyFile", cfg.KeyPath())
+	}
+	if cfg.KeysUnreadable() {
+		logger.Warn("stored API keys could not be decrypted with the current encryption key; re-enter them on the settings page",
+			"keyFile", cfg.KeyPath())
+	}
 
 	st, err := store.Open(filepath.Join(dataDir, "waim.db"))
 	if err != nil {

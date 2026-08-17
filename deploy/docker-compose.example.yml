@@ -1,11 +1,13 @@
 # Example docker-compose setup for waim.
 #
 # 1. Copy this file to docker-compose.yml.
-# 2. Set a strong WAIM_MASTER_KEY (used to encrypt stored API keys).
-#    Prefer a Docker secret or an .env file that is NOT committed.
-# 3. Pin a tag if you want reproducible deploys (`X.Y.Z` or `sha-…`);
+# 2. Pin a tag if you want reproducible deploys (`X.Y.Z` or `sha-…`);
 #    `latest` always tracks the current build of the main branch.
-# 4. Configure Jellyfin and TMDB in the web UI at http://<host>:8080.
+# 3. Configure Jellyfin and TMDB in the web UI at http://<host>:8080.
+#
+# The key used to encrypt the stored API keys is generated on first start and
+# kept in the data volume as master.key — keep that volume (and treat backups
+# of it as secret), otherwise the API keys have to be entered again.
 
 services:
   waim:
@@ -15,9 +17,6 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Required: master key used to encrypt API keys at rest.
-      # Generate once, e.g.: openssl rand -base64 32
-      WAIM_MASTER_KEY: "${WAIM_MASTER_KEY:?set WAIM_MASTER_KEY in your .env}"
       WAIM_ADDR: ":8080"
       # Timezone for the database timestamps and log display (IANA name).
       TZ: "${TZ:-Etc/UTC}"

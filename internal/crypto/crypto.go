@@ -1,6 +1,6 @@
 // Package crypto provides authenticated encryption for sensitive settings
-// (such as API keys) using AES-256-GCM with a key derived from a master
-// passphrase via Argon2id.
+// (such as API keys) using AES-256-GCM with a random key that is generated on
+// first start and stored next to the configuration.
 package crypto
 
 import (
@@ -11,57 +11,37 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"golang.org/x/crypto/argon2"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 // Errors returned by the package.
 var (
-	// ErrNoKey is returned when an operation requires a master key but none
-	// has been configured.
-	ErrNoKey = errors.New("crypto: no master key configured")
 	// ErrMalformed is returned when ciphertext cannot be decoded or is too short.
 	ErrMalformed = errors.New("crypto: malformed ciphertext")
+	// ErrKeySize is returned when a key does not have exactly KeyLen bytes.
+	ErrKeySize = errors.New("crypto: key must be 32 bytes")
 )
 
-// Argon2id parameters. These are deliberately conservative defaults suited for
-// a long-running service that decrypts a handful of secrets occasionally.
 const (
-	argonTime    = 1
-	argonMemory  = 64 * 1024 // 64 MiB
-	argonThreads = 4
-	keyLen       = 32 // AES-256
-	// SaltLen is the length of the random salt stored alongside the config.
-	SaltLen = 16
+	// KeyLen is the required key length (AES-256).
+	KeyLen = 32
+	// keyFilePrefix tags the key file with its format version so the encoding
+	// can change later without misreading existing files.
+	keyFilePrefix = "waim-key-v1:"
 )
 
 // Cipher encrypts and decrypts short secret strings.
-//
-// A Cipher with no key (created via NewDisabled) reports Enabled() == false and
-// returns ErrNoKey from Encrypt/Decrypt. This lets the rest of the application
-// run and surface a warning instead of crashing when WAIM_MASTER_KEY is unset.
 type Cipher struct {
-	aead    cipher.AEAD
-	enabled bool
+	aead cipher.AEAD
 }
 
-// NewDisabled returns a Cipher that cannot encrypt or decrypt. It is used when
-// no master passphrase is available.
-func NewDisabled() *Cipher {
-	return &Cipher{enabled: false}
-}
-
-// New derives an AES-256-GCM cipher from the given passphrase and salt.
-// The salt is not secret and should be persisted with the config so the same
-// key can be reproduced on the next start.
-func New(passphrase string, salt []byte) (*Cipher, error) {
-	if passphrase == "" {
-		return nil, ErrNoKey
+// New builds an AES-256-GCM cipher from a raw KeyLen-byte key.
+func New(key []byte) (*Cipher, error) {
+	if len(key) != KeyLen {
+		return nil, ErrKeySize
 	}
-	if len(salt) < SaltLen {
-		return nil, fmt.Errorf("crypto: salt must be at least %d bytes", SaltLen)
-	}
-	key := argon2.IDKey([]byte(passphrase), salt, argonTime, argonMemory, argonThreads, keyLen)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("crypto: new cipher: %w", err)
@@ -70,18 +50,59 @@ func New(passphrase string, salt []byte) (*Cipher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("crypto: new gcm: %w", err)
 	}
-	return &Cipher{aead: aead, enabled: true}, nil
+	return &Cipher{aead: aead}, nil
 }
 
-// Enabled reports whether the cipher can perform cryptographic operations.
-func (c *Cipher) Enabled() bool { return c != nil && c.enabled }
+// NewKey generates a cryptographically random KeyLen-byte key.
+func NewKey() ([]byte, error) {
+	key := make([]byte, KeyLen)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		return nil, fmt.Errorf("crypto: generate key: %w", err)
+	}
+	return key, nil
+}
+
+// LoadOrCreateKeyFile returns the cipher for the key stored at path, generating
+// and persisting a new key when the file does not exist yet. The second return
+// value reports whether a new key was created.
+//
+// An existing but unreadable or malformed key file is always an error: silently
+// replacing it would render every stored API key undecryptable.
+func LoadOrCreateKeyFile(path string) (*Cipher, bool, error) {
+	key, err := readKeyFile(path)
+	switch {
+	case err == nil:
+		c, cerr := New(key)
+		return c, false, cerr
+	case !errors.Is(err, os.ErrNotExist):
+		return nil, false, err
+	}
+
+	key, err = NewKey()
+	if err != nil {
+		return nil, false, err
+	}
+	created := true
+	if werr := writeKeyFile(path, key); werr != nil {
+		if !errors.Is(werr, os.ErrExist) {
+			return nil, false, werr
+		}
+		// Another process won the race; adopt the key it wrote.
+		created = false
+		if key, err = readKeyFile(path); err != nil {
+			return nil, false, err
+		}
+	}
+	c, err := New(key)
+	if err != nil {
+		return nil, false, err
+	}
+	return c, created, nil
+}
 
 // Encrypt encrypts plaintext and returns a base64-encoded string containing the
 // nonce followed by the ciphertext. Empty plaintext yields an empty string.
 func (c *Cipher) Encrypt(plaintext string) (string, error) {
-	if !c.Enabled() {
-		return "", ErrNoKey
-	}
 	if plaintext == "" {
 		return "", nil
 	}
@@ -97,9 +118,6 @@ func (c *Cipher) Encrypt(plaintext string) (string, error) {
 func (c *Cipher) Decrypt(encoded string) (string, error) {
 	if encoded == "" {
 		return "", nil
-	}
-	if !c.Enabled() {
-		return "", ErrNoKey
 	}
 	raw, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
@@ -117,11 +135,61 @@ func (c *Cipher) Decrypt(encoded string) (string, error) {
 	return string(plaintext), nil
 }
 
-// NewSalt generates a cryptographically random salt of SaltLen bytes.
-func NewSalt() ([]byte, error) {
-	salt := make([]byte, SaltLen)
-	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return nil, fmt.Errorf("crypto: generate salt: %w", err)
+// readKeyFile reads and validates the key file. A missing file is reported as
+// os.ErrNotExist so callers can distinguish it from a corrupt one.
+func readKeyFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // path is derived from the configured data dir
+	if err != nil {
+		return nil, err
 	}
-	return salt, nil
+	encoded, ok := strings.CutPrefix(strings.TrimSpace(string(data)), keyFilePrefix)
+	if !ok {
+		return nil, fmt.Errorf("crypto: %s: unrecognised key file format", path)
+	}
+	key, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: %s: decode key: %w", path, err)
+	}
+	if len(key) != KeyLen {
+		return nil, fmt.Errorf("crypto: %s: %w", path, ErrKeySize)
+	}
+	return key, nil
+}
+
+// writeKeyFile creates the key file with owner-only permissions. It never
+// overwrites an existing file and returns an error wrapping os.ErrExist in that
+// case. The file and its directory are fsynced so the key survives a crash.
+func writeKeyFile(path string, key []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // path is derived from the configured data dir
+	if err != nil {
+		return fmt.Errorf("crypto: create key file: %w", err)
+	}
+	content := keyFilePrefix + base64.StdEncoding.EncodeToString(key) + "\n"
+	if _, err := f.WriteString(content); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return fmt.Errorf("crypto: write key file: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return fmt.Errorf("crypto: sync key file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("crypto: close key file: %w", err)
+	}
+	syncDir(filepath.Dir(path))
+	return nil
+}
+
+// syncDir flushes a directory entry so the new key file is durable. Failures
+// are ignored: not every filesystem supports it.
+func syncDir(dir string) {
+	d, err := os.Open(dir) //nolint:gosec // path is derived from the configured data dir
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }

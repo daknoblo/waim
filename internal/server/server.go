@@ -130,13 +130,13 @@ func (s *Server) translator(r *http.Request) *i18n.Translator {
 func (s *Server) layout(r *http.Request, active string) web.Layout {
 	t := s.translator(r)
 	return web.Layout{
-		T:                t,
-		Active:           active,
-		Version:          s.info.Version,
-		AssetVersion:     s.assetVer,
-		Repo:             repoURL,
-		MasterKeyMissing: !s.cfg.CipherEnabled(),
-		Languages:        web.LanguageOptions(t.Locale()),
+		T:              t,
+		Active:         active,
+		Version:        s.info.Version,
+		AssetVersion:   s.assetVer,
+		Repo:           repoURL,
+		KeysUnreadable: s.cfg.KeysUnreadable(),
+		Languages:      web.LanguageOptions(t.Locale()),
 	}
 }
 

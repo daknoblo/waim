@@ -11,7 +11,10 @@ import (
 
 // SchemaVersion is the current on-disk config schema version. Bump it when the
 // stored layout changes in a backwards-incompatible way.
-const SchemaVersion = 1
+//
+// Version 2 dropped the Argon2id salt: the encryption key is no longer derived
+// from a passphrase but generated once and stored in the data directory.
+const SchemaVersion = 2
 
 // Supported UI locales.
 const (

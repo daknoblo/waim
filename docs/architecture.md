@@ -39,7 +39,7 @@ server and the TMDB API.
 | --------------------- | --------------------------------------------------------------------- |
 | `cmd/waim`            | Entry point, wiring, graceful shutdown, container healthcheck mode.   |
 | `internal/config`     | Settings model, JSON load/save, transparent API-key encryption.       |
-| `internal/crypto`     | Argon2id key derivation + AES-256-GCM encrypt/decrypt.                 |
+| `internal/crypto`     | Key file handling + AES-256-GCM encrypt/decrypt.                       |
 | `internal/store`      | SQLite persistence (scan runs, findings, key/value) + migrations.     |
 | `internal/jellyfin`   | Read-only Jellyfin API client (libraries, items, episodes).           |
 | `internal/tmdb`       | TMDB API client with a client-side rate limiter.                      |
@@ -77,16 +77,22 @@ are filtered out.
 
 ## Encryption model
 
-- A non-secret random `salt` is stored in `config.json`.
-- `Argon2id(WAIM_MASTER_KEY, salt)` derives a 32-byte key.
+- A random 32-byte key is generated on first start and stored as `master.key`
+  in the data directory (owner-only permissions, never overwritten).
 - The Jellyfin, TMDB and AI API keys are each encrypted with AES-256-GCM (random
   nonce per value) and stored as base64(`nonce` + ciphertext).
-- Without `WAIM_MASTER_KEY`, encryption is disabled: existing keys cannot be
-  read and new keys cannot be saved. The UI surfaces a warning.
+- The key lives next to `config.json`, so this protects a leaked or exported
+  config file — not an attacker with access to the data directory. Treat backups
+  of that directory as secrets.
+- If the key file is missing while `config.json` still holds encrypted values, a
+  new key is generated, the stale values are reported as unreadable in the UI
+  and the API keys must be entered again. A malformed key file is a hard startup
+  error instead: replacing it would destroy the stored keys.
 
 ## Persistence
 
 - `config.json` — settings (encrypted keys).
+- `master.key` — generated encryption key.
 - `waim.db` — SQLite database. Older scan runs are pruned automatically (the
   most recent runs are kept).
 

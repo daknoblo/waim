@@ -69,7 +69,7 @@ Huntarr or Missingarr.
   across the day) and a nightly cleanup of orphaned entries, so scans and
   suggestions reuse data instead of re-loading everything from TMDB.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
-  rest** (AES-256-GCM, key derived from `WAIM_MASTER_KEY`).
+  rest** (AES-256-GCM with a key generated on first start).
 - Export of settings (keys stay encrypted, never plaintext) and of the current
   sync state.
 - Bilingual UI (English / German) with an in-app language switch.
@@ -95,19 +95,21 @@ serves these pages with sample data.
 ## Quick start (Docker Compose)
 
 ```bash
-# 1. Create a strong master key (used to encrypt API keys at rest).
-echo "WAIM_MASTER_KEY=$(openssl rand -base64 32)" > .env
-
-# 2. Grab the example compose file.
+# 1. Grab the example compose file.
 curl -fsSL https://raw.githubusercontent.com/daknoblo/waim/main/deploy/docker-compose.example.yml -o docker-compose.yml
 
-# 3. Start it.
+# 2. Start it.
 docker compose up -d
 ```
 
 Then open <http://localhost:8080>, go to **Settings**, and enter your Jellyfin
 URL + API key and your TMDB API key. Use **Refresh libraries from Jellyfin** to
 load your libraries, select the ones to scan, and save.
+
+> **Upgrading from 1.3 or older?** `WAIM_MASTER_KEY` was removed and the
+> encryption key is now generated automatically, so the stored API keys have to
+> be entered once more. See
+> [Upgrading](docs/installation.md#upgrading-from-13-or-older).
 
 ### Image tags
 
@@ -125,7 +127,6 @@ in the data directory. Only a few environment variables are needed:
 
 | Variable          | Default        | Description                                           |
 | ----------------- | -------------- | ----------------------------------------------------- |
-| `WAIM_MASTER_KEY` | *(unset)*      | **Required** to store/decrypt API keys (AES-256-GCM). |
 | `WAIM_ADDR`       | `:8080`        | Listen address.                                       |
 | `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
 
@@ -140,8 +141,10 @@ reference.
 - **No built-in authentication.** waim is meant to run on a trusted network or
   behind a reverse proxy / VPN that provides access control. Do not expose it
   directly to the internet.
-- **API keys are encrypted at rest** using a key derived from `WAIM_MASTER_KEY`.
-  Without that variable set, keys cannot be stored or read.
+- **API keys are encrypted at rest** with AES-256-GCM. The key is generated on
+  first start and stored as `master.key` in the data directory, so a backup of
+  that directory is as sensitive as the keys themselves. Losing the file means
+  the stored API keys have to be entered again.
 - The container runs as a non-root user with a read-only root filesystem and a
   minimal distroless base image.
 

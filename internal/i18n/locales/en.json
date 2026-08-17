@@ -38,7 +38,7 @@
   "relative.days": "%d days",
   "common.loading": "Loading…",
 
-  "warning.noMasterKey": "WAIM_MASTER_KEY is not set. API keys cannot be encrypted or stored. Set the environment variable and restart.",
+  "warning.keysUnreadable": "Stored API keys could not be decrypted with the current encryption key. Please re-enter them on the settings page.",
 
   "dashboard.title": "Dashboard",
   "dashboard.status": "Scan status",

@@ -75,7 +75,7 @@ func (s *Server) handlePartialSuggestions(w http.ResponseWriter, r *http.Request
 func (s *Server) suggestionsConfigured() bool {
 	settings := s.cfg.Get()
 	return settings.Jellyfin.URL != "" && settings.Jellyfin.APIKey != "" &&
-		settings.TMDB.APIKey != "" && s.cfg.CipherEnabled() && len(settings.EnabledLibraryIDs()) > 0
+		settings.TMDB.APIKey != "" && len(settings.EnabledLibraryIDs()) > 0
 }
 
 func (s *Server) suggestionsData(r *http.Request) web.SuggestionsData {

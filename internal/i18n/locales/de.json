@@ -38,7 +38,7 @@
   "relative.days": "%d Tagen",
   "common.loading": "Lädt…",
 
-  "warning.noMasterKey": "WAIM_MASTER_KEY ist nicht gesetzt. API-Schlüssel können nicht verschlüsselt oder gespeichert werden. Setze die Umgebungsvariable und starte neu.",
+  "warning.keysUnreadable": "Gespeicherte API-Schlüssel konnten mit dem aktuellen Verschlüsselungsschlüssel nicht entschlüsselt werden. Bitte trage sie auf der Einstellungsseite erneut ein.",
 
   "dashboard.title": "Übersicht",
   "dashboard.status": "Scan-Status",

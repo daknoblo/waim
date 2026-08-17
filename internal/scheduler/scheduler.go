@@ -214,7 +214,7 @@ func (s *Scheduler) runScan(ctx context.Context) {
 	defer s.running.Store(false)
 
 	settings := s.cfg.Get()
-	if err := validateRunnable(settings, s.cfg.CipherEnabled()); err != nil {
+	if err := validateRunnable(settings); err != nil {
 		s.setStatus(func(st *Status) {
 			st.State = StateIdle
 			st.LastError = err.Error()
@@ -303,10 +303,7 @@ func (s *Scheduler) restoreStatus(ctx context.Context) {
 	})
 }
 
-func validateRunnable(s config.Settings, cipherEnabled bool) error {
-	if !cipherEnabled {
-		return errors.New("encryption key not configured (set WAIM_MASTER_KEY)")
-	}
+func validateRunnable(s config.Settings) error {
 	if s.Jellyfin.URL == "" || s.Jellyfin.APIKey == "" {
 		return errors.New("jellyfin is not configured")
 	}

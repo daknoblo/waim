@@ -46,7 +46,7 @@ css:
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY) ./cmd/waim
 
-## Run locally (requires WAIM_MASTER_KEY).
+## Run locally.
 run: build
 	$(BINARY)
 
