@@ -155,6 +155,16 @@ reference.
 - [Architecture](docs/architecture.md)
 - [Development](docs/development.md)
 
+## Contributing
+
+Bug reports, ideas and pull requests are welcome — see
+[Contributing](.github/CONTRIBUTING.md) for the development setup and the
+conventions this project follows. Participation is governed by the
+[Code of Conduct](.github/CODE_OF_CONDUCT.md).
+
+Found a security problem? Please report it privately as described in the
+[Security Policy](.github/SECURITY.md) rather than in a public issue.
+
 ## Tech stack
 
 Go · [templ](https://templ.guide/) · [HTMX](https://htmx.org/) ·

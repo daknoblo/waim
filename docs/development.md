@@ -144,3 +144,8 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
   — `docker/metadata-action` strips a leading `v`, so `ghcr.io/...:v1.2.3` would
   never exist. A `v`-prefixed tag still triggers a release and is normalised to
   `1.2.3`, but the plain form is the convention.
+
+## Contributing
+
+See [CONTRIBUTING.md](../.github/CONTRIBUTING.md) for the pull request workflow,
+commit conventions and the checks CI runs on every change.

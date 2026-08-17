@@ -1,0 +1,83 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not use this form for security
+        problems — use
+        [private vulnerability reporting](https://github.com/daknoblo/waim/security/advisories/new)
+        instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+      placeholder: |
+        Expected: the scan lists missing episodes for my series library.
+        Actual: the scan finishes with 0 items and the dashboard stays empty.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure Jellyfin and TMDB in Settings
+        2. Select the "Series" library
+        3. Press "Scan now"
+        4. …
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: waim version
+      description: Shown on the **About** page, e.g. `1.4.0`.
+      placeholder: "1.4.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How do you run it?
+      options:
+        - Docker Compose
+        - docker run
+        - Binary built from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: jellyfin-version
+    attributes:
+      label: Jellyfin version
+      description: Leave empty if the problem is unrelated to Jellyfin.
+      placeholder: "10.10.3"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: |
+        From the **Activity log** page or the container logs. Setting the log
+        level to `debug` in Settings often helps.
+
+        ⚠️ Please remove API keys, tokens and server URLs before pasting.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues for a duplicate.
+          required: true
+        - label: I removed API keys and other secrets from the details above.
+          required: true

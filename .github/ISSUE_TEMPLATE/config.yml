@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/daknoblo/waim/security/advisories/new
+    about: Please report security problems privately, not as a public issue.
+  - name: 📖 Documentation
+    url: https://github.com/daknoblo/waim/tree/main/docs
+    about: Installation, configuration, architecture and development guides.
+  - name: 🖥️ Live demo
+    url: https://daknoblo.github.io/waim/
+    about: The real UI rendered with sample data — useful to check current behaviour.
