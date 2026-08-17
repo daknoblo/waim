@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/store"
@@ -51,6 +52,7 @@ func (s *Server) statsData(r *http.Request) web.StatsData {
 		JellyfinURL: s.cfg.Get().Jellyfin.URL,
 	})
 	d.Layout = s.layout(r, web.NavStats)
+	d.DataState = s.dataState(ctx)
 	return d
 }
 
@@ -73,9 +75,29 @@ func (s *Server) handlePartialSuggestions(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) suggestionsConfigured() bool {
-	settings := s.cfg.Get()
+	return scanConfigured(s.cfg.Get())
+}
+
+// scanConfigured reports whether a scan could run at all: everything the
+// scanner needs has been entered and at least one library is selected.
+func scanConfigured(settings config.Settings) bool {
 	return settings.Jellyfin.URL != "" && settings.Jellyfin.APIKey != "" &&
 		settings.TMDB.APIKey != "" && len(settings.EnabledLibraryIDs()) > 0
+}
+
+// dataState explains why a view might have nothing to show, so an empty list is
+// never presented as a statement about the library.
+func (s *Server) dataState(ctx context.Context) string {
+	if !scanConfigured(s.cfg.Get()) {
+		return web.DataUnconfigured
+	}
+	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
+		return web.DataReady
+	}
+	if s.sched.Status().State == scheduler.StateRunning {
+		return web.DataScanning
+	}
+	return web.DataNeverScanned
 }
 
 func (s *Server) suggestionsData(r *http.Request) web.SuggestionsData {
@@ -144,7 +166,7 @@ func (s *Server) handlePartialFindings(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
 	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
 	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
-	s.renderPartial(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t, sortKey, dir), sortKey, dir))
+	s.renderPartial(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t, sortKey, dir), sortKey, dir, s.dataState(r.Context())))
 }
 
 func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
@@ -161,9 +183,20 @@ func (s *Server) handlePartialSeriesDetail(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handlePartialUpcoming(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
-	run, _ := s.store.LatestSuccessfulRun(r.Context())
-	q := web.NormalizeUpcomingQuery(r.URL.Query().Get("range"), r.URL.Query().Get("type"))
-	s.render(w, r, web.UpcomingContent(t, web.BuildUpcomingSection(t, run, q)))
+	ctx := r.Context()
+	run, _ := s.store.LatestSuccessfulRun(ctx)
+	q := web.NormalizeUpcomingQuery(
+		r.URL.Query().Get("direction"),
+		r.URL.Query().Get("range"),
+		r.URL.Query().Get("type"),
+	)
+	// The retrospective is derived from the gaps, so they are only loaded when
+	// that direction is actually requested.
+	var findings []store.Finding
+	if q.IsPast() && run != nil {
+		findings, _ = s.store.FindingsForRun(ctx, run.ID)
+	}
+	s.render(w, r, web.UpcomingContent(t, web.BuildUpcomingSection(t, run, findings, q)))
 }
 
 func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
@@ -205,6 +238,7 @@ func (s *Server) dashboardData(r *http.Request) web.DashboardData {
 		Logs:      web.BuildLogViews(s.logs.Entries()),
 		Sort:      sortKey,
 		Dir:       dir,
+		DataState: s.dataState(r.Context()),
 	}
 }
 

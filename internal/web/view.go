@@ -52,17 +52,19 @@ type FindingRow struct {
 }
 
 type detailPayload struct {
-	SeasonNumber    int    `json:"seasonNumber"`
-	EpisodeCount    int    `json:"episodeCount"`
-	MissingEpisodes []int  `json:"missingEpisodes"`
-	PosterPath      string `json:"posterPath"`
-	IMDbID          string `json:"imdbId"`
+	SeasonNumber    int               `json:"seasonNumber"`
+	EpisodeCount    int               `json:"episodeCount"`
+	MissingEpisodes []int             `json:"missingEpisodes"`
+	PosterPath      string            `json:"posterPath"`
+	IMDbID          string            `json:"imdbId"`
+	AirDates        map[string]string `json:"airDates"`
 	MissingParts    []struct {
-		TMDBID int64   `json:"tmdbId"`
-		Title  string  `json:"title"`
-		Year   string  `json:"year"`
-		Rating float64 `json:"rating"`
-		IMDbID string  `json:"imdbId"`
+		TMDBID      int64   `json:"tmdbId"`
+		Title       string  `json:"title"`
+		Year        string  `json:"year"`
+		Rating      float64 `json:"rating"`
+		IMDbID      string  `json:"imdbId"`
+		ReleaseDate string  `json:"releaseDate"`
 	} `json:"missingParts"`
 }
 

@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/daknoblo/waim/internal/store"
@@ -117,6 +118,11 @@ func seed(ctx context.Context, st *store.Store, path string) error {
 				detail, _ := json.Marshal(map[string]any{
 					"seasonNumber": s, "episodeCount": total,
 					"missingEpisodes": []int{owned + 1, owned + 2},
+					// Recent air dates so the retrospective view has content.
+					"airDates": map[string]string{
+						strconv.Itoa(owned + 1): now.AddDate(0, 0, -(7 + rng.Intn(60))).Format("2006-01-02"),
+						strconv.Itoa(owned + 2): now.AddDate(0, 0, -(1 + rng.Intn(6))).Format("2006-01-02"),
+					},
 				})
 				findings = append(findings, store.Finding{
 					Kind: store.KindMissingEpisodes, MediaType: store.MediaSeries,
@@ -177,7 +183,11 @@ func seed(ctx context.Context, st *store.Store, path string) error {
 	collectionDetail, _ := json.Marshal(map[string]any{
 		"collectionId": 900, "collectionName": "The Cartographer Collection",
 		"missingParts": []map[string]any{
-			{"tmdbId": 309, "title": "The Cartographer: Northern Light", "year": "2008", "rating": 8.5},
+			{
+				"tmdbId": 309, "title": "The Cartographer: Northern Light",
+				"year": "2008", "rating": 8.5,
+				"releaseDate": now.AddDate(0, 0, -34).Format("2006-01-02"),
+			},
 		},
 	})
 	findings = append(findings, store.Finding{

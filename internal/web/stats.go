@@ -17,6 +17,7 @@ import (
 type StatsData struct {
 	Layout         Layout
 	HasData        bool
+	DataState      string
 	LastScan       string
 	Duration       string
 	ItemsScanned   int
@@ -328,7 +329,7 @@ func BuildStats(t *i18n.Translator, in StatsInput) StatsData {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	sd.Upcoming = buildUpcoming(t, run.Upcoming, now, NormalizeUpcomingQuery("", ""))
+	sd.Upcoming = buildUpcoming(t, run.Upcoming, now, NormalizeUpcomingQuery("", "", ""))
 
 	return sd
 }

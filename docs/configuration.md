@@ -152,6 +152,24 @@ Until `config.json` is loaded at startup, waim logs at `info` level.
   the collection's parts that you do not own (and that have already been
   released).
 
+## The "coming up" section
+
+The statistics page shows releases for titles that are already in your library,
+in two directions:
+
+- **Coming up** (default) — episodes and collection entries that are announced
+  but not released yet.
+- **Already released** — what came out while your library still does not have
+  it. This is derived from the gaps of the latest scan, so an entry disappears
+  by itself once the title shows up in Jellyfin.
+
+Both directions share the timeframe and media type filters; in the
+retrospective a timeframe of 90 days means the *last* 90 days.
+
+Release dates for the retrospective are recorded from version 1.4.1 on. Right
+after the update the view therefore stays empty and says so — run a scan once
+to fill it.
+
 ## Exports
 
 - **Export settings** — downloads `config.json` with API keys still encrypted.

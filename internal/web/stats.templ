@@ -11,7 +11,7 @@ templ statsBody(d StatsData) {
 	<section class="grid gap-4">
 		<h1 class="text-lg font-semibold">{ d.Layout.T.T("stats.title") }</h1>
 		if !d.HasData {
-			<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("stats.noData") }</p>
+			<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T(dataStateKey(d.DataState)) }</p>
 		} else {
 			<div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-3 lg:grid-cols-6">
 				@statCardCentered(d.Layout.T.T("stats.itemsScanned"), strconv.Itoa(d.ItemsScanned))
@@ -606,12 +606,25 @@ templ statCardCentered(label, value string) {
 	</div>
 }
 
-// upcomingCard lists the releases announced for titles already in the library.
+// upcomingCard lists releases for titles already in the library, either
+// announced ones or those that came out while still missing.
 templ upcomingCard(t *i18n.Translator, u StatsUpcoming) {
 	<div class="card">
 		<div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-			<h2 class="text-lg font-semibold">{ t.T("stats.upcomingTitle") }</h2>
-			<p class="text-sm text-slate-400">{ t.T("stats.upcomingHint") }</p>
+			<h2 class="text-lg font-semibold">
+				if u.Past {
+					{ t.T("stats.upcomingPastTitle") }
+				} else {
+					{ t.T("stats.upcomingTitle") }
+				}
+			</h2>
+			<p class="text-sm text-slate-400">
+				if u.Past {
+					{ t.T("stats.upcomingPastHint") }
+				} else {
+					{ t.T("stats.upcomingHint") }
+				}
+			</p>
 		</div>
 		<div id="upcoming-content">
 			@UpcomingContent(t, u)
@@ -619,18 +632,63 @@ templ upcomingCard(t *i18n.Translator, u StatsUpcoming) {
 	</div>
 }
 
-// UpcomingContent is the swap target of the range and type dropdowns.
+// upcomingDirectionToggle switches between announced releases and the
+// retrospective. It carries the current range and type so switching direction
+// does not reset the other filters.
+templ upcomingDirectionToggle(t *i18n.Translator, u StatsUpcoming) {
+	<div class="inline-flex overflow-hidden rounded-lg border border-slate-700" role="group" aria-label={ t.T("stats.upcomingDirForward") }>
+		for _, o := range u.Directions {
+			<button
+				type="button"
+				name="direction"
+				value={ o.Value }
+				aria-pressed={ boolAttr(o.Selected) }
+				class={ "px-3 py-1.5 text-xs transition", templ.KV("bg-indigo-500/20 text-indigo-200", o.Selected), templ.KV("text-slate-400 hover:text-slate-200", !o.Selected) }
+				hx-get={ "/partials/upcoming?direction=" + o.Value }
+				hx-target="#upcoming-content"
+				hx-swap="innerHTML"
+				hx-include="#upcoming-range, #upcoming-type"
+			>
+				{ o.Label }
+			</button>
+		}
+	</div>
+}
+
+// UpcomingContent is the swap target of the direction toggle and the dropdowns.
 templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
-	if !u.HasAny {
-		<p class="text-sm text-slate-500">{ t.T("stats.upcomingEmpty") }</p>
+	if u.NeedsRescan {
+		<div class="mb-3">
+			@upcomingDirectionToggle(t, u)
+		</div>
+		<p class="rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{ t.T("stats.upcomingNeedsRescan") }</p>
+	} else if !u.HasAny {
+		<div class="mb-3">
+			@upcomingDirectionToggle(t, u)
+		</div>
+		<p class="text-sm text-slate-500">
+			if u.Past {
+				{ t.T("stats.upcomingPastEmpty") }
+			} else {
+				{ t.T("stats.upcomingEmpty") }
+			}
+		</p>
 	} else {
+		<div class="mb-3">
+			@upcomingDirectionToggle(t, u)
+		</div>
 		<div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
 			@statCardCentered(t.T("stats.upcomingTotal"), strconv.Itoa(u.Total))
 			@statCardCentered("\U0001F39E "+t.T("stats.upcomingEpisodes"), strconv.Itoa(u.Episodes))
 			@statCardCentered("\U0001F3AC "+t.T("stats.upcomingMovies"), strconv.Itoa(u.Movies))
-			@statCardSub(t.T("stats.upcomingNext"), orDash(u.NextLabel), u.NextTitle)
+			if u.Past {
+				@statCardSub(t.T("stats.upcomingPastLatest"), orDash(u.NextLabel), u.NextTitle)
+			} else {
+				@statCardSub(t.T("stats.upcomingNext"), orDash(u.NextLabel), u.NextTitle)
+			}
 		</div>
 		@upcomingTimelineChart(t, u.Timeline)
+		<input type="hidden" id="upcoming-direction" name="direction" value={ upcomingDirectionValue(u) }/>
 		<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3 text-xs text-slate-400">
 			<label for="upcoming-range">{ t.T("stats.upcomingRange") }</label>
 			<select
@@ -641,7 +699,7 @@ templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
 				hx-get="/partials/upcoming"
 				hx-target="#upcoming-content"
 				hx-swap="innerHTML"
-				hx-include="#upcoming-type"
+				hx-include="#upcoming-type, #upcoming-direction"
 			>
 				for _, o := range u.Ranges {
 					<option value={ o.Value } selected?={ o.Selected }>{ o.Label }</option>
@@ -656,7 +714,7 @@ templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
 				hx-get="/partials/upcoming"
 				hx-target="#upcoming-content"
 				hx-swap="innerHTML"
-				hx-include="#upcoming-range"
+				hx-include="#upcoming-range, #upcoming-direction"
 			>
 				for _, o := range u.Types {
 					<option value={ o.Value } selected?={ o.Selected }>{ o.Label }</option>
@@ -667,7 +725,13 @@ templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
 			}
 		</div>
 		if !u.Available {
-			<p class="mt-3 text-sm text-slate-500">{ t.T("stats.upcomingEmptyRange") }</p>
+			<p class="mt-3 text-sm text-slate-500">
+				if u.Past {
+					{ t.T("stats.upcomingPastEmptyRange") }
+				} else {
+					{ t.T("stats.upcomingEmptyRange") }
+				}
+			</p>
 		} else {
 			<div class="mt-3 flex gap-5 overflow-x-auto pb-2">
 				for _, g := range u.Groups {

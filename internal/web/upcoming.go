@@ -1,9 +1,11 @@
 package web
 
 import (
+	"encoding/json"
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
@@ -58,18 +60,21 @@ type TimelineMarker struct {
 
 // StatsUpcoming is the "coming up" section of the statistics page.
 type StatsUpcoming struct {
-	HasAny    bool // the run recorded upcoming releases at all
-	Available bool // the current selection has releases
-	Total     int
-	Episodes  int
-	Movies    int
-	NextTitle string
-	NextLabel string
-	Truncated int
-	Timeline  UpcomingTimeline
-	Groups    []UpcomingGroup
-	Ranges    []UpcomingFilter
-	Types     []UpcomingFilter
+	HasAny      bool // the run recorded releases at all
+	Available   bool // the current selection has releases
+	Past        bool // the retrospective direction is selected
+	NeedsRescan bool // gaps exist but predate the release dates, so a rescan is needed
+	Total       int
+	Episodes    int
+	Movies      int
+	NextTitle   string
+	NextLabel   string
+	Truncated   int
+	Timeline    UpcomingTimeline
+	Groups      []UpcomingGroup
+	Directions  []UpcomingFilter
+	Ranges      []UpcomingFilter
+	Types       []UpcomingFilter
 }
 
 // UpcomingGroup bundles the releases of one timeframe.
@@ -101,21 +106,30 @@ type UpcomingFilter struct {
 
 // UpcomingQuery is the current selection of the upcoming section.
 type UpcomingQuery struct {
-	Range string // 30 | 90 | 180 | 365 | all
-	Type  string // all | series | movie
+	Direction string // upcoming | past
+	Range     string // 30 | 90 | 180 | 365 | all
+	Type      string // all | series | movie
 }
 
 const (
 	upcomingRangeAll     = "all"
 	upcomingTypeAll      = "all"
 	upcomingDefaultRange = "90"
+
+	// UpcomingForward lists announced releases, UpcomingPast what was released
+	// while it is still missing from the library.
+	UpcomingForward = "upcoming"
+	UpcomingPast    = "past"
 )
 
 var upcomingRanges = []string{"30", upcomingDefaultRange, "180", "365", upcomingRangeAll}
 
 // NormalizeUpcomingQuery clamps user input to the supported options.
-func NormalizeUpcomingQuery(rangeV, typeV string) UpcomingQuery {
-	q := UpcomingQuery{Range: upcomingDefaultRange, Type: upcomingTypeAll}
+func NormalizeUpcomingQuery(directionV, rangeV, typeV string) UpcomingQuery {
+	q := UpcomingQuery{Direction: UpcomingForward, Range: upcomingDefaultRange, Type: upcomingTypeAll}
+	if directionV == UpcomingPast {
+		q.Direction = UpcomingPast
+	}
 	if slices.Contains(upcomingRanges, rangeV) {
 		q.Range = rangeV
 	}
@@ -124,6 +138,9 @@ func NormalizeUpcomingQuery(rangeV, typeV string) UpcomingQuery {
 	}
 	return q
 }
+
+// IsPast reports whether the retrospective direction is selected.
+func (q UpcomingQuery) IsPast() bool { return q.Direction == UpcomingPast }
 
 // days returns the selected window in days, or 0 for the unlimited range.
 func (q UpcomingQuery) days() int {
@@ -145,27 +162,106 @@ type upcomingAgg struct {
 }
 
 // BuildUpcomingSection builds the "coming up" section for a scan run, which is
-// what the HTMX partial re-renders when a dropdown changes.
-func BuildUpcomingSection(t *i18n.Translator, run *store.ScanRun, q UpcomingQuery) StatsUpcoming {
+// what the HTMX partial re-renders when a control changes.
+//
+// The retrospective direction is derived from the findings instead of the
+// recorded releases: what has already aired and is still missing is exactly
+// what the scan reports as a gap, so nothing has to be carried across runs.
+func BuildUpcomingSection(t *i18n.Translator, run *store.ScanRun, findings []store.Finding, q UpcomingQuery) StatsUpcoming {
 	if run == nil {
 		return StatsUpcoming{}
+	}
+	if q.IsPast() {
+		items, undated := pastItemsFromFindings(findings)
+		su := buildUpcoming(t, items, time.Now(), q)
+		su.HasAny = len(items) > 0
+		// Gaps exist but none carry a date: the scan predates this feature, so
+		// saying "nothing missed" would be wrong.
+		su.NeedsRescan = len(items) == 0 && undated > 0
+		return su
 	}
 	return buildUpcoming(t, run.Upcoming, time.Now(), q)
 }
 
-// buildUpcoming turns the announced releases of a scan into the section model.
+// pastItemsFromFindings converts the gaps of a scan into releases that already
+// happened. The second return value counts gaps that had to be skipped because
+// they carry no date, which happens for findings stored before this feature
+// existed.
+func pastItemsFromFindings(findings []store.Finding) ([]store.UpcomingItem, int) {
+	var out []store.UpcomingItem
+	undated := 0
+	for _, f := range findings {
+		var d detailPayload
+		if f.Details != "" {
+			_ = json.Unmarshal([]byte(f.Details), &d)
+		}
+		switch f.Kind {
+		case store.KindMissingSeason, store.KindMissingEpisodes:
+			for _, ep := range d.MissingEpisodes {
+				date := d.AirDates[strconv.Itoa(ep)]
+				if strings.TrimSpace(date) == "" {
+					undated++
+					continue
+				}
+				out = append(out, store.UpcomingItem{
+					Kind:          store.UpcomingEpisode,
+					MediaType:     store.MediaSeries,
+					SourceTitle:   f.Title,
+					TMDBID:        f.TMDBID,
+					SourceTMDBID:  f.TMDBID,
+					SeasonNumber:  d.SeasonNumber,
+					EpisodeNumber: ep,
+					ReleaseDate:   date,
+					PosterPath:    d.PosterPath,
+					LibraryID:     f.LibraryID,
+					LibraryName:   f.LibraryName,
+					JellyfinID:    f.JellyfinID,
+				})
+			}
+		case store.KindMissingCollection:
+			for _, p := range d.MissingParts {
+				if strings.TrimSpace(p.ReleaseDate) == "" {
+					undated++
+					continue
+				}
+				out = append(out, store.UpcomingItem{
+					Kind:         store.UpcomingCollectionPart,
+					MediaType:    store.MediaMovie,
+					Title:        p.Title,
+					SourceTitle:  f.Title,
+					TMDBID:       p.TMDBID,
+					SourceTMDBID: f.TMDBID,
+					ReleaseDate:  p.ReleaseDate,
+					PosterPath:   d.PosterPath,
+					Rating:       p.Rating,
+					LibraryID:    f.LibraryID,
+					LibraryName:  f.LibraryName,
+				})
+			}
+		}
+	}
+	return out, undated
+}
+
+// buildUpcoming turns releases into the section model. Depending on the query
+// direction the window either extends forward from today or back into the past.
 func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time, q UpcomingQuery) StatsUpcoming {
-	su := StatsUpcoming{HasAny: len(items) > 0}
+	su := StatsUpcoming{HasAny: len(items) > 0, Past: q.IsPast()}
 	if !su.HasAny {
 		return su
 	}
 	today := dayOf(now)
+	su.Directions = upcomingDirectionOptions(t, q.Direction)
 	su.Ranges = upcomingRangeOptions(t, q.Range)
 	su.Types = upcomingTypeOptions(t, q.Type)
 
 	var cutoff time.Time
 	if d := q.days(); d > 0 {
-		cutoff = today.AddDate(0, 0, d)
+		if q.IsPast() {
+			cutoff = today.AddDate(0, 0, -d)
+		} else {
+			cutoff = today.AddDate(0, 0, d)
+		}
 	}
 
 	byKey := map[string]*upcomingAgg{}
@@ -175,7 +271,15 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 			continue
 		}
 		d, dated := parseUpcomingDate(it.ReleaseDate)
-		if !cutoff.IsZero() {
+		if q.IsPast() {
+			// A release without a date cannot be placed in the past at all.
+			if !dated || d.After(today) {
+				continue
+			}
+			if !cutoff.IsZero() && d.Before(cutoff) {
+				continue
+			}
+		} else if !cutoff.IsZero() {
 			// A window selects by date, so undated entries only show up in the
 			// unlimited range.
 			if !dated || d.After(cutoff) {
@@ -223,6 +327,10 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 			return a.dated
 		}
 		if !a.date.Equal(b.date) {
+			// The retrospective reads best with the most recent release first.
+			if q.IsPast() {
+				return a.date.After(b.date)
+			}
 			return a.date.Before(b.date)
 		}
 		return a.item.SourceTitle < b.item.SourceTitle
@@ -234,11 +342,15 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 	}
 
 	su.Timeline = buildUpcomingTimeline(t, aggs, today)
-	su.Groups = upcomingGroups(t, aggs, today)
+	su.Groups = upcomingGroups(t, aggs, today, q.IsPast())
 	for _, a := range aggs {
 		if a.dated {
 			su.NextTitle = upcomingTitle(a)
-			su.NextLabel = upcomingCountdown(t, a.date, today)
+			if q.IsPast() {
+				su.NextLabel = upcomingElapsed(t, a.date, today)
+			} else {
+				su.NextLabel = upcomingCountdown(t, a.date, today)
+			}
 			break
 		}
 	}
@@ -265,13 +377,19 @@ func upcomingTypeOptions(t *i18n.Translator, selected string) []UpcomingFilter {
 	}
 }
 
+func upcomingDirectionOptions(t *i18n.Translator, selected string) []UpcomingFilter {
+	return []UpcomingFilter{
+		{Value: UpcomingForward, Label: t.T("stats.upcomingDirForward"), Selected: selected != UpcomingPast},
+		{Value: UpcomingPast, Label: t.T("stats.upcomingDirPast"), Selected: selected == UpcomingPast},
+	}
+}
+
 func mustAtoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
 }
 
-func upcomingGroups(t *i18n.Translator, aggs []*upcomingAgg, today time.Time) []UpcomingGroup {
-	weekEnd := today.AddDate(0, 0, 7)
+func upcomingGroups(t *i18n.Translator, aggs []*upcomingAgg, today time.Time, past bool) []UpcomingGroup {
 	var groups []UpcomingGroup
 	index := map[string]int{}
 	add := func(key, label string, e UpcomingEntry) {
@@ -284,13 +402,17 @@ func upcomingGroups(t *i18n.Translator, aggs []*upcomingAgg, today time.Time) []
 		groups[i].Items = append(groups[i].Items, e)
 		groups[i].Count++
 	}
+	weekEnd := today.AddDate(0, 0, 7)
+	weekStart := today.AddDate(0, 0, -7)
 	// Entries are sorted dated-first, so the buckets are created in display order.
 	for _, a := range aggs {
-		e := upcomingEntry(t, a, today)
+		e := upcomingEntry(t, a, today, past)
 		switch {
 		case !a.dated:
 			add("tba", t.T("stats.upcomingTba"), e)
-		case a.date.Before(weekEnd):
+		case past && !a.date.Before(weekStart):
+			add("week", t.T("stats.upcomingLastWeek"), e)
+		case !past && a.date.Before(weekEnd):
 			add("week", t.T("stats.upcomingThisWeek"), e)
 		default:
 			add(a.date.Format("2006-01"), monthLabel(t, a.date), e)
@@ -299,7 +421,7 @@ func upcomingGroups(t *i18n.Translator, aggs []*upcomingAgg, today time.Time) []
 	return groups
 }
 
-func upcomingEntry(t *i18n.Translator, a *upcomingAgg, today time.Time) UpcomingEntry {
+func upcomingEntry(t *i18n.Translator, a *upcomingAgg, today time.Time, past bool) UpcomingEntry {
 	e := UpcomingEntry{
 		MediaType: a.item.MediaType,
 		Title:     upcomingTitle(a),
@@ -319,7 +441,11 @@ func upcomingEntry(t *i18n.Translator, a *upcomingAgg, today time.Time) Upcoming
 	// The tiles are narrow, so the full context lives in the tooltip.
 	e.Hint = e.Title + " \u00b7 " + e.Sub + " \u00b7 " + e.DateLabel
 	if a.dated {
-		e.Hint += " (" + upcomingCountdown(t, a.date, today) + ")"
+		if past {
+			e.Hint += " (" + upcomingElapsed(t, a.date, today) + ")"
+		} else {
+			e.Hint += " (" + upcomingCountdown(t, a.date, today) + ")"
+		}
 	}
 	return e
 }
@@ -354,11 +480,22 @@ func buildUpcomingTimeline(t *i18n.Translator, aggs []*upcomingAgg, today time.T
 	if len(dated) == 0 {
 		return tl
 	}
-	start := today
-	if first := dated[0].date; first.Before(start) {
-		start = first
+	// Derive the span from the actual extremes rather than the slice order, so
+	// the retrospective (sorted newest first) plots the same way.
+	minDate, maxDate := dated[0].date, dated[0].date
+	for _, a := range dated[1:] {
+		if a.date.Before(minDate) {
+			minDate = a.date
+		}
+		if a.date.After(maxDate) {
+			maxDate = a.date
+		}
 	}
-	end := dated[len(dated)-1].date
+	start := today
+	if minDate.Before(start) {
+		start = minDate
+	}
+	end := maxDate
 	if !end.After(start.AddDate(0, 0, 14)) {
 		end = start.AddDate(0, 0, 14)
 	}
@@ -503,5 +640,20 @@ func upcomingCountdown(t *i18n.Translator, d, today time.Time) string {
 		return t.T("stats.upcomingInDays", days)
 	default:
 		return t.T("stats.upcomingInMonths", days/30)
+	}
+}
+
+// upcomingElapsed is the retrospective counterpart of upcomingCountdown.
+func upcomingElapsed(t *i18n.Translator, d, today time.Time) string {
+	days := int(today.Sub(dayOf(d)).Hours() / 24)
+	switch {
+	case days <= 0:
+		return t.T("stats.upcomingToday")
+	case days == 1:
+		return t.T("stats.upcomingYesterday")
+	case days <= 30:
+		return t.T("stats.upcomingDaysAgo", days)
+	default:
+		return t.T("stats.upcomingMonthsAgo", days/30)
 	}
 }

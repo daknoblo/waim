@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/daknoblo/waim/internal/config"
@@ -183,10 +184,17 @@ func demoFindings() []store.Finding {
 	season5 := 5
 
 	seasonDetail := func(season, episodes int, missing []int) string {
+		// Air dates spread over the recent past so the retrospective view has
+		// something to show in the demo.
+		airDates := map[string]string{}
+		for i, ep := range missing {
+			airDates[strconv.Itoa(ep)] = created.AddDate(0, 0, -7*(i+1)).Format("2006-01-02")
+		}
 		b, _ := json.Marshal(map[string]any{
 			"seasonNumber":    season,
 			"episodeCount":    episodes,
 			"missingEpisodes": missing,
+			"airDates":        airDates,
 		})
 		return string(b)
 	}
@@ -194,7 +202,11 @@ func demoFindings() []store.Finding {
 		"collectionId":   900,
 		"collectionName": "The Cartographer Trilogy",
 		"missingParts": []map[string]any{
-			{"tmdbId": 309, "title": "The Cartographer: Northern Light", "year": "2008", "rating": 8.5},
+			{
+				"tmdbId": 309, "title": "The Cartographer: Northern Light",
+				"year": "2008", "rating": 8.5,
+				"releaseDate": created.AddDate(0, 0, -21).Format("2006-01-02"),
+			},
 		},
 	})
 
@@ -239,7 +251,8 @@ func demoFindings() []store.Finding {
 
 func demoDashboard(t *i18n.Translator, run *store.ScanRun, findings []store.Finding) web.DashboardData {
 	return web.DashboardData{
-		Layout: demoLayout(t, web.NavDashboard),
+		Layout:    demoLayout(t, web.NavDashboard),
+		DataState: web.DataReady,
 		Status: web.StatusView{
 			State:            "idle",
 			StateLabel:       t.T("dashboard.state.idle"),
@@ -279,6 +292,7 @@ func demoStats(t *i18n.Translator, run *store.ScanRun, findings []store.Finding)
 		},
 	})
 	d.Layout = demoLayout(t, web.NavStats)
+	d.DataState = web.DataReady
 	return d
 }
 

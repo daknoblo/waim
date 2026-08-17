@@ -1,12 +1,20 @@
 package server
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/daknoblo/waim/internal/config"
+	"github.com/daknoblo/waim/internal/i18n"
+	"github.com/daknoblo/waim/internal/scheduler"
+	"github.com/daknoblo/waim/internal/store"
+	"github.com/daknoblo/waim/internal/web"
 )
 
 // newTestServer returns a Server wired to a throwaway config directory.
@@ -155,4 +163,117 @@ func TestSameEndpointHost(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An empty list must never be presented as a statement about the library
+// unless a successful scan actually produced it.
+func TestScanConfigured(t *testing.T) {
+	full := func() config.Settings {
+		s := config.Defaults()
+		s.Jellyfin.URL = "http://jellyfin.local:8096"
+		s.Jellyfin.APIKey = "jf"
+		s.TMDB.APIKey = "td"
+		s.Libraries = []config.Library{{ID: "l1", Name: "Movies", Enabled: true}}
+		return s
+	}
+	if !scanConfigured(full()) {
+		t.Fatal("a complete configuration should count as configured")
+	}
+
+	cases := map[string]func(*config.Settings){
+		"no jellyfin url":  func(s *config.Settings) { s.Jellyfin.URL = "" },
+		"no jellyfin key":  func(s *config.Settings) { s.Jellyfin.APIKey = "" },
+		"no tmdb key":      func(s *config.Settings) { s.TMDB.APIKey = "" },
+		"no libraries":     func(s *config.Settings) { s.Libraries = nil },
+		"library disabled": func(s *config.Settings) { s.Libraries[0].Enabled = false },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := full()
+			mutate(&s)
+			if scanConfigured(s) {
+				t.Fatalf("%s should not count as configured", name)
+			}
+		})
+	}
+}
+
+func TestDataStateKeyMapping(t *testing.T) {
+	cases := map[string]string{
+		web.DataUnconfigured: "common.stateUnconfigured",
+		web.DataScanning:     "common.stateScanning",
+		web.DataNeverScanned: "common.stateNeverScanned",
+	}
+	cat, err := i18n.Load()
+	if err != nil {
+		t.Fatalf("i18n.Load: %v", err)
+	}
+	tr := cat.For("en")
+	for state, key := range cases {
+		if got := tr.T(key); got == "" || got == key {
+			t.Fatalf("state %q maps to %q which has no translation", state, key)
+		}
+	}
+}
+
+// dataState is what keeps an empty list from being read as a result, so pin
+// down every branch of it.
+func TestDataState(t *testing.T) {
+	newServer := func(t *testing.T) (*Server, *config.Manager) {
+		t.Helper()
+		dir := t.TempDir()
+		mgr, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("config.Load: %v", err)
+		}
+		st, err := store.Open(filepath.Join(dir, "waim.db"))
+		if err != nil {
+			t.Fatalf("store.Open: %v", err)
+		}
+		t.Cleanup(func() { _ = st.Close() })
+		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+		return &Server{cfg: mgr, store: st, sched: scheduler.New(mgr, st, log)}, mgr
+	}
+	configure := func(t *testing.T, mgr *config.Manager) {
+		t.Helper()
+		cfg := mgr.Get()
+		cfg.Jellyfin.URL = "http://jellyfin.local:8096"
+		cfg.Jellyfin.APIKey = "jf"
+		cfg.TMDB.APIKey = "td"
+		cfg.Libraries = []config.Library{{ID: "l1", Name: "Movies", Enabled: true}}
+		if err := mgr.Save(cfg); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+	}
+
+	t.Run("unconfigured", func(t *testing.T) {
+		s, _ := newServer(t)
+		if got := s.dataState(context.Background()); got != web.DataUnconfigured {
+			t.Fatalf("got %q, want %q", got, web.DataUnconfigured)
+		}
+	})
+
+	t.Run("never scanned once configured", func(t *testing.T) {
+		s, mgr := newServer(t)
+		configure(t, mgr)
+		if got := s.dataState(context.Background()); got != web.DataNeverScanned {
+			t.Fatalf("got %q, want %q", got, web.DataNeverScanned)
+		}
+	})
+
+	t.Run("ready after a successful run", func(t *testing.T) {
+		s, mgr := newServer(t)
+		configure(t, mgr)
+		ctx := context.Background()
+		id, err := s.store.StartScanRun(ctx)
+		if err != nil {
+			t.Fatalf("StartScanRun: %v", err)
+		}
+		if err := s.store.FinishScanRun(ctx, id, store.StatusSuccess, "", 1, 10, 0, nil, nil, nil); err != nil {
+			t.Fatalf("FinishScanRun: %v", err)
+		}
+		if got := s.dataState(ctx); got != web.DataReady {
+			t.Fatalf("got %q, want %q", got, web.DataReady)
+		}
+	})
 }

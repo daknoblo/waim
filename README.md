@@ -54,7 +54,8 @@ Huntarr or Missingarr.
 - **Coming up** section: announced episodes of the series you own and
   unreleased entries of your movie collections, on a release timeline plus a
   poster grid grouped by timeframe. Collected during the regular scan, so it
-  costs no extra TMDB requests.
+  costs no extra TMDB requests. Switch it to **Already released** to look
+  back at what came out while your library still does not have it.
 - General statistics: library facts (total runtime, average rating, episode
   completeness, specials share), biggest sagas and series binge times,
   genre/decade donut charts, rating distribution, original language and

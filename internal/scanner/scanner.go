@@ -94,14 +94,19 @@ type missingEpisodesDetail struct {
 	MissingEpisodes []int  `json:"missingEpisodes"`
 	PosterPath      string `json:"posterPath,omitempty"`
 	IMDbID          string `json:"imdbId,omitempty"`
+	// AirDates maps an episode number to its ISO 8601 air date. Added later
+	// than the fields above, so findings stored by an older version simply do
+	// not carry it; the retrospective view skips those entries.
+	AirDates map[string]string `json:"airDates,omitempty"`
 }
 
 type missingPart struct {
-	TMDBID int64   `json:"tmdbId"`
-	Title  string  `json:"title"`
-	Year   string  `json:"year,omitempty"`
-	Rating float64 `json:"rating,omitempty"`
-	IMDbID string  `json:"imdbId,omitempty"`
+	TMDBID      int64   `json:"tmdbId"`
+	Title       string  `json:"title"`
+	Year        string  `json:"year,omitempty"`
+	Rating      float64 `json:"rating,omitempty"`
+	IMDbID      string  `json:"imdbId,omitempty"`
+	ReleaseDate string  `json:"releaseDate,omitempty"` // ISO 8601, added later
 }
 
 type missingCollectionDetail struct {
@@ -273,10 +278,11 @@ func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, ite
 			continue
 		}
 		missing = append(missing, missingPart{
-			TMDBID: p.ID,
-			Title:  p.Title,
-			Year:   yearOf(p.ReleaseDate),
-			Rating: p.VoteAverage,
+			TMDBID:      p.ID,
+			Title:       p.Title,
+			Year:        yearOf(p.ReleaseDate),
+			Rating:      p.VoteAverage,
+			ReleaseDate: strings.TrimSpace(p.ReleaseDate),
 		})
 	}
 	if len(missing) == 0 {
@@ -371,7 +377,8 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 
 		if len(presentEps) == 0 {
 			// Possibly a whole missing season; confirm it has aired episodes.
-			aired := episodeNumbers(seasons.aired(ctx, season.SeasonNumber))
+			airedEps := seasons.aired(ctx, season.SeasonNumber)
+			aired := episodeNumbers(airedEps)
 			if len(aired) == 0 {
 				continue
 			}
@@ -381,6 +388,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 				MissingEpisodes: aired,
 				PosterPath:      tv.PosterPath,
 				IMDbID:          imdbID,
+				AirDates:        airDatesOf(airedEps, aired),
 			})
 			sn := season.SeasonNumber
 			res.Findings = append(res.Findings, store.Finding{
@@ -403,7 +411,8 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 			continue // assume complete
 		}
 
-		aired := episodeNumbers(seasons.aired(ctx, season.SeasonNumber))
+		airedEps := seasons.aired(ctx, season.SeasonNumber)
+		aired := episodeNumbers(airedEps)
 		var missing []int
 		for _, en := range aired {
 			if !presentEps[en] {
@@ -419,6 +428,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 			MissingEpisodes: missing,
 			PosterPath:      tv.PosterPath,
 			IMDbID:          imdbID,
+			AirDates:        airDatesOf(airedEps, missing),
 		})
 		sn := season.SeasonNumber
 		res.Findings = append(res.Findings, store.Finding{
@@ -573,6 +583,32 @@ func episodeNumbers(eps []tmdb.Episode) []int {
 	out := make([]int, 0, len(eps))
 	for _, ep := range eps {
 		out = append(out, ep.EpisodeNumber)
+	}
+	return out
+}
+
+// airDatesOf maps the wanted episode numbers to their air dates, so the
+// retrospective view can place a gap on a timeline. Episodes without a date are
+// omitted rather than stored empty.
+func airDatesOf(eps []tmdb.Episode, wanted []int) map[string]string {
+	if len(wanted) == 0 {
+		return nil
+	}
+	want := make(map[int]bool, len(wanted))
+	for _, n := range wanted {
+		want[n] = true
+	}
+	out := make(map[string]string, len(wanted))
+	for _, ep := range eps {
+		if !want[ep.EpisodeNumber] {
+			continue
+		}
+		if d := strings.TrimSpace(ep.AirDate); d != "" {
+			out[strconv.Itoa(ep.EpisodeNumber)] = d
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,7 +36,7 @@ func upcomingFixture() []store.UpcomingItem {
 
 func TestBuildUpcomingGroupsAndCounts(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	u := buildUpcoming(testTranslator(t), upcomingFixture(), now, NormalizeUpcomingQuery("all", ""))
+	u := buildUpcoming(testTranslator(t), upcomingFixture(), now, NormalizeUpcomingQuery("", "all", ""))
 
 	if !u.Available {
 		t.Fatal("Available = false, want true")
@@ -70,7 +71,7 @@ func TestBuildUpcomingGroupsAndCounts(t *testing.T) {
 
 func TestBuildUpcomingTimelineGeometry(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	tl := buildUpcoming(testTranslator(t), upcomingFixture(), now, NormalizeUpcomingQuery("all", "")).Timeline
+	tl := buildUpcoming(testTranslator(t), upcomingFixture(), now, NormalizeUpcomingQuery("", "all", "")).Timeline
 
 	if !tl.Available {
 		t.Fatal("Available = false, want true")
@@ -116,7 +117,7 @@ func TestBuildUpcomingTimelineGeometry(t *testing.T) {
 }
 
 func TestBuildUpcomingEmpty(t *testing.T) {
-	u := buildUpcoming(testTranslator(t), nil, time.Now(), NormalizeUpcomingQuery("", ""))
+	u := buildUpcoming(testTranslator(t), nil, time.Now(), NormalizeUpcomingQuery("", "", ""))
 	if u.HasAny || u.Available || u.Timeline.Available {
 		t.Errorf("empty input should not be available: %+v", u)
 	}
@@ -124,17 +125,17 @@ func TestBuildUpcomingEmpty(t *testing.T) {
 
 func TestNormalizeUpcomingQuery(t *testing.T) {
 	cases := []struct {
-		rangeV, typeV string
-		want          UpcomingQuery
+		dirV, rangeV, typeV string
+		want                UpcomingQuery
 	}{
-		{"", "", UpcomingQuery{"90", "all"}},
-		{"30", "series", UpcomingQuery{"30", "series"}},
-		{"all", "movie", UpcomingQuery{"all", "movie"}},
-		{"7", "anything", UpcomingQuery{"90", "all"}}, // unsupported input falls back
+		{"", "", "", UpcomingQuery{UpcomingForward, "90", "all"}},
+		{"", "30", "series", UpcomingQuery{UpcomingForward, "30", "series"}},
+		{"past", "all", "movie", UpcomingQuery{UpcomingPast, "all", "movie"}},
+		{"sideways", "7", "anything", UpcomingQuery{UpcomingForward, "90", "all"}}, // unsupported input falls back
 	}
 	for _, c := range cases {
-		if got := NormalizeUpcomingQuery(c.rangeV, c.typeV); got != c.want {
-			t.Errorf("NormalizeUpcomingQuery(%q, %q) = %+v, want %+v", c.rangeV, c.typeV, got, c.want)
+		if got := NormalizeUpcomingQuery(c.dirV, c.rangeV, c.typeV); got != c.want {
+			t.Errorf("NormalizeUpcomingQuery(%q, %q, %q) = %+v, want %+v", c.dirV, c.rangeV, c.typeV, got, c.want)
 		}
 	}
 }
@@ -144,7 +145,7 @@ func TestBuildUpcomingFilters(t *testing.T) {
 	tr := testTranslator(t)
 
 	// A window drops the undated entry and anything past the cutoff.
-	u := buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("30", ""))
+	u := buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("", "30", ""))
 	if !u.HasAny || !u.Available {
 		t.Fatalf("30-day range should still have entries: %+v", u)
 	}
@@ -153,7 +154,7 @@ func TestBuildUpcomingFilters(t *testing.T) {
 	}
 
 	// The type filter narrows both the counters and the timeline.
-	u = buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("all", "movie"))
+	u = buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("", "all", "movie"))
 	if u.Episodes != 0 || u.Movies != 2 {
 		t.Errorf("movie filter: episodes=%d movies=%d, want 0/2", u.Episodes, u.Movies)
 	}
@@ -162,7 +163,7 @@ func TestBuildUpcomingFilters(t *testing.T) {
 	}
 
 	// An empty selection keeps the controls so the range can be widened again.
-	u = buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("30", "movie"))
+	u = buildUpcoming(tr, upcomingFixture(), now, NormalizeUpcomingQuery("", "30", "movie"))
 	if !u.HasAny || u.Available {
 		t.Errorf("empty selection: HasAny=%v Available=%v, want true/false", u.HasAny, u.Available)
 	}
@@ -172,7 +173,7 @@ func TestBuildUpcomingFilters(t *testing.T) {
 }
 
 func TestUpcomingOptionsMarkSelection(t *testing.T) {
-	u := buildUpcoming(testTranslator(t), upcomingFixture(), time.Now(), NormalizeUpcomingQuery("180", "series"))
+	u := buildUpcoming(testTranslator(t), upcomingFixture(), time.Now(), NormalizeUpcomingQuery("", "180", "series"))
 	var gotRange, gotType string
 	for _, o := range u.Ranges {
 		if o.Selected {
@@ -186,5 +187,167 @@ func TestUpcomingOptionsMarkSelection(t *testing.T) {
 	}
 	if gotRange != "180" || gotType != "series" {
 		t.Errorf("selected options = %q / %q, want 180 / series", gotRange, gotType)
+	}
+}
+
+// pastFindings builds gaps whose releases sit at fixed offsets before now, so
+// the window boundaries can be asserted precisely.
+func pastFindings(now time.Time) []store.Finding {
+	day := func(offset int) string {
+		return now.AddDate(0, 0, offset).Format("2006-01-02")
+	}
+	epDetail := func(season int, missing []int, dates map[string]string) string {
+		d := map[string]any{
+			"seasonNumber":    season,
+			"episodeCount":    10,
+			"missingEpisodes": missing,
+		}
+		if dates != nil {
+			d["airDates"] = dates
+		}
+		b, _ := json.Marshal(d)
+		return string(b)
+	}
+	collDetail, _ := json.Marshal(map[string]any{
+		"collectionId":   500,
+		"collectionName": "X Collection",
+		"missingParts": []map[string]any{
+			{"tmdbId": 202, "title": "Movie X 3", "releaseDate": day(-10)},
+			{"tmdbId": 203, "title": "Movie X 4"}, // undated, must be skipped
+		},
+	})
+	return []store.Finding{
+		{
+			Kind: store.KindMissingEpisodes, MediaType: store.MediaSeries, Title: "Show A", TMDBID: 100,
+			Details: epDetail(2, []int{1, 2, 3}, map[string]string{
+				"1": day(0),   // today counts as released
+				"2": day(-3),  // inside every window
+				"3": day(-45), // outside a 30-day window
+			}),
+		},
+		{
+			Kind: store.KindMissingCollection, MediaType: store.MediaMovie, Title: "X Collection", TMDBID: 500,
+			Details: string(collDetail),
+		},
+		{
+			// Predates the feature: no airDates at all.
+			Kind: store.KindMissingSeason, MediaType: store.MediaSeries, Title: "Show B", TMDBID: 101,
+			Details: epDetail(1, []int{1, 2}, nil),
+		},
+	}
+}
+
+func TestPastItemsFromFindings(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	items, undated := pastItemsFromFindings(pastFindings(now))
+
+	if len(items) != 4 {
+		t.Fatalf("got %d dated items, want 4: %+v", len(items), items)
+	}
+	// Two episodes of Show B plus the undated collection part.
+	if undated != 3 {
+		t.Errorf("undated = %d, want 3", undated)
+	}
+	for _, it := range items {
+		if it.ReleaseDate == "" {
+			t.Errorf("undated entry leaked through: %+v", it)
+		}
+	}
+}
+
+func TestBuildPastWindowAndOrder(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	tr := testTranslator(t)
+	items, _ := pastItemsFromFindings(pastFindings(now))
+
+	// A 30-day window keeps today, -3 and -10 but drops the -45 episode.
+	u := buildUpcoming(tr, items, now, NormalizeUpcomingQuery(UpcomingPast, "30", ""))
+	if !u.Past {
+		t.Fatal("query direction not reflected in the section")
+	}
+	if u.Total != 3 || u.Episodes != 2 || u.Movies != 1 {
+		t.Fatalf("30-day window: total=%d episodes=%d movies=%d, want 3/2/1", u.Total, u.Episodes, u.Movies)
+	}
+
+	// The unlimited window also includes the -45 episode.
+	u = buildUpcoming(tr, items, now, NormalizeUpcomingQuery(UpcomingPast, "all", ""))
+	if u.Episodes != 3 {
+		t.Fatalf("unlimited window: episodes=%d, want 3", u.Episodes)
+	}
+
+	// The type filter applies to the retrospective too.
+	u = buildUpcoming(tr, items, now, NormalizeUpcomingQuery(UpcomingPast, "all", store.MediaSeries))
+	if u.Movies != 0 {
+		t.Errorf("series filter kept %d movies", u.Movies)
+	}
+}
+
+func TestBuildPastSortsNewestFirst(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	items := []store.UpcomingItem{
+		{Kind: store.UpcomingCollectionPart, MediaType: store.MediaMovie, Title: "older", SourceTitle: "C", TMDBID: 1, ReleaseDate: now.AddDate(0, 0, -30).Format("2006-01-02")},
+		{Kind: store.UpcomingCollectionPart, MediaType: store.MediaMovie, Title: "newer", SourceTitle: "C", TMDBID: 2, ReleaseDate: now.AddDate(0, 0, -2).Format("2006-01-02")},
+	}
+	u := buildUpcoming(testTranslator(t), items, now, NormalizeUpcomingQuery(UpcomingPast, "all", ""))
+	if len(u.Groups) == 0 || len(u.Groups[0].Items) == 0 {
+		t.Fatal("no groups built")
+	}
+	if got := u.Groups[0].Items[0].Title; got != "newer" {
+		t.Fatalf("first tile = %q, want the most recent release", got)
+	}
+}
+
+func TestBuildPastExcludesTheFuture(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	items := []store.UpcomingItem{
+		{Kind: store.UpcomingCollectionPart, MediaType: store.MediaMovie, Title: "future", SourceTitle: "C", TMDBID: 1, ReleaseDate: now.AddDate(0, 0, 5).Format("2006-01-02")},
+	}
+	u := buildUpcoming(testTranslator(t), items, now, NormalizeUpcomingQuery(UpcomingPast, "all", ""))
+	if u.Available || u.Total != 0 {
+		t.Fatalf("a future release must not appear in the retrospective: %+v", u)
+	}
+}
+
+func TestBuildUpcomingSectionNeedsRescan(t *testing.T) {
+	now := time.Now()
+	run := &store.ScanRun{ID: 1}
+	tr := testTranslator(t)
+
+	// Gaps exist but none carry a date: that is a missing-data state, not
+	// "nothing missed".
+	undatedOnly := []store.Finding{{
+		Kind: store.KindMissingEpisodes, MediaType: store.MediaSeries, Title: "Show B",
+		Details: `{"seasonNumber":1,"episodeCount":10,"missingEpisodes":[1,2]}`,
+	}}
+	u := BuildUpcomingSection(tr, run, undatedOnly, NormalizeUpcomingQuery(UpcomingPast, "all", ""))
+	if !u.NeedsRescan {
+		t.Fatal("undated gaps should ask for a rescan")
+	}
+
+	// No gaps at all genuinely means nothing was missed.
+	u = BuildUpcomingSection(tr, run, nil, NormalizeUpcomingQuery(UpcomingPast, "all", ""))
+	if u.NeedsRescan {
+		t.Fatal("without any gaps there is nothing to rescan for")
+	}
+	if u.HasAny {
+		t.Fatal("no gaps means no entries")
+	}
+
+	// Dated gaps produce entries and no rescan hint.
+	u = BuildUpcomingSection(tr, run, pastFindings(now), NormalizeUpcomingQuery(UpcomingPast, "all", ""))
+	if u.NeedsRescan || !u.HasAny {
+		t.Fatalf("dated gaps should populate the view: %+v", u)
+	}
+}
+
+// The forward direction must keep working exactly as before.
+func TestBuildUpcomingSectionForwardUnaffected(t *testing.T) {
+	run := &store.ScanRun{ID: 1, Upcoming: upcomingFixture()}
+	u := BuildUpcomingSection(testTranslator(t), run, pastFindings(time.Now()), NormalizeUpcomingQuery("", "all", ""))
+	if u.Past || u.NeedsRescan {
+		t.Fatalf("forward direction must ignore findings: %+v", u)
+	}
+	if !u.HasAny || u.Total == 0 {
+		t.Fatal("forward direction lost its entries")
 	}
 }
