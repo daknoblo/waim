@@ -40,6 +40,7 @@ server and the TMDB API.
 | `cmd/waim`            | Entry point, wiring, graceful shutdown, container healthcheck mode.   |
 | `internal/config`     | Settings model, JSON load/save, transparent API-key encryption.       |
 | `internal/crypto`     | Key file handling + AES-256-GCM encrypt/decrypt.                       |
+| `internal/httpx`      | Shared upstream HTTP behaviour: redirect policy and error sanitising.  |
 | `internal/store`      | SQLite persistence (scan runs, findings, key/value) + migrations.     |
 | `internal/jellyfin`   | Read-only Jellyfin API client (libraries, items, episodes).           |
 | `internal/tmdb`       | TMDB API client with a client-side rate limiter.                      |

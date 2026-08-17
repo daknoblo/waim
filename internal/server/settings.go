@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -47,7 +48,7 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t := s.translator(r)
-	ns := s.parseSettingsForm(r)
+	ns, rebound := s.parseSettingsForm(r)
 	if err := s.cfg.Save(ns); err != nil {
 		s.renderSettings(w, r, t.T("settings.saveError", err.Error()), true)
 		return
@@ -58,6 +59,12 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		setLocaleCookie(w, r, ns.Locale)
 	}
 	tt := s.catalog.For(ns.Locale)
+	if len(rebound) > 0 {
+		// Saved, but the connection test is skipped: there is no key to test
+		// with, and the point of dropping it was not to contact the new host.
+		s.renderSettings(w, r, tt.T("settings.keyClearedHostChanged", strings.Join(rebound, ", ")), true)
+		return
+	}
 	jfCheck, tdCheck := s.testConnections(r.Context(), tt, ns)
 	s.renderSettings(w, r, tt.T("settings.saveSuccess"), false, jfCheck, tdCheck)
 }
@@ -68,8 +75,12 @@ func (s *Server) handleRefreshLibraries(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	t := s.translator(r)
-	ns := s.parseSettingsForm(r)
+	ns, rebound := s.parseSettingsForm(r)
 
+	if len(rebound) > 0 {
+		s.renderSettings(w, r, t.T("settings.keyClearedHostChanged", strings.Join(rebound, ", ")), true)
+		return
+	}
 	if ns.Jellyfin.URL == "" || ns.Jellyfin.APIKey == "" {
 		s.renderSettings(w, r, t.T("settings.saveError", "jellyfin url and api key are required"), true)
 		return
@@ -108,9 +119,16 @@ func (s *Server) handleRefreshLibraries(w http.ResponseWriter, r *http.Request) 
 
 // parseSettingsForm builds a Settings value from the submitted form, preserving
 // existing API keys when the corresponding field is left blank.
-func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
+//
+// A stored key is only carried over while the endpoint keeps addressing the
+// same host. Otherwise someone could point the URL at a host they control,
+// leave the key field empty and have the connection test hand them the stored
+// plaintext credential. The returned slice names the credentials that were
+// dropped for that reason so the caller can explain it.
+func (s *Server) parseSettingsForm(r *http.Request) (config.Settings, []string) {
 	cur := s.cfg.Get()
 	ns := cur.Clone()
+	var rebound []string
 
 	ns.Locale = config.NormalizeLocale(r.FormValue("locale"))
 	ns.LogLevel = config.NormalizeLogLevel(r.FormValue("log_level"))
@@ -118,6 +136,9 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	ns.Jellyfin.UserID = strings.TrimSpace(r.FormValue("jellyfin_user_id"))
 	if k := strings.TrimSpace(r.FormValue("jellyfin_api_key")); k != "" {
 		ns.Jellyfin.APIKey = k
+	} else if ns.Jellyfin.APIKey != "" && !sameEndpointHost(cur.Jellyfin.URL, ns.Jellyfin.URL) {
+		ns.Jellyfin.APIKey = ""
+		rebound = append(rebound, "Jellyfin")
 	}
 
 	ns.TMDB.Language = strings.TrimSpace(r.FormValue("tmdb_language"))
@@ -131,6 +152,9 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	ns.AI.Model = strings.TrimSpace(r.FormValue("ai_model"))
 	if k := strings.TrimSpace(r.FormValue("ai_api_key")); k != "" {
 		ns.AI.APIKey = k
+	} else if ns.AI.APIKey != "" && !sameEndpointHost(cur.AI.Endpoint, ns.AI.Endpoint) {
+		ns.AI.APIKey = ""
+		rebound = append(rebound, "AI")
 	}
 
 	ns.Scan.IntervalMinutes = atoiDefault(r.FormValue("scan_interval"), cur.Scan.IntervalMinutes)
@@ -152,7 +176,34 @@ func (s *Server) parseSettingsForm(r *http.Request) config.Settings {
 	for i := range ns.Libraries {
 		ns.Libraries[i].Enabled = selected[ns.Libraries[i].ID]
 	}
-	return ns
+	return ns, rebound
+}
+
+// sameEndpointHost reports whether two configured endpoints address the same
+// place, comparing hostname, port and transport security.
+//
+// This is stricter than the redirect policy on purpose: here the target comes
+// straight from the settings form, so whoever submits it picks where the stored
+// key would be sent. Both a different port and a downgrade from https to http
+// therefore count as a change — the latter because reusing the key would put it
+// on the wire in the clear. Upgrading http to https is fine, and an endpoint
+// that was not configured before is treated as unchanged so first-time setup
+// works.
+func sameEndpointHost(oldRaw, newRaw string) bool {
+	oldRaw = strings.TrimSpace(oldRaw)
+	if oldRaw == "" {
+		return true
+	}
+	oldURL, oerr := url.Parse(oldRaw)
+	newURL, nerr := url.Parse(strings.TrimSpace(newRaw))
+	if oerr != nil || nerr != nil {
+		return false
+	}
+	if !strings.EqualFold(oldURL.Host, newURL.Host) {
+		return false
+	}
+	// Anything other than keeping the scheme or upgrading to https is a change.
+	return !strings.EqualFold(oldURL.Scheme, "https") || strings.EqualFold(newURL.Scheme, "https")
 }
 
 func atoiDefault(s string, def int) int {

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+
+	"github.com/daknoblo/waim/internal/httpx"
 )
 
 const baseURL = "https://api.themoviedb.org/3"
@@ -55,7 +57,7 @@ func New(apiKey, language, region string, rps float64) *Client {
 		useBuilt: strings.HasPrefix(apiKey, "eyJ"), // JWT => v4 bearer token
 		language: language,
 		region:   region,
-		http:     &http.Client{Timeout: 20 * time.Second},
+		http:     httpx.NewClient(20 * time.Second),
 		limiter:  rate.NewLimiter(rate.Limit(rps), burst),
 	}
 }
@@ -132,7 +134,10 @@ func (c *Client) fetchRaw(ctx context.Context, path string, q url.Values) ([]byt
 	u := baseURL + path + "?" + qq.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("tmdb: build request: %w", err)
+		// Also sanitised: a parse failure reports the raw URL, which carries
+		// the v3 key. Unreachable today, but the invariant should not depend
+		// on how callers build the path.
+		return nil, fmt.Errorf("tmdb: build request: %w", httpx.SanitizeError(err))
 	}
 	req.Header.Set("Accept", "application/json")
 	if c.useBuilt {
@@ -141,7 +146,9 @@ func (c *Client) fetchRaw(ctx context.Context, path string, q url.Values) ([]byt
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("tmdb: request %s: %w", path, err)
+		// The v3 key travels as a query parameter and Go keeps the full URL in
+		// transport errors, which are rendered in the UI — strip it first.
+		return nil, fmt.Errorf("tmdb: request %s: %w", path, httpx.SanitizeError(err))
 	}
 	defer resp.Body.Close()
 
@@ -150,7 +157,9 @@ func (c *Client) fetchRaw(ctx context.Context, path string, q url.Values) ([]byt
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("tmdb: %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
+		slog.Debug("tmdb: upstream returned an error",
+			"path", path, "status", resp.StatusCode, "body", strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("tmdb: %s returned %d", path, resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {

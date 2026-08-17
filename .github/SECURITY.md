@@ -57,6 +57,13 @@ do not report them; a report that only restates one of these will be closed.
   of that directory as secret.
 - **The activity log may contain server URLs.** It is rendered in the UI for
   anyone who can reach the instance. API keys are redacted.
+- **waim connects wherever it is configured to.** The Jellyfin and AI endpoints
+  are user-supplied addresses, so the server issues requests to them by design;
+  private and loopback addresses are explicitly allowed because that is where
+  self-hosted media servers live. What is *not* accepted is a stored credential
+  reaching an address it was not entered for: keys are bound to their endpoint,
+  cross-host redirects are refused, and upstream responses are not echoed back
+  into the UI.
 
 Findings that go beyond these — for example a way to extract API keys without
 data-directory access, to bypass the CSRF origin check, or to make waim issue

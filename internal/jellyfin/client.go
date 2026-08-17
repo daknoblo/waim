@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/daknoblo/waim/internal/httpx"
 )
 
 const pageSize = 500
@@ -26,7 +29,7 @@ func New(baseURL, apiKey string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		apiKey:  strings.TrimSpace(apiKey),
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http:    httpx.NewClient(30 * time.Second),
 	}
 }
 
@@ -50,13 +53,18 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("jellyfin: request %s: %w", path, err)
+		return fmt.Errorf("jellyfin: request %s: %w", path, httpx.SanitizeError(err))
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// The body is deliberately not part of the error: the base URL is
+		// user-configurable, so echoing it into the UI would turn a failed
+		// request into a read oracle for whatever host was addressed.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("jellyfin: %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
+		slog.Debug("jellyfin: upstream returned an error",
+			"path", path, "status", resp.StatusCode, "body", strings.TrimSpace(string(body)))
+		return fmt.Errorf("jellyfin: %s returned %d", path, resp.StatusCode)
 	}
 	if out == nil {
 		return nil

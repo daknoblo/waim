@@ -9,9 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/daknoblo/waim/internal/httpx"
 )
 
 // Suggestion is a single AI-generated recommendation.
@@ -36,7 +39,7 @@ func New(endpoint, apiKey, model string) *Client {
 		endpoint: strings.TrimSpace(endpoint),
 		apiKey:   strings.TrimSpace(apiKey),
 		model:    strings.TrimSpace(model),
-		http:     &http.Client{Timeout: 60 * time.Second},
+		http:     httpx.NewClient(60 * time.Second),
 	}
 }
 
@@ -95,13 +98,18 @@ func (c *Client) Suggest(ctx context.Context, userPrompt string) ([]Suggestion, 
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("ai: request: %w", err)
+		return nil, fmt.Errorf("ai: request: %w", httpx.SanitizeError(err))
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("ai: endpoint returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		// The endpoint is user-configurable, so the body stays out of the error
+		// to avoid reflecting a megabyte of an arbitrary host's response into
+		// the suggestions page.
+		slog.Debug("ai: endpoint returned an error",
+			"status", resp.StatusCode, "body", truncate(strings.TrimSpace(string(body)), 512))
+		return nil, fmt.Errorf("ai: endpoint returned %d", resp.StatusCode)
 	}
 
 	var cr chatResponse
@@ -109,7 +117,9 @@ func (c *Client) Suggest(ctx context.Context, userPrompt string) ([]Suggestion, 
 		return nil, fmt.Errorf("ai: decode response: %w", err)
 	}
 	if cr.Error != nil {
-		return nil, fmt.Errorf("ai: %s", cr.Error.Message)
+		// Attacker-influenced content when the endpoint is hostile: bound it
+		// like the other upstream text before it reaches the suggestions page.
+		return nil, fmt.Errorf("ai: %s", truncate(strings.TrimSpace(cr.Error.Message), 256))
 	}
 	if len(cr.Choices) == 0 {
 		return nil, fmt.Errorf("ai: empty response")
@@ -131,4 +141,12 @@ func parseSuggestions(content string) ([]Suggestion, error) {
 		return nil, fmt.Errorf("ai: parse suggestions: %w", err)
 	}
 	return wrapper.Suggestions, nil
+}
+
+// truncate shortens s to at most n bytes for debug logging.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }

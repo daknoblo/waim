@@ -287,6 +287,7 @@
   "settings.keyPlaceholderSet": "•••••••• (gespeichert, leer lassen zum Beibehalten)",
   "settings.saveSuccess": "Einstellungen gespeichert.",
   "settings.saveError": "Einstellungen konnten nicht gespeichert werden: %s",
+  "settings.keyClearedHostChanged": "Einstellungen gespeichert, aber die Serveradresse für %s hat sich geändert. Der gespeicherte API-Schlüssel wurde deshalb nicht weiterverwendet. Bitte trage ihn erneut ein.",
   "settings.connJellyfinOk": "Jellyfin-Verbindung OK — %s",
   "settings.connJellyfinFail": "Jellyfin-Verbindung fehlgeschlagen: %s",
   "settings.connTmdbOk": "TMDB-Verbindung OK",
