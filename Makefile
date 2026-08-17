@@ -56,8 +56,8 @@ seed:
 	go run ./cmd/seed -out $(SEED_OUT) $(if $(SEED_FORCE),-force,)
 
 ## Point the pinned image examples in the docs at a release, e.g.
-## `make docs-version VERSION=1.2.0`. Run this before creating the tag;
-## CI verifies that the docs match the newest tag.
+## `make docs-version VERSION=1.3.0`. Only feature releases (X.Y.0) belong in
+## the docs; CI verifies that the docs match the newest one.
 docs-version:
 	@echo "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$' \
 		|| (echo "usage: make docs-version VERSION=X.Y.Z (got '$(VERSION)')" && exit 1)
@@ -67,33 +67,52 @@ docs-version:
 	@find README.md docs -name '*.bak' -delete
 	@echo "docs now pin $(VERSION)"
 
-## Prepare a release: regenerate assets, pin the docs, commit and create the
-## annotated tag. Pushing stays manual, so there is a point of no return you
-## control. `make release VERSION=1.3.0` opens $$EDITOR for the notes (they
-## become the GitHub Release body for X.Y.0 tags); pass MESSAGE="..." to skip
-## the editor, which is what you want for throwaway test tags.
+## Cut a release: regenerate assets, pin the docs (feature releases only),
+## commit and create the annotated tag.
+##
+##   make release BUMP=patch          # test build, 1.2.1 -> 1.2.2
+##   make release BUMP=minor          # feature release, 1.2.1 -> 1.3.0
+##   make release VERSION=2.0.0       # explicit version
+##
+## Without MESSAGE="..." $$EDITOR opens for the tag annotation, which becomes
+## the body of the GitHub Release. Pushing stays manual unless PUSH=1.
 release: generate css
-	@echo "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$' \
-		|| (echo "usage: make release VERSION=X.Y.Z (got '$(VERSION)')" && exit 1)
-	@if git rev-parse -q --verify "refs/tags/$(VERSION)" >/dev/null; then \
-		echo "error: tag $(VERSION) already exists"; exit 1; \
-	fi
-	@if [ -n "$$(git status --porcelain)" ]; then \
+	@set -e; \
+	v="$(VERSION)"; \
+	if [ -n "$(BUMP)" ]; then \
+		last=$$(git tag --list | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -n1); \
+		[ -n "$$last" ] || last=0.0.0; \
+		v=$$(echo "$$last" | awk -F. -v part="$(BUMP)" '\
+			part=="major" { printf "%d.0.0", $$1+1 } \
+			part=="minor" { printf "%d.%d.0", $$1, $$2+1 } \
+			part=="patch" { printf "%d.%d.%d", $$1, $$2, $$3+1 }'); \
+		[ -n "$$v" ] || { echo "usage: make release BUMP=major|minor|patch (got '$(BUMP)')"; exit 1; }; \
+		echo "$$last -> $$v"; \
+	fi; \
+	echo "$$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$' \
+		|| { echo "usage: make release BUMP=major|minor|patch or VERSION=X.Y.Z (got '$$v')"; exit 1; }; \
+	if git rev-parse -q --verify "refs/tags/$$v" >/dev/null; then \
+		echo "error: tag $$v already exists"; exit 1; \
+	fi; \
+	if [ -n "$$(git status --porcelain)" ]; then \
 		echo "error: working tree is not clean — commit everything first"; \
 		echo "(regenerated *_templ.go or app.css? CI rejects stale ones)"; \
 		git status --short; exit 1; \
-	fi
-	@$(MAKE) --no-print-directory docs-version VERSION=$(VERSION)
-	@git add README.md docs
-	@git diff --cached --quiet || git commit -q -m "docs: pin $(VERSION)"
-	@if [ -n "$(MESSAGE)" ]; then \
-		git tag -a "$(VERSION)" -m "$(MESSAGE)"; \
+	fi; \
+	case "$$v" in \
+		*.0) $(MAKE) --no-print-directory docs-version VERSION=$$v; \
+			git add README.md docs; \
+			git diff --cached --quiet || git commit -q -m "docs: pin $$v";; \
+		*) echo "patch release: docs keep pinning the newest feature release";; \
+	esac; \
+	if [ -n "$(MESSAGE)" ]; then git tag -a "$$v" -m "$(MESSAGE)"; else git tag -a "$$v"; fi; \
+	echo; \
+	if [ -n "$(PUSH)" ]; then \
+		git push origin HEAD && git push origin "$$v"; \
 	else \
-		git tag -a "$(VERSION)"; \
+		echo "tag $$v created. Publish with:"; \
+		echo "  git push origin main && git push origin $$v"; \
 	fi
-	@echo
-	@echo "tag $(VERSION) created. Publish with:"
-	@echo "  git push origin main && git push origin $(VERSION)"
 
 ## Run tests.
 test:

@@ -49,7 +49,7 @@ jobs:
           git diff --exit-code -- internal/web/assets/static/app.css \
             || (echo "::error::Compiled app.css is stale. Run 'make css' and commit the result." && exit 1)
 
-      - name: "\U0001F50D Check the documented image version matches the latest tag"
+      - name: "\U0001F50D Check the documented image version matches the latest feature release"
         run: |
           # ghcr.io only carries plain semver tags: docker/metadata-action's
           # {{version}} strips a leading "v", so ":v1.2.3" would be a 404.
@@ -57,10 +57,12 @@ jobs:
             echo "::error::Docs pin a v-prefixed image tag, but ghcr.io publishes plain semver tags (e.g. 1.2.3)."
             exit 1
           fi
+          # Patch tags are test builds and never reach the docs, so only X.Y.0
+          # counts here.
           latest=$(git tag --list | sed 's/^v//' \
-            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+            | grep -E '^[0-9]+\.[0-9]+\.0$' | sort -V | tail -n1)
           if [ -z "$latest" ]; then
-            echo "No release tag yet — nothing to check."
+            echo "No feature release tag yet — nothing to check."
             exit 0
           fi
           documented=$(grep -rhoE 'ghcr\.io/daknoblo/waim:[0-9]+\.[0-9]+\.[0-9]+' README.md docs/ \
@@ -70,7 +72,7 @@ jobs:
             exit 0
           fi
           if [ "$documented" != "$latest" ]; then
-            echo "::error::Docs pin $(echo "$documented" | tr '\n' ' ')but the latest tag is $latest. Run 'make docs-version VERSION=$latest' and commit the result (before creating the next tag)."
+            echo "::error::Docs pin $(echo "$documented" | tr '\n' ' ')but the latest feature release is $latest. Run 'make docs-version VERSION=$latest' and commit the result."
             exit 1
           fi
           echo "Docs pin $latest — up to date."
