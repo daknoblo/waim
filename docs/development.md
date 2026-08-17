@@ -8,18 +8,18 @@
 - [templ](https://templ.guide/) CLI (code generation)
 - The Tailwind CSS standalone CLI (CSS generation) — no Node.js required
 
-Install the templ CLI:
+Both tools are installed by:
 
 ```bash
-make tools          # go install github.com/a-h/templ/cmd/templ@v0.3.1020
+make tools
 ```
 
-Download the Tailwind standalone binary into `./bin` (example for macOS arm64;
-pick the asset for your platform from the Tailwind releases page):
+This runs `go install` for the pinned templ version and downloads the matching
+Tailwind standalone binary for your platform into `./bin`. If `templ` is not
+found afterwards, your Go bin directory is not on the `PATH`:
 
 ```bash
-curl -fsSL https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-macos-arm64 -o bin/tailwindcss
-chmod +x bin/tailwindcss
+export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
 ## Project layout

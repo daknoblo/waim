@@ -30,16 +30,38 @@ LDFLAGS := -s -w \
 
 all: generate css build
 
-## Install the templ CLI (run once).
+## Install the local toolchain (run once): the templ CLI and the Tailwind
+## standalone binary.
 tools:
 	go install github.com/a-h/templ/cmd/templ@v0.3.1020
+	@$(MAKE) --no-print-directory $(TAILWIND)
+
+# Fetch the platform-matching Tailwind standalone build. CI downloads its own
+# copy, so this only has to cover developer machines.
+$(TAILWIND):
+	@mkdir -p $(dir $(TAILWIND))
+	@os=$$(uname -s); arch=$$(uname -m); \
+	case "$$os" in \
+		Darwin) plat=macos;; \
+		Linux)  plat=linux;; \
+		*) echo "unsupported OS '$$os' — download Tailwind $(TAILWIND_VERSION) manually to $(TAILWIND)"; exit 1;; \
+	esac; \
+	case "$$arch" in \
+		arm64|aarch64) cpu=arm64;; \
+		x86_64|amd64)  cpu=x64;; \
+		*) echo "unsupported architecture '$$arch' — download Tailwind $(TAILWIND_VERSION) manually to $(TAILWIND)"; exit 1;; \
+	esac; \
+	url="https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$$plat-$$cpu"; \
+	echo "downloading tailwindcss $(TAILWIND_VERSION) ($$plat-$$cpu)"; \
+	curl -fsSL "$$url" -o $(TAILWIND)
+	@chmod +x $(TAILWIND)
 
 ## Generate Go code from .templ files.
 generate:
 	$(TEMPL) generate
 
 ## Compile the Tailwind CSS into the embedded static output.
-css:
+css: $(TAILWIND)
 	$(TAILWIND) -c tailwind.config.js -i $(CSS_INPUT) -o $(CSS_OUTPUT) --minify
 
 ## Build the static binary.
