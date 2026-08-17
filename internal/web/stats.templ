@@ -608,27 +608,34 @@ templ statCardCentered(label, value string) {
 
 // upcomingCard lists releases for titles already in the library, either
 // announced ones or those that came out while still missing.
+//
+// The heading lives inside the swap target: it changes with the direction, and
+// anything outside #upcoming-content would keep the old wording after a toggle.
 templ upcomingCard(t *i18n.Translator, u StatsUpcoming) {
 	<div class="card">
-		<div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-			<h2 class="text-lg font-semibold">
-				if u.Past {
-					{ t.T("stats.upcomingPastTitle") }
-				} else {
-					{ t.T("stats.upcomingTitle") }
-				}
-			</h2>
-			<p class="text-sm text-slate-400">
-				if u.Past {
-					{ t.T("stats.upcomingPastHint") }
-				} else {
-					{ t.T("stats.upcomingHint") }
-				}
-			</p>
-		</div>
 		<div id="upcoming-content">
 			@UpcomingContent(t, u)
 		</div>
+	</div>
+}
+
+// upcomingHeader names the section for the direction currently shown.
+templ upcomingHeader(t *i18n.Translator, u StatsUpcoming) {
+	<div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+		<h2 class="text-lg font-semibold">
+			if u.Past {
+				{ t.T("stats.upcomingPastTitle") }
+			} else {
+				{ t.T("stats.upcomingTitle") }
+			}
+		</h2>
+		<p class="text-sm text-slate-400">
+			if u.Past {
+				{ t.T("stats.upcomingPastHint") }
+			} else {
+				{ t.T("stats.upcomingHint") }
+			}
+		</p>
 	</div>
 }
 
@@ -636,7 +643,7 @@ templ upcomingCard(t *i18n.Translator, u StatsUpcoming) {
 // retrospective. It carries the current range and type so switching direction
 // does not reset the other filters.
 templ upcomingDirectionToggle(t *i18n.Translator, u StatsUpcoming) {
-	<div class="inline-flex overflow-hidden rounded-lg border border-slate-700" role="group" aria-label={ t.T("stats.upcomingDirForward") }>
+	<div class="inline-flex overflow-hidden rounded-lg border border-slate-700" role="group" aria-label={ t.T("stats.upcomingDirection") }>
 		for _, o := range u.Directions {
 			<button
 				type="button"
@@ -657,6 +664,7 @@ templ upcomingDirectionToggle(t *i18n.Translator, u StatsUpcoming) {
 
 // UpcomingContent is the swap target of the direction toggle and the dropdowns.
 templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
+	@upcomingHeader(t, u)
 	if u.NeedsRescan {
 		<div class="mb-3">
 			@upcomingDirectionToggle(t, u)
@@ -678,7 +686,11 @@ templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
 			@upcomingDirectionToggle(t, u)
 		</div>
 		<div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
-			@statCardCentered(t.T("stats.upcomingTotal"), strconv.Itoa(u.Total))
+			if u.Past {
+				@statCardCentered(t.T("stats.upcomingPastTotal"), strconv.Itoa(u.Total))
+			} else {
+				@statCardCentered(t.T("stats.upcomingTotal"), strconv.Itoa(u.Total))
+			}
 			@statCardCentered("\U0001F39E "+t.T("stats.upcomingEpisodes"), strconv.Itoa(u.Episodes))
 			@statCardCentered("\U0001F3AC "+t.T("stats.upcomingMovies"), strconv.Itoa(u.Movies))
 			if u.Past {
@@ -687,7 +699,7 @@ templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
 				@statCardSub(t.T("stats.upcomingNext"), orDash(u.NextLabel), u.NextTitle)
 			}
 		</div>
-		@upcomingTimelineChart(t, u.Timeline)
+		@upcomingTimelineChart(t, u)
 		<input type="hidden" id="upcoming-direction" name="direction" value={ upcomingDirectionValue(u) }/>
 		<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3 text-xs text-slate-400">
 			<label for="upcoming-range">{ t.T("stats.upcomingRange") }</label>
@@ -744,24 +756,24 @@ templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
 
 // upcomingTimelineChart plots every dated release on a linear time axis. The
 // coordinates are pre-computed server-side, so no inline styles are needed.
-templ upcomingTimelineChart(t *i18n.Translator, tl UpcomingTimeline) {
-	if tl.Available {
+templ upcomingTimelineChart(t *i18n.Translator, u StatsUpcoming) {
+	if u.Timeline.Available {
 		<div class="mt-4 overflow-x-auto">
 			<svg
 				id="upcoming-timeline"
-				viewBox={ "0 0 1000 " + strconv.Itoa(tl.Height) }
+				viewBox={ "0 0 1000 " + strconv.Itoa(u.Timeline.Height) }
 				class="min-w-[36rem] w-full"
 				role="img"
-				aria-label={ t.T("stats.upcomingTitle") }
+				aria-label={ upcomingSectionTitle(t, u) }
 			>
-				for _, tick := range tl.Ticks {
-					<line x1={ tick.X } y1={ tl.AxisY } x2={ tick.X } y2={ tick.Y2 } class="stroke-slate-800" stroke-width="1"></line>
+				for _, tick := range u.Timeline.Ticks {
+					<line x1={ tick.X } y1={ u.Timeline.AxisY } x2={ tick.X } y2={ tick.Y2 } class="stroke-slate-800" stroke-width="1"></line>
 					if tick.Label != "" {
 						<text x={ tick.X } y="16" class="fill-slate-500 text-[11px]" text-anchor="middle">{ tick.Label }</text>
 					}
 				}
-				<line x1={ tl.AxisFrom } y1={ tl.AxisY } x2={ tl.AxisTo } y2={ tl.AxisY } class="stroke-slate-700" stroke-width="1"></line>
-				for _, m := range tl.Markers {
+				<line x1={ u.Timeline.AxisFrom } y1={ u.Timeline.AxisY } x2={ u.Timeline.AxisTo } y2={ u.Timeline.AxisY } class="stroke-slate-700" stroke-width="1"></line>
+				for _, m := range u.Timeline.Markers {
 					<circle cx={ m.CX } cy={ m.CY } r={ m.R } class={ m.Fill } data-type={ m.MediaType }>
 						<title>{ m.Title }</title>
 					</circle>

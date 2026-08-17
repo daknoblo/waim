@@ -1,6 +1,10 @@
 package web
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/daknoblo/waim/internal/i18n"
+)
 
 // orDash returns the value, or an em dash when it is empty.
 func orDash(s string) string {
@@ -142,4 +146,12 @@ func saveStateClass(state string) string {
 	default:
 		return "text-slate-400"
 	}
+}
+
+// upcomingSectionTitle names the section for the direction currently shown.
+func upcomingSectionTitle(t *i18n.Translator, u StatsUpcoming) string {
+	if u.Past {
+		return t.T("stats.upcomingPastTitle")
+	}
+	return t.T("stats.upcomingTitle")
 }

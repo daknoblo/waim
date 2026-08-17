@@ -351,3 +351,48 @@ func TestBuildUpcomingSectionForwardUnaffected(t *testing.T) {
 		t.Fatal("forward direction lost its entries")
 	}
 }
+
+// Everything that names a timeframe has to follow the direction, otherwise the
+// retrospective offers "next 365 days".
+func TestUpcomingLabelsFollowDirection(t *testing.T) {
+	tr := testTranslator(t)
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	items := []store.UpcomingItem{{
+		Kind: store.UpcomingCollectionPart, MediaType: store.MediaMovie,
+		Title: "M", SourceTitle: "C", TMDBID: 1,
+		ReleaseDate: now.AddDate(0, 0, -3).Format("2006-01-02"),
+	}}
+	future := []store.UpcomingItem{{
+		Kind: store.UpcomingCollectionPart, MediaType: store.MediaMovie,
+		Title: "M", SourceTitle: "C", TMDBID: 1,
+		ReleaseDate: now.AddDate(0, 0, 3).Format("2006-01-02"),
+	}}
+
+	past := buildUpcoming(tr, items, now, NormalizeUpcomingQuery(UpcomingPast, "365", ""))
+	fwd := buildUpcoming(tr, future, now, NormalizeUpcomingQuery("", "365", ""))
+
+	labelOf := func(u StatsUpcoming, value string) string {
+		for _, o := range u.Ranges {
+			if o.Value == value {
+				return o.Label
+			}
+		}
+		return ""
+	}
+
+	for _, value := range []string{"30", "90", "180", "365", upcomingRangeAll} {
+		p, f := labelOf(past, value), labelOf(fwd, value)
+		if p == "" || f == "" {
+			t.Fatalf("range %q missing a label (past=%q forward=%q)", value, p, f)
+		}
+		if p == f {
+			t.Errorf("range %q reads the same in both directions: %q", value, p)
+		}
+	}
+
+	// The section also has to know which way it is facing, so the heading and
+	// the totals card can follow.
+	if !past.Past || fwd.Past {
+		t.Fatalf("direction not reflected: past=%v forward=%v", past.Past, fwd.Past)
+	}
+}

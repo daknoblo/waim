@@ -252,7 +252,7 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 	}
 	today := dayOf(now)
 	su.Directions = upcomingDirectionOptions(t, q.Direction)
-	su.Ranges = upcomingRangeOptions(t, q.Range)
+	su.Ranges = upcomingRangeOptions(t, q.Range, q.IsPast())
 	su.Types = upcomingTypeOptions(t, q.Type)
 
 	var cutoff time.Time
@@ -357,11 +357,18 @@ func buildUpcoming(t *i18n.Translator, items []store.UpcomingItem, now time.Time
 	return su
 }
 
-func upcomingRangeOptions(t *i18n.Translator, selected string) []UpcomingFilter {
+func upcomingRangeOptions(t *i18n.Translator, selected string, past bool) []UpcomingFilter {
 	out := make([]UpcomingFilter, 0, len(upcomingRanges))
 	for _, r := range upcomingRanges {
-		label := t.T("stats.upcomingRangeAll")
-		if r != upcomingRangeAll {
+		var label string
+		switch {
+		case r == upcomingRangeAll && past:
+			label = t.T("stats.upcomingRangeAllPast")
+		case r == upcomingRangeAll:
+			label = t.T("stats.upcomingRangeAll")
+		case past:
+			label = t.T("stats.upcomingRangeDaysPast", mustAtoi(r))
+		default:
 			label = t.T("stats.upcomingRangeDays", mustAtoi(r))
 		}
 		out = append(out, UpcomingFilter{Value: r, Label: label, Selected: r == selected})
