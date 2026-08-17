@@ -16,6 +16,11 @@ DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 SEED_OUT ?= appdata
 
+# Passed through the environment rather than expanded into the recipe, so
+# multi-line release notes survive instead of breaking the shell command.
+export MESSAGE
+export NOTES
+
 LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Version=$(VERSION) \
 	-X github.com/daknoblo/waim/internal/version.Commit=$(COMMIT) \
@@ -74,8 +79,9 @@ docs-version:
 ##   make release BUMP=minor          # feature release, 1.2.1 -> 1.3.0
 ##   make release VERSION=2.0.0       # explicit version
 ##
-## Without MESSAGE="..." $$EDITOR opens for the tag annotation, which becomes
-## the body of the GitHub Release. Pushing stays manual unless PUSH=1.
+## The tag annotation becomes the body of the GitHub Release: $$EDITOR opens
+## for it unless you pass MESSAGE="one line" or NOTES=path/to/notes.md.
+## Pushing stays manual unless PUSH=1.
 release: generate css
 	@set -e; \
 	v="$(VERSION)"; \
@@ -105,7 +111,14 @@ release: generate css
 			git diff --cached --quiet || git commit -q -m "docs: pin $$v";; \
 		*) echo "patch release: docs keep pinning the newest feature release";; \
 	esac; \
-	if [ -n "$(MESSAGE)" ]; then git tag -a "$$v" -m "$(MESSAGE)"; else git tag -a "$$v"; fi; \
+	if [ -n "$$NOTES" ]; then \
+		[ -f "$$NOTES" ] || { echo "error: NOTES file '$$NOTES' not found"; exit 1; }; \
+		git tag -a --cleanup=verbatim "$$v" -F "$$NOTES"; \
+	elif [ -n "$$MESSAGE" ]; then \
+		git tag -a --cleanup=verbatim "$$v" -m "$$MESSAGE"; \
+	else \
+		git tag -a "$$v"; \
+	fi; \
 	echo; \
 	if [ -n "$(PUSH)" ]; then \
 		git push origin HEAD && git push origin "$$v"; \
