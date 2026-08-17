@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
@@ -50,8 +51,8 @@ func baseForm() url.Values {
 
 // TestStoredKeyIsNotSentToANewHost is the regression test for the credential
 // exfiltration path: pointing the endpoint at another host while leaving the
-// key field blank must not carry the stored key over, because saving triggers
-// a connection test against that host.
+// key field blank must never produce the pair (new host, stored key), because
+// saving probes the endpoint straight away.
 func TestStoredKeyIsNotSentToANewHost(t *testing.T) {
 	s := newTestServer(t)
 
@@ -60,9 +61,9 @@ func TestStoredKeyIsNotSentToANewHost(t *testing.T) {
 	initial.Set("jellyfin_api_key", "jf-secret")
 	initial.Set("ai_endpoint", "https://ai.example.com/v1/chat")
 	initial.Set("ai_api_key", "ai-secret")
-	ns, rebound := parse(t, s, initial)
-	if len(rebound) != 0 {
-		t.Fatalf("first configuration should not drop anything, got %v", rebound)
+	ns, pending := parse(t, s, initial)
+	if len(pending) != 0 {
+		t.Fatalf("first configuration should not hold anything back, got %v", pending)
 	}
 	if err := s.cfg.Save(ns); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -72,16 +73,49 @@ func TestStoredKeyIsNotSentToANewHost(t *testing.T) {
 	attack.Set("jellyfin_url", "http://attacker.tld")
 	attack.Set("jellyfin_api_key", "") // blank on purpose: inherit the stored key
 	attack.Set("ai_endpoint", "https://ai.example.com/v1/chat")
-	got, rebound := parse(t, s, attack)
+	got, pending := parse(t, s, attack)
 
-	if got.Jellyfin.APIKey != "" {
-		t.Fatalf("stored jellyfin key would be sent to a new host: %q", got.Jellyfin.APIKey)
+	if got.Jellyfin.URL == "http://attacker.tld" && got.Jellyfin.APIKey == "jf-secret" {
+		t.Fatal("stored key would be sent to the attacker-supplied host")
 	}
-	if len(rebound) != 1 || rebound[0] != "Jellyfin" {
-		t.Fatalf("expected a Jellyfin warning, got %v", rebound)
+	if got.Jellyfin.URL != "http://jellyfin.local:8096" {
+		t.Fatalf("endpoint should stay put until a key arrives, got %q", got.Jellyfin.URL)
 	}
-	if got.AI.APIKey != "ai-secret" {
+	if len(pending) != 1 || pending[0] != sectionJellyfin {
+		t.Fatalf("expected the jellyfin section to be held back, got %v", pending)
+	}
+	if got.AI.APIKey != "ai-secret" || got.AI.Endpoint != "https://ai.example.com/v1/chat" {
 		t.Fatal("unchanged AI endpoint should keep its stored key")
+	}
+}
+
+// Unrelated fields of the same form must still be saved while a section is
+// held back, otherwise a pending key would freeze the whole page.
+func TestHeldBackSectionDoesNotBlockOtherFields(t *testing.T) {
+	s := newTestServer(t)
+
+	initial := baseForm()
+	initial.Set("jellyfin_url", "http://jellyfin.local:8096")
+	initial.Set("jellyfin_api_key", "jf-secret")
+	ns, _ := parse(t, s, initial)
+	if err := s.cfg.Save(ns); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	edit := baseForm()
+	edit.Set("jellyfin_url", "http://attacker.tld") // held back
+	edit.Set("scan_interval", "123")                // must still apply
+	edit.Set("log_level", "debug")
+	got, pending := parse(t, s, edit)
+
+	if len(pending) != 1 {
+		t.Fatalf("expected one held-back section, got %v", pending)
+	}
+	if got.Scan.IntervalMinutes != 123 {
+		t.Errorf("unrelated field was not applied: interval=%d", got.Scan.IntervalMinutes)
+	}
+	if got.LogLevel != "debug" {
+		t.Errorf("unrelated field was not applied: logLevel=%q", got.LogLevel)
 	}
 }
 
@@ -99,13 +133,16 @@ func TestStoredKeyIsKeptWhenHostIsUnchanged(t *testing.T) {
 	// Same host, only the path changes and the key field stays blank.
 	edit := baseForm()
 	edit.Set("jellyfin_url", "http://jellyfin.local:8096/jellyfin")
-	got, rebound := parse(t, s, edit)
+	got, pending := parse(t, s, edit)
 
 	if got.Jellyfin.APIKey != "jf-secret" {
 		t.Fatalf("key was dropped although the host did not change: %q", got.Jellyfin.APIKey)
 	}
-	if len(rebound) != 0 {
-		t.Fatalf("unexpected warning: %v", rebound)
+	if got.Jellyfin.URL != "http://jellyfin.local:8096/jellyfin" {
+		t.Fatalf("same-host edit was not applied: %q", got.Jellyfin.URL)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("unexpected hold-back: %v", pending)
 	}
 }
 
@@ -124,13 +161,16 @@ func TestNewKeyIsAcceptedForANewHost(t *testing.T) {
 	moved := baseForm()
 	moved.Set("jellyfin_url", "http://newhost.local:8096")
 	moved.Set("jellyfin_api_key", "jf-new")
-	got, rebound := parse(t, s, moved)
+	got, pending := parse(t, s, moved)
 
 	if got.Jellyfin.APIKey != "jf-new" {
 		t.Fatalf("explicit key not applied: %q", got.Jellyfin.APIKey)
 	}
-	if len(rebound) != 0 {
-		t.Fatalf("unexpected warning: %v", rebound)
+	if got.Jellyfin.URL != "http://newhost.local:8096" {
+		t.Fatalf("new endpoint not applied: %q", got.Jellyfin.URL)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("unexpected hold-back: %v", pending)
 	}
 }
 
@@ -274,6 +314,59 @@ func TestDataState(t *testing.T) {
 		}
 		if got := s.dataState(ctx); got != web.DataReady {
 			t.Fatalf("got %q, want %q", got, web.DataReady)
+		}
+	})
+}
+
+// Probing costs network calls (and real money for the AI endpoint), so only
+// the section that actually changed may be checked.
+func TestChangedSections(t *testing.T) {
+	htmx := func(field string) *http.Request {
+		r := httptest.NewRequest("POST", "/settings", nil)
+		r.Header.Set("HX-Request", "true")
+		r.Header.Set("HX-Trigger-Name", field)
+		return r
+	}
+
+	cases := map[string][]string{
+		"jellyfin_url":     {sectionJellyfin},
+		"jellyfin_api_key": {sectionJellyfin},
+		"tmdb_api_key":     {sectionTMDB},
+		"tmdb_language":    {sectionTMDB},
+		"ai_endpoint":      {sectionAI},
+		"ai_enabled":       {sectionAI},
+		"log_level":        nil,
+		"scan_interval":    nil,
+		"cache_percent":    nil,
+		"":                 nil,
+	}
+	for field, want := range cases {
+		t.Run("field "+field, func(t *testing.T) {
+			got := changedSections(htmx(field), nil)
+			if len(got) != len(want) {
+				t.Fatalf("field %q selected %v, want %v", field, got, want)
+			}
+			for _, w := range want {
+				if !got[w] {
+					t.Fatalf("field %q did not select %q", field, w)
+				}
+			}
+		})
+	}
+
+	t.Run("held back sections are always reported", func(t *testing.T) {
+		got := changedSections(htmx("log_level"), []string{sectionAI})
+		if !got[sectionAI] {
+			t.Fatal("a held-back section must be reported even when untouched")
+		}
+	})
+
+	t.Run("a plain form post checks everything", func(t *testing.T) {
+		got := changedSections(httptest.NewRequest("POST", "/settings", nil), nil)
+		for _, s := range []string{sectionJellyfin, sectionTMDB, sectionAI} {
+			if !got[s] {
+				t.Fatalf("non-HTMX post should check %q", s)
+			}
 		}
 	})
 }

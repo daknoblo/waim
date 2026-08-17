@@ -1,6 +1,7 @@
 package web
 
 import "strconv"
+import "github.com/daknoblo/waim/internal/config"
 import "github.com/daknoblo/waim/internal/i18n"
 
 templ Settings(d SettingsData) {
@@ -8,7 +9,19 @@ templ Settings(d SettingsData) {
 }
 
 templ settingsBody(d SettingsData) {
-	<form method="post" action="/settings" class="grid gap-4">
+	<noscript>
+		<p class="mb-4 rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{ d.Layout.T.T("settings.noScript") }</p>
+	</noscript>
+	<form
+		method="post"
+		action="/settings"
+		class="grid gap-4"
+		hx-post="/settings"
+		hx-trigger="change"
+		hx-swap="none"
+		hx-sync="this:replace"
+		hx-indicator="#save-indicator"
+	>
 		if d.Message != "" {
 			<div class={ "rounded-lg px-4 py-3 text-sm", templ.KV("alert-ok", !d.IsError), templ.KV("alert-error", d.IsError) }>
 				{ d.Message }
@@ -20,32 +33,25 @@ templ settingsBody(d SettingsData) {
 			@textField(d.Layout.T.T("settings.jellyfinUrl"), "jellyfin_url", "url", d.Settings.Jellyfin.URL, "https://jellyfin.example.com")
 			@secretField(d.Layout.T, "jellyfin_api_key", d.Layout.T.T("settings.jellyfinApiKey"), d.HasJellyfinKey)
 			@textField(d.Layout.T.T("settings.jellyfinUserId"), "jellyfin_user_id", "text", d.Settings.Jellyfin.UserID, "")
-			@connStatus(d.JellyfinCheck)
+			@connStatusBlock("conn-jellyfin", d.Check("jellyfin"))
 		</div>
 
 		<div class="card grid gap-3">
 			<div class="flex flex-wrap items-center justify-between gap-2">
 				<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.libraries") }</h2>
-				<button type="submit" formaction="/settings/refresh-libraries" class="btn-ghost w-full sm:w-auto">
+				<button
+					type="button"
+					class="btn-ghost w-full sm:w-auto"
+					hx-post="/settings/refresh-libraries"
+					hx-target="#library-list"
+					hx-swap="outerHTML"
+					hx-include="closest form"
+				>
 					{ d.Layout.T.T("settings.refreshLibraries") }
 				</button>
 			</div>
 			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.librariesHint") }</p>
-			if len(d.Libraries) == 0 {
-				<p class="text-sm text-slate-500">{ d.Layout.T.T("settings.noLibraries") }</p>
-			} else {
-				<div class="grid gap-2 sm:grid-cols-2">
-					for _, lib := range d.Libraries {
-						<label class="flex items-center gap-2 rounded-lg bg-slate-900/60 px-3 py-2 text-sm">
-							<input type="checkbox" name="library" value={ lib.ID } checked?={ lib.Enabled } class="checkbox"/>
-							<span class="font-medium text-slate-200">{ lib.Name }</span>
-							if lib.Type != "" {
-								<span class="text-xs text-slate-500">({ lib.Type })</span>
-							}
-						</label>
-					}
-				</div>
-			}
+			@LibraryList(d.Layout.T, d.Libraries)
 		</div>
 
 		<div class="card grid gap-3">
@@ -55,7 +61,7 @@ templ settingsBody(d SettingsData) {
 				@choiceSelectField(d.Layout.T.T("settings.language"), "tmdb_language", d.Settings.TMDB.Language, MetadataLanguages(d.Settings.TMDB.Language))
 				@choiceSelectField(d.Layout.T.T("settings.region"), "tmdb_region", d.Settings.TMDB.Region, Regions(d.Settings.TMDB.Region))
 			</div>
-			@connStatus(d.TMDBCheck)
+			@connStatusBlock("conn-tmdb", d.Check("tmdb"))
 		</div>
 
 		<div class="card grid gap-3">
@@ -65,6 +71,7 @@ templ settingsBody(d SettingsData) {
 			@textField(d.Layout.T.T("settings.aiEndpoint"), "ai_endpoint", "url", d.Settings.AI.Endpoint, "https://<resource>.services.ai.azure.com/...")
 			@secretField(d.Layout.T, "ai_api_key", d.Layout.T.T("settings.aiApiKey"), d.HasAIKey)
 			@textField(d.Layout.T.T("settings.aiModel"), "ai_model", "text", d.Settings.AI.Model, "gpt-4o")
+			@connStatusBlock("conn-ai", d.Check("ai"))
 		</div>
 
 		<div class="card grid gap-3">
@@ -148,9 +155,54 @@ templ settingsBody(d SettingsData) {
 		</div>
 
 		<div class="sticky-actions flex justify-end">
-			<button type="submit" class="btn-primary w-full sm:w-auto">{ d.Layout.T.T("common.save") }</button>
+			<div id="save-indicator" class="text-sm text-slate-400">{ d.Layout.T.T("settings.autoSaveHint") }</div>
 		</div>
 	</form>
+}
+
+// LibraryList is the swap target of "refresh libraries", so reloading the list
+// does not disturb the rest of the form.
+templ LibraryList(t *i18n.Translator, libs []config.Library) {
+	<div id="library-list">
+		if len(libs) == 0 {
+			<p class="text-sm text-slate-500">{ t.T("settings.noLibraries") }</p>
+		} else {
+			<div class="grid gap-2 sm:grid-cols-2">
+				for _, lib := range libs {
+					<label class="flex items-center gap-2 rounded-lg bg-slate-900/60 px-3 py-2 text-sm">
+						<input type="checkbox" name="library" value={ lib.ID } checked?={ lib.Enabled } class="checkbox"/>
+						<span class="font-medium text-slate-200">{ lib.Name }</span>
+						if lib.Type != "" {
+							<span class="text-xs text-slate-500">({ lib.Type })</span>
+						}
+					</label>
+				}
+			</div>
+		}
+	</div>
+}
+
+// connStatusBlock is the swap target for one section's connection state, so a
+// save can update it without re-rendering the form and stealing focus.
+templ connStatusBlock(id string, c ConnCheck) {
+	<div id={ id }>
+		@connStatus(c)
+	</div>
+}
+
+// SettingsFeedbackFragment answers an auto-save: the touched connection chips
+// and the save indicator, each swapped in place.
+templ SettingsFeedbackFragment(t *i18n.Translator, fb SettingsFeedback) {
+	for _, section := range []string{"jellyfin", "tmdb", "ai"} {
+		if c, ok := fb.Checks[section]; ok {
+			<div id={ "conn-" + section } hx-swap-oob="true">
+				@connStatus(c)
+			</div>
+		}
+	}
+	<div id="save-indicator" hx-swap-oob="true" class={ "text-sm", saveStateClass(fb.SaveState) }>
+		{ fb.SaveMessage }
+	</div>
 }
 
 templ textField(label, name, inputType, value, placeholder string) {
@@ -202,8 +254,17 @@ templ choiceSelectField(label, name, current string, options []LangChoice) {
 
 templ connStatus(c ConnCheck) {
 	if c.Checked {
-		<div class={ "rounded-md px-3 py-2 text-sm", templ.KV("alert-ok", c.OK), templ.KV("alert-error", !c.OK) }>
+		<div class={ "rounded-md px-3 py-2 text-sm", connStateClass(c) }>
 			{ c.Message }
 		</div>
 	}
+}
+
+// LibraryListWithFeedback swaps the refreshed library list and updates the save
+// indicator in the same response.
+templ LibraryListWithFeedback(t *i18n.Translator, libs []config.Library, fb SettingsFeedback) {
+	@LibraryList(t, libs)
+	<div id="save-indicator" hx-swap-oob="true" class={ "text-sm", saveStateClass(fb.SaveState) }>
+		{ fb.SaveMessage }
+	</div>
 }

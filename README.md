@@ -70,7 +70,8 @@ Huntarr or Missingarr.
   across the day) and a nightly cleanup of orphaned entries, so scans and
   suggestions reuse data instead of re-loading everything from TMDB.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
-  rest** (AES-256-GCM with a key generated on first start).
+  rest** (AES-256-GCM with a key generated on first start). The settings page
+  saves as you type and verifies each connection immediately.
 - Export of settings (keys stay encrypted, never plaintext) and of the current
   sync state.
 - Bilingual UI (English / German) with an in-app language switch.
@@ -104,8 +105,9 @@ docker compose up -d
 ```
 
 Then open <http://localhost:8080>, go to **Settings**, and enter your Jellyfin
-URL + API key and your TMDB API key. Use **Refresh libraries from Jellyfin** to
-load your libraries, select the ones to scan, and save.
+URL + API key and your TMDB API key. Everything is saved as you go and each
+connection is tested right away. Use **Refresh libraries from Jellyfin** to
+load your libraries and tick the ones to scan.
 
 > **Upgrading from 1.3 or older?** `WAIM_MASTER_KEY` was removed and the
 > encryption key is now generated automatically, so the stored API keys have to

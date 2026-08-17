@@ -54,6 +54,17 @@ first start and kept as `master.key` next to `config.json`.
 
 ![Settings page](images/settings.png)
 
+Changes are saved as soon as you leave a field, and switches and dropdowns take
+effect right away — there is no save button. Whenever a connection setting
+changes, that section is tested immediately and the result appears underneath
+it.
+
+For safety the API key stays tied to the address it was entered for: if you
+point Jellyfin or the AI endpoint at a different host, the change is held back
+until you supply a key for the new address. The stored key is therefore never
+sent somewhere it was not meant for. Editing the port, the path or upgrading
+`http` to `https` on the same host is not affected.
+
 ### Jellyfin
 
 | Field    | Description                                                                 |
@@ -128,7 +139,7 @@ the default is taken from `config.json`.
 ### Logging
 
 The **Log level** setting controls how verbose both the in-app activity log and
-the console (container) output are. It is applied immediately on save:
+the console (container) output are. It is applied immediately:
 
 | Level   | Shows                                              |
 | ------- | -------------------------------------------------- |

@@ -87,11 +87,12 @@ decrypt the stored API keys.
 ## First-time setup
 
 1. Open <http://localhost:8080>.
-2. Go to **Settings**.
+2. Go to **Settings**. Everything you enter is saved automatically, and each
+   connection is tested as soon as its details are complete.
 3. Enter your Jellyfin server URL and API key.
 4. Enter your TMDB API key.
 5. Click **Refresh libraries from Jellyfin** and tick the libraries to scan.
-6. Adjust the scan interval and rate limit if needed, then **Save**.
+6. Adjust the scan interval and rate limit if needed.
 7. Trigger a scan with **Scan now** or wait for the scheduled run.
 
 ## Upgrading from 1.3 or older
@@ -108,5 +109,5 @@ longer be decrypted.
 2. Start the new version. All other settings — Jellyfin URL, selected
    libraries, scan and cache options, scan history — are preserved.
 3. The UI shows a warning banner: re-enter your Jellyfin, TMDB and (if used) AI
-   API keys on the **Settings** page and save. The banner disappears once the
-   keys are stored with the new key.
+   API keys on the **Settings** page. They are saved as you enter them, and the
+   banner disappears once the keys are stored with the new key.

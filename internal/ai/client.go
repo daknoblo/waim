@@ -59,6 +59,7 @@ type chatRequest struct {
 	Model       string        `json:"model,omitempty"`
 	Messages    []chatMessage `json:"messages"`
 	Temperature float64       `json:"temperature"`
+	MaxTokens   int           `json:"max_tokens,omitempty"`
 }
 
 type chatResponse struct {
@@ -141,6 +142,53 @@ func parseSuggestions(content string) ([]Suggestion, error) {
 		return nil, fmt.Errorf("ai: parse suggestions: %w", err)
 	}
 	return wrapper.Suggestions, nil
+}
+
+// Ping verifies that the endpoint is reachable and the credentials are
+// accepted, using the smallest request the chat API allows: a one-word prompt
+// capped at a single response token. It costs a fraction of a cent rather than
+// a full suggestion round, so the settings page can check it automatically.
+//
+// Only transport and authentication matter here; whatever the model answers is
+// discarded. A model that refuses to answer still proves the endpoint works.
+func (c *Client) Ping(ctx context.Context) error {
+	if c.endpoint == "" || c.apiKey == "" {
+		return fmt.Errorf("ai: endpoint or api key not configured")
+	}
+	buf, err := json.Marshal(chatRequest{
+		Model:     c.model,
+		Messages:  []chatMessage{{Role: "user", Content: "ping"}},
+		MaxTokens: 1,
+	})
+	if err != nil {
+		return fmt.Errorf("ai: marshal request: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(buf))
+	if err != nil {
+		return fmt.Errorf("ai: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("api-key", c.apiKey)
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("ai: request: %w", httpx.SanitizeError(err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		slog.Debug("ai: ping returned an error",
+			"status", resp.StatusCode, "body", truncate(strings.TrimSpace(string(body)), 512))
+		return fmt.Errorf("ai: endpoint returned %d", resp.StatusCode)
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	return nil
 }
 
 // truncate shortens s to at most n bytes for debug logging.

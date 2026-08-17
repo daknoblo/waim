@@ -87,11 +87,37 @@ type LibraryFilter struct {
 	Name string
 }
 
-// ConnCheck is the result of testing a connection (Jellyfin or TMDB).
+// Connection check states.
+const (
+	ConnOK         = "ok"
+	ConnError      = "error"
+	ConnIncomplete = "incomplete" // fields still missing
+	ConnNeedsKey   = "needs-key"  // address changed, key not re-entered
+	ConnIdle       = "idle"       // nothing to check (feature disabled)
+)
+
+// Save indicator states.
+const (
+	SaveOK       = "ok"
+	SaveFailed   = "failed"
+	SaveNeedsKey = "needs-key"
+)
+
+// ConnCheck is the result of testing a connection (Jellyfin, TMDB or AI).
 type ConnCheck struct {
 	Checked bool
 	OK      bool
+	State   string
 	Message string
+}
+
+// SettingsFeedback is what a save sends back: the connection chips of the
+// sections that were touched, plus the state of the save indicator.
+type SettingsFeedback struct {
+	Checks      map[string]ConnCheck
+	Pending     []string
+	SaveState   string
+	SaveMessage string
 }
 
 // SettingsData is the full model for the settings page.
@@ -105,9 +131,11 @@ type SettingsData struct {
 	CacheEntries   int
 	Message        string
 	IsError        bool
-	JellyfinCheck  ConnCheck
-	TMDBCheck      ConnCheck
+	Checks         map[string]ConnCheck
 }
+
+// Check returns the connection result of a section, if one was produced.
+func (d SettingsData) Check(section string) ConnCheck { return d.Checks[section] }
 
 // AboutData is the model for the about page.
 type AboutData struct {

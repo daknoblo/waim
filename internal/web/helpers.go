@@ -113,3 +113,33 @@ func dataStateKey(state string) string {
 		return "common.stateNeverScanned"
 	}
 }
+
+// connStateClass styles a connection chip. Anything that is not a confirmed
+// success or a hard failure stays neutral, so a section that simply has not
+// been filled in does not look broken.
+func connStateClass(c ConnCheck) string {
+	switch c.State {
+	case ConnOK:
+		return "alert-ok"
+	case ConnError:
+		return "alert-error"
+	case ConnNeedsKey:
+		return "bg-amber-500/10 text-amber-200"
+	default:
+		return "bg-slate-900/60 text-slate-400"
+	}
+}
+
+// saveStateClass styles the save indicator.
+func saveStateClass(state string) string {
+	switch state {
+	case SaveFailed:
+		return "text-rose-300"
+	case SaveNeedsKey:
+		return "text-amber-200"
+	case SaveOK:
+		return "text-emerald-300"
+	default:
+		return "text-slate-400"
+	}
+}
