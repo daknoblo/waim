@@ -54,12 +54,12 @@ jobs:
           cache: true
 
       - name: "\U0001F9F0 Initialise CodeQL"
-        uses: github/codeql-action/init@v4.37.4
+        uses: github/codeql-action/init@v4.37.7
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
       - name: "\U0001F50E Perform CodeQL analysis"
-        uses: github/codeql-action/analyze@v4.37.4
+        uses: github/codeql-action/analyze@v4.37.7
         with:
           category: "/language:${{ matrix.language }}"
