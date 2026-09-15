@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -24,10 +25,15 @@ func TestLoadGeneratesKeyAndRoundTripsSecrets(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, KeyFileName)); err != nil {
 		t.Fatalf("key file missing: %v", err)
 	}
+	keyBefore, err := os.ReadFile(filepath.Join(dir, KeyFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	s := m.Get()
 	s.Sources = append(s.Sources, Source{ID: "test", Name: "Test", Type: "jellyfin", Enabled: true, Jellyfin: JellyfinSettings{URL: "http://jellyfin.local:8096", APIKey: "jf-secret"}})
 	s.TMDB.APIKey = "tmdb-secret"
+	s.AI.APIKey = "ai-secret"
 	if err := m.Save(s); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -36,7 +42,7 @@ func TestLoadGeneratesKeyAndRoundTripsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if strings.Contains(string(raw), "jf-secret") || strings.Contains(string(raw), "tmdb-secret") {
+	if strings.Contains(string(raw), "jf-secret") || strings.Contains(string(raw), "tmdb-secret") || strings.Contains(string(raw), "ai-secret") {
 		t.Fatal("api keys were written in plaintext")
 	}
 
@@ -50,10 +56,23 @@ func TestLoadGeneratesKeyAndRoundTripsSecrets(t *testing.T) {
 	if reloaded.KeysUnreadable() {
 		t.Fatal("reload should decrypt the stored keys")
 	}
+	keyAfter, err := os.ReadFile(filepath.Join(dir, KeyFileName))
+	if err != nil || !bytes.Equal(keyBefore, keyAfter) {
+		t.Fatal("reload changed the encryption key")
+	}
 	got := reloaded.Get()
 	source, _ := got.Source("test")
-	if source.Jellyfin.APIKey != "jf-secret" || got.TMDB.APIKey != "tmdb-secret" {
+	if source.Jellyfin.APIKey != "jf-secret" || got.TMDB.APIKey != "tmdb-secret" || got.AI.APIKey != "ai-secret" {
 		t.Fatalf("api keys did not survive a reload: %+v", got.Redacted())
+	}
+	exported, err := reloaded.ExportStored()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"jf-secret", "tmdb-secret", "ai-secret"} {
+		if bytes.Contains(exported, []byte(secret)) {
+			t.Fatal("configuration export contains a plaintext API key")
+		}
 	}
 }
 

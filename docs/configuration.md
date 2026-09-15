@@ -7,6 +7,13 @@ Global settings are managed on **Settings**, and instances on **Media sources**,
 encrypted** and never written in plaintext. The encryption key is generated on
 first start and kept as `master.key` next to `config.json`.
 
+No manually supplied encryption key is required. Later starts reuse the same
+key file, including after image updates when the same data volume is mounted.
+AES-256-GCM protects the stored Jellyfin, TMDB and AI API keys, including their
+configuration exports. Other settings and the SQLite sync database are not
+encrypted by this mechanism. Back up the complete data volume and protect it:
+the key file allows the stored credentials to be decrypted.
+
 ## `config.json` schema
 
 ```jsonc

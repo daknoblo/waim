@@ -104,7 +104,7 @@ Breaking changes get a `!` and a `BREAKING CHANGE:` footer explaining what users
 have to do:
 
 ```
-feat!: generate the encryption key instead of requiring WAIM_MASTER_KEY
+feat!: generate and persist the encryption key automatically
 ```
 
 ## Pull requests

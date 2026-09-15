@@ -151,9 +151,9 @@ the ones to scan and save the source.
 **Scan now** refreshes all active real sources; watch edits only recalculate
 using saved snapshots.
 
-> **Upgrading from 1.3 or older?** `WAIM_MASTER_KEY` was removed and the
-> encryption key is now generated automatically, so the stored API keys have to
-> be entered once more. See
+> **Upgrading from 1.3 or older?** The encryption key is now generated
+> automatically, so API keys stored by those older versions have to be
+> entered once more. See
 > [Upgrading](docs/installation.md#upgrading-from-13-or-older).
 
 ### Image tags

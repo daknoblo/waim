@@ -204,13 +204,13 @@ Docker does not automatically repair permissions on populated volumes.
 
 > **Breaking change:** your stored API keys have to be entered once more.
 
-The `WAIM_MASTER_KEY` environment variable is gone. The encryption key is now
-generated automatically and stored as `master.key` in the data directory, so
-nothing has to be configured — but API keys encrypted by an older version can no
-longer be decrypted.
+The encryption key is generated automatically and stored as `master.key` in the
+data directory; no key environment variable or manual secret is required.
+API keys encrypted by versions 1.3 and older must be entered again after
+switching from their previous key-derivation scheme.
 
-1. Drop `WAIM_MASTER_KEY` from your compose file, `.env` or `docker run`
-   command (a leftover variable is simply ignored).
+1. Remove obsolete manually configured encryption-key settings from your
+   deployment configuration.
 2. Start the new version. All other settings — Jellyfin URL, selected
    libraries, scan and cache options, scan history — are preserved.
 3. The UI shows a warning banner: re-enter your Jellyfin, TMDB and (if used) AI
