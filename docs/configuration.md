@@ -31,7 +31,7 @@ first start and kept as `master.key` next to `config.json`.
         { "id": "...", "name": "Movies", "type": "movies", "enabled": true }
       ]
     },
-    { "id": "virtual", "type": "virtual", "name": "Watch collection", "enabled": true, "revision": 0 }
+    { "id": "virtual", "type": "virtual", "name": "Virtual collection", "enabled": true, "revision": 0 }
   ],
   "tmdb": {
     "apiKeyEnc": "<base64>",   // AES-256-GCM ciphertext (never plaintext)
@@ -119,8 +119,8 @@ Dashboard findings show their source references in the Library column as
 `type / server URL / library`, with one label per source/library membership.
 Virtual entries use a localized virtual-collection label. Collection origins
 are represented by these labels rather than a separate context link below
-the title. Individual missing movie parts do not offer watch-list actions;
-use collection search when intentionally adding a title to the watch list.
+the title. Individual missing movie parts do not offer virtual-collection actions;
+use collection search when intentionally adding a title to the virtual collection.
 
 ### Jellyfin
 

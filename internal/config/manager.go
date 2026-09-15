@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/daknoblo/waim/internal/crypto"
+	"github.com/daknoblo/waim/internal/media"
 )
 
 // stored is the on-disk representation of the configuration. API keys are
@@ -122,11 +123,11 @@ func Load(dataDir string) (*Manager, error) {
 	for i, src := range st.Sources {
 		if src.ID == "virtual" {
 			foundVirtual = true
-			st.Sources[i] = storedSource{ID: "virtual", Type: "virtual", Name: "Watch collection", Enabled: true}
+			st.Sources[i] = storedSource{ID: "virtual", Type: "virtual", Name: media.VirtualName, Enabled: true}
 		}
 	}
 	if !foundVirtual {
-		st.Sources = append(st.Sources, storedSource{ID: "virtual", Type: "virtual", Name: "Watch collection", Enabled: true})
+		st.Sources = append(st.Sources, storedSource{ID: "virtual", Type: "virtual", Name: media.VirtualName, Enabled: true})
 	}
 	// The source entry now owns the ciphertext; do not retain a second writable
 	// legacy connection or a second unreadable-key warning.

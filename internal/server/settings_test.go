@@ -224,7 +224,7 @@ func TestScanConfigured(t *testing.T) {
 	virtual := config.Defaults()
 	virtual.TMDB.APIKey = "td"
 	if !scanConfigured(virtual) {
-		t.Fatal("TMDB-only watch collections must be runnable")
+		t.Fatal("TMDB-only virtual collections must be runnable")
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

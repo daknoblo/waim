@@ -115,14 +115,14 @@ func sourceFixtures(ctx context.Context, st *store.Store, path string, stats []s
 			return nil, nil, nil, nil, store.RunMetadata{}, err
 		}
 		p := store.Provenance{WatchOnly: true, References: v.Item().References}
-		stats = append(stats, store.MediaStat{Type: store.MediaMovie, Title: v.Title, TMDBID: v.TMDBID, Rating: 8.1, Runtime: 120, LibraryID: media.VirtualID, LibraryName: "Watch collection", Provenance: p})
+		stats = append(stats, store.MediaStat{Type: store.MediaMovie, Title: v.Title, TMDBID: v.TMDBID, Rating: 8.1, Runtime: 120, LibraryID: media.VirtualID, LibraryName: media.VirtualName, Provenance: p})
 		if i == 0 {
-			findings = append(findings, store.Finding{Kind: store.KindMissingMovie, MediaType: store.MediaMovie, TMDBID: v.TMDBID, Title: v.Title, Summary: "Tracked movie is not owned", LibraryID: media.VirtualID, LibraryName: "Watch collection", Provenance: p, Details: `{"releaseDate":"` + time.Now().AddDate(0, 0, -7).Format("2006-01-02") + `"}`})
+			findings = append(findings, store.Finding{Kind: store.KindMissingMovie, MediaType: store.MediaMovie, TMDBID: v.TMDBID, Title: v.Title, Summary: "Tracked movie is not owned", LibraryID: media.VirtualID, LibraryName: media.VirtualName, Provenance: p, Details: `{"releaseDate":"` + time.Now().AddDate(0, 0, -7).Format("2006-01-02") + `"}`})
 		} else {
 			upcoming = append(upcoming, store.UpcomingItem{Kind: store.UpcomingMovie, MediaType: store.MediaMovie, TMDBID: v.TMDBID, Title: v.Title, SourceTitle: v.Title, ReleaseDate: time.Now().AddDate(0, 0, 14).Format("2006-01-02"), Provenance: p})
 		}
 	}
-	libs = append(libs, store.LibrarySummary{ID: media.VirtualID, Name: "Watch collection"})
+	libs = append(libs, store.LibrarySummary{ID: media.VirtualID, Name: media.VirtualName})
 	for i := range libs {
 		for _, m := range stats {
 			for _, ref := range m.References {

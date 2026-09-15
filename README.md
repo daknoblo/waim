@@ -39,7 +39,7 @@ Huntarr or Missingarr.
 ## Features
 
 - Multiple independent, named, read-only Jellyfin instances (your libraries are never modified).
-- A permanent **Watch collection** with TMDB movie/series search, add/remove and
+- A permanent **Virtual collection** with TMDB movie/series search, add/remove and
   watch actions throughout the UI. Works with TMDB alone; no Jellyfin server is required.
 - Global TMDB identity merging and union of real episode ownership across
   instances. Source badges retain every instance and virtual membership.
@@ -116,7 +116,7 @@ docker compose up -d
 ```
 
 Then open <http://localhost:8080> and enter your TMDB API key on **Settings**.
-Use **Watch collection** immediately, or add Jellyfin instances on **Media
+Use **Virtual collection** immediately, or add Jellyfin instances on **Media
 sources**. Adding a source automatically loads its available libraries; select
 the ones to scan and save the source.
 **Scan now** refreshes all active real sources; watch edits only recalculate

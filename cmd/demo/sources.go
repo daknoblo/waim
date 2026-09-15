@@ -41,7 +41,7 @@ func demoSources(run *store.ScanRun, findings []store.Finding) (media.Catalog, [
 	v := store.VirtualEntry{Type: media.Movie, TMDBID: 999001, Title: "A future adventure (demo)", Year: 2030}
 	entries = append(entries, v)
 	catalog.Items = append(catalog.Items, v.Item())
-	run.Media = append(run.Media, store.MediaStat{Type: store.MediaMovie, TMDBID: v.TMDBID, Title: v.Title, Year: v.Year, Rating: 8.2, Runtime: 120, LibraryID: media.VirtualID, LibraryName: "Watch collection", Provenance: store.Provenance{WatchOnly: true, References: v.Item().References}})
+	run.Media = append(run.Media, store.MediaStat{Type: store.MediaMovie, TMDBID: v.TMDBID, Title: v.Title, Year: v.Year, Rating: 8.2, Runtime: 120, LibraryID: media.VirtualID, LibraryName: media.VirtualName, Provenance: store.Provenance{WatchOnly: true, References: v.Item().References}})
 	run.Upcoming = append(run.Upcoming, store.UpcomingItem{Kind: store.UpcomingMovie, MediaType: store.MediaMovie, TMDBID: v.TMDBID, Title: v.Title, SourceTitle: v.Title, ReleaseDate: "2030-01-01", Provenance: store.Provenance{WatchOnly: true, References: v.Item().References}})
 	run.Metadata = store.RunMetadata{Basis: "owned-v1", Mode: "refresh"}
 	for i := range findings {

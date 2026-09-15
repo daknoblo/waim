@@ -10,6 +10,7 @@ import (
 )
 
 func TestDashboardVirtualLibraryLocalization(t *testing.T) {
+	// Keep the old name in stored fixtures to exercise upgrades without rescanning.
 	s := featureServer(t)
 	ctx := context.Background()
 	if err := s.cfg.AddSource(config.Source{

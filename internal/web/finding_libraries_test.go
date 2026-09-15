@@ -22,7 +22,7 @@ func TestFindingLibraryLabelsIncludeTypeServerAndEachLibrary(t *testing.T) {
 		{ID: "a", Type: media.Jellyfin, LibraryID: "a/series", LibraryName: "Series", ServerURL: "https://jf.example/jellyfin"},
 		{ID: "b", Type: "emby", LibraryID: "b/movies", LibraryName: "Cinema", ServerURL: "http://emby.example:8096"},
 		{ID: "c", Type: "plex", LibraryID: "c/movies", LibraryName: "Movies", ServerURL: "https://plex.example"},
-		{ID: media.VirtualID, Type: media.Virtual, LibraryID: media.VirtualID, URL: "https://www.themoviedb.org/movie/1"},
+		{ID: media.VirtualID, Type: media.Virtual, Name: "Watch collection", LibraryID: media.VirtualID, URL: "https://www.themoviedb.org/movie/1"},
 	}
 	for _, locale := range []string{"en", "de"} {
 		tr := cat.For(locale)
@@ -44,6 +44,9 @@ func TestFindingLibraryLabelsIncludeTypeServerAndEachLibrary(t *testing.T) {
 		}
 		if !labels[0].Stale || labels[0].Name != "Living room" {
 			t.Fatal("lost stale status or instance name tooltip")
+		}
+		if labels[len(labels)-1].Name != tr.T("sources.collection") {
+			t.Fatal("virtual library tooltip retained its legacy name")
 		}
 	}
 }

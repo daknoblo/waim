@@ -40,7 +40,7 @@ type Source struct {
 }
 
 func VirtualSource() Source {
-	return Source{ID: media.VirtualID, Type: media.Virtual, Name: "Watch collection", Enabled: true}
+	return Source{ID: media.VirtualID, Type: media.Virtual, Name: media.VirtualName, Enabled: true}
 }
 
 // Fingerprint hashes only non-secret identity metadata. The manager-owned

@@ -14,11 +14,12 @@ import (
 )
 
 const (
-	Jellyfin  = "jellyfin"
-	Virtual   = "virtual"
-	VirtualID = "virtual"
-	Movie     = "Movie"
-	Series    = "Series"
+	Jellyfin    = "jellyfin"
+	Virtual     = "virtual"
+	VirtualID   = "virtual"
+	VirtualName = "Virtual collection"
+	Movie       = "Movie"
+	Series      = "Series"
 )
 
 type Reference struct {

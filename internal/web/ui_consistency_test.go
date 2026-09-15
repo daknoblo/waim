@@ -11,6 +11,7 @@ import (
 )
 
 func TestVirtualLibraryDisplayNamesAreLocalizedWithoutMutatingData(t *testing.T) {
+	// Legacy virtual names must render the new name; user-defined names stay intact.
 	catalog, err := i18n.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -35,6 +36,10 @@ func TestVirtualLibraryDisplayNamesAreLocalizedWithoutMutatingData(t *testing.T)
 		t.Run(locale, func(t *testing.T) {
 			tr := catalog.For(locale)
 			want := tr.T("sources.collection")
+			expected := map[string]string{"en": "Virtual collection", "de": "Virtuelle Sammlung"}[locale]
+			if want != expected {
+				t.Fatalf("collection label = %q, want %q", want, expected)
+			}
 			localRun, localFindings := localizedLibraryData(tr, run, findings)
 			if localRun.Libraries[0].Name != want || localRun.Media[0].LibraryName != want || localFindings[0].LibraryName != want {
 				t.Fatal("virtual library display names were not localized")

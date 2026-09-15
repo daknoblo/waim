@@ -8,7 +8,7 @@ import (
 )
 
 // Virtual adapts saved observations without connection credentials or invented
-// files/episodes. Its only permanent library is the reserved watch collection.
+// files/episodes. Its only permanent library is the reserved virtual collection.
 func Virtual(entries []store.VirtualEntry) Adapter {
 	return virtualAdapter{entries: entries}
 }
@@ -16,7 +16,7 @@ func Virtual(entries []store.VirtualEntry) Adapter {
 type virtualAdapter struct{ entries []store.VirtualEntry }
 
 func (v virtualAdapter) Libraries(ctx context.Context) ([]media.Library, error) {
-	return []media.Library{{ID: media.VirtualID, Name: "Watch collection", Type: media.Virtual}}, ctx.Err()
+	return []media.Library{{ID: media.VirtualID, Name: media.VirtualName, Type: media.Virtual}}, ctx.Err()
 }
 func (v virtualAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) {
 	libs, err := v.Libraries(ctx)

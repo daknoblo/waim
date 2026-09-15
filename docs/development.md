@@ -61,7 +61,7 @@ Locally, waim stores its data in `./appdata` (gitignored) in the working
 directory, including the generated `master.key`. Then open
 <http://localhost:8080>.
 
-Without Jellyfin, the watch collection works with TMDB alone. For completely
+Without Jellyfin, the virtual collection works with TMDB alone. For completely
 offline UI work, `make seed` writes two synthetic source snapshots, overlapping
 provenance, virtual entries, ratings and releases in a **fresh** data directory:
 

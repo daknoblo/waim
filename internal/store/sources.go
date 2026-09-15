@@ -29,7 +29,7 @@ func (v VirtualEntry) Item() media.Item {
 	if v.Type == media.Series {
 		kind = "tv"
 	}
-	return media.Item{ID: media.Qualify(media.VirtualID, media.Key(v.Type, v.TMDBID)), Name: v.Title, Type: v.Type, ProductionYear: v.Year, ProviderIDs: map[string]string{"Tmdb": strconv.FormatInt(v.TMDBID, 10)}, WatchOnly: true, References: []media.Reference{{ID: media.VirtualID, Type: media.Virtual, Name: "Watch collection", LibraryID: media.VirtualID, LibraryName: "Watch collection", URL: fmt.Sprintf("https://www.themoviedb.org/%s/%d", kind, v.TMDBID)}}}
+	return media.Item{ID: media.Qualify(media.VirtualID, media.Key(v.Type, v.TMDBID)), Name: v.Title, Type: v.Type, ProductionYear: v.Year, ProviderIDs: map[string]string{"Tmdb": strconv.FormatInt(v.TMDBID, 10)}, WatchOnly: true, References: []media.Reference{{ID: media.VirtualID, Type: media.Virtual, Name: media.VirtualName, LibraryID: media.VirtualID, LibraryName: media.VirtualName, URL: fmt.Sprintf("https://www.themoviedb.org/%s/%d", kind, v.TMDBID)}}}
 }
 
 func (s *Store) VirtualEntries(ctx context.Context) ([]VirtualEntry, int64, error) {
