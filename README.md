@@ -111,8 +111,7 @@ serves these pages with sample data.
 curl -fsSL https://raw.githubusercontent.com/daknoblo/waim/main/deploy/docker-compose.example.yml -o docker-compose.yml
 
 # 2. Start it.
-# First prepare ./appdata with write access for container UID/GID 65532;
-# see docs/installation.md for setup and existing-volume migration.
+# Docker creates the named data volume; no root user override is needed.
 docker compose up -d
 ```
 
@@ -160,8 +159,9 @@ in the data directory. Only a few environment variables are needed:
 | `WAIM_DATA_DIR`   | `/data` (image), `./appdata` (local) | Persistent data directory. |
 | `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
 
-The container uses `/data`; the Compose example mounts the host's `./appdata`
-there. The host directory name does not change. Older images used `/appdata`
+The container uses `/data`; the Compose example mounts a Docker-managed named
+volume there and uses the image's non-root user (UID/GID 65532). A host bind
+mount `./appdata:/data` remains an optional alternative. Older images used `/appdata`
 inside the container; see the [migration instructions](docs/installation.md#upgrading-the-container-data-path)
 before updating an existing deployment. All other configuration lives in the web UI.
 

@@ -5,8 +5,9 @@
 #    `latest` tracks approved stable builds of main.
 #    To test `dev`, use a separate container, port and data volume.
 # 3. Configure Jellyfin and TMDB in the web UI at http://<host>:8080.
-# Prepare ./appdata with write access for UID/GID 65532 before starting.
-# The host directory stays ./appdata; only the container path is /data.
+# A new named volume inherits the image's non-root data-directory ownership.
+# No user override is needed: the image runs as UID/GID 65532, not root.
+# For ./appdata bind mounts or existing data, see docs/installation.md.
 # Older images use /appdata instead; see docs/installation.md before upgrading.
 #
 # The key used to encrypt the stored API keys is generated on first start and
@@ -25,11 +26,7 @@ services:
       # Timezone for the database timestamps and log display (IANA name).
       TZ: "${TZ:-Etc/UTC}"
     volumes:
-      - type: bind
-        source: ./appdata
-        target: /data
-        bind:
-          create_host_path: false
+      - waim-data:/data
     # Security hardening: run with a read-only root filesystem; only the
     # mounted data volume (and an in-memory /tmp) are writable.
     read_only: true
@@ -39,3 +36,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+volumes:
+  waim-data:

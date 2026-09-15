@@ -28,24 +28,24 @@ after the maintainer merges the promotion pull request and CI passes.
 New version tags (`X.Y.Z`, including patches) are stable releases from `main`.
 
 For development testing, change the image tag to `dev` in a separate Compose
-setup and use a different container name, host port and host data directory.
+setup and use a different container name, host port and named volume (or host
+directory when using bind mounts).
 Never let stable and dev share the same persistent data: database/configuration migrations
 may not be reversible. If testing with existing data, use a separate backup
 copy, including its `master.key`; keep that backup private.
 
 ## Running with Docker
 
-Create `./appdata` on the host first. The container runs as UID/GID **65532**
-and needs write access to this directory and its contents. For a new directory
-on Linux, create it with `mkdir -p ./appdata` and assign its ownership with
-`sudo chown 65532:65532 ./appdata`. Existing data must remain accessible to
-that UID; do not loosen permissions to world-writable.
+The default is a **Docker-managed named volume**. The container runs as UID/GID
+**65532**, inherited from the image; do not add `user: 0:0` or `--user 0:0`.
+A newly created empty volume inherits the prepared `/data` directory's ownership
+from the image. Existing volumes retain their existing permissions.
 
 ```bash
 docker run -d \
   --name waim \
   -p 8080:8080 \
-  --mount type=bind,src="$(pwd)/appdata",dst=/data \
+  --mount type=volume,src=waim-data,dst=/data \
   --read-only \
   --security-opt no-new-privileges:true \
   --cap-drop ALL \
@@ -54,8 +54,8 @@ docker run -d \
 ```
 
 > On first start waim generates the encryption key for the stored API keys and
-> writes it to `/data/master.key` (`./appdata/master.key` on the host).
-> Keep the directory: without that file the
+> writes it to `/data/master.key` inside the named volume.
+> Keep the volume: without that file the
 > API keys in `config.json` can no longer be decrypted and must be re-entered.
 
 ## Running with Docker Compose
@@ -68,9 +68,38 @@ cp deploy/docker-compose.example.yml docker-compose.yml
 docker compose up -d
 ```
 
-Prepare `./appdata` as described above before starting Compose. The bind mount
-deliberately refuses to create a missing host directory, avoiding a silently
-created root-owned empty directory. The path is relative to the Compose file.
+Compose creates the `waim-data` volume automatically. Its actual name normally
+includes the Compose project prefix, for example `waim_waim-data`; it is not
+necessarily the literal `waim-data` used in the standalone Docker example.
+Keep the project name stable so later starts use the same volume. For dev tests,
+use a separate project and adjust the explicit container name and published port.
+Do not add a `user:` field: omitting it uses the non-root user from the image,
+not Docker's generic root default.
+
+### Alternative: host directory `./appdata`
+
+If you prefer directly accessible host files, replace the service's volume
+entry with:
+
+```yaml
+    volumes:
+      - type: bind
+        source: ./appdata
+        target: /data
+        bind:
+          create_host_path: false
+```
+
+Remove the unused top-level `volumes: waim-data:` declaration. The host path
+remains `./appdata`, relative to the Compose file. Create it before starting
+Compose: on Linux, `mkdir -p ./appdata` and `sudo chown 65532:65532 ./appdata`
+prepare a new empty directory. Existing files also need suitable ownership and
+permissions for UID 65532. Do not use world-writable permissions or run the
+application as root to work around a permission error.
+
+For standalone Docker, replace the volume mount with
+`--mount type=bind,src="$(pwd)/appdata",dst=/data`. This is an alternative to
+the named volume, not a second mount at the same destination.
 
 ## Environment variables
 
@@ -100,7 +129,7 @@ and `X-Content-Type-Options: nosniff`; the proxy does not need to add them.
 ## Persistence
 
 Everything waim needs lives in the container data directory `/data`
-(mounted from `./appdata` on the host in the Compose example):
+(stored in a Docker-managed named volume by default):
 
 - `config.json` — settings, with API keys stored encrypted.
 - `master.key` — the generated encryption key for those API keys.
@@ -122,15 +151,41 @@ back up the whole host directory, then change only the container target to
 configuration and `master.key` stay where they are; no data move is needed.
 
 If using a **named volume**, retain that exact volume and change its target
-from `/appdata` to `/data`, for example `waim-data:/data`. Do not replace a
-named volume with the new bind-mount example without explicitly copying your
-data first, and never use `docker compose down -v` during this change.
+from `/appdata` to `/data`, for example `waim-data:/data`. Preserve the Compose
+project name and volume key or explicitly reference the existing volume.
+Never use `docker compose down -v` during this change.
 
 An explicit `WAIM_DATA_DIR` override must agree with your mount target.
 There is no automatic copy or fallback to the old directory. A missing or
 wrong mount may otherwise look like a fresh installation; stop and correct
 the mount instead of overwriting your existing data. Test dev against a
 separate copy, not the live stable directory.
+
+### Moving existing bind-mount data to a named volume
+
+Changing the mount type does **not** copy data. Existing installations can keep
+their bind mount; switching is optional.
+
+1. Stop waim before copying, so SQLite and its WAL files are consistent.
+2. Back up the entire existing `./appdata`, including `master.key`,
+   `config.json`, `waim.db` and any SQLite sidecar files. Treat this backup
+   as secret.
+3. Create a new, empty named volume. Use the exact volume that the Compose
+   project will mount; do not accidentally create a separate unprefixed volume.
+4. Use a one-off local helper container to copy the complete contents from the
+   old directory, mounted read-only, into that volume. Give the copied data
+   UID/GID 65532 ownership and preserve restrictive permissions. A helper may
+   require root for this one-time ownership adjustment; the waim service must
+   continue running as non-root.
+5. Change the mount to the named volume at `/data`, remove any `user: 0:0`
+   override, start the new image, and verify the existing settings, sources,
+   scan history and stored API keys are still available.
+6. Keep the original directory and backup until verification is complete.
+   Never mount the new volume and the old directory at `/data` simultaneously.
+
+For an existing volume previously written by root, stop the service and correct
+ownership only inside that identified volume before removing the root override.
+Docker does not automatically repair permissions on populated volumes.
 
 ## First-time setup
 
