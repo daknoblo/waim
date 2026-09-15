@@ -28,22 +28,23 @@ func (m *Manager) WithSourcesToken(token string, publish func() error) error {
 }
 
 type Source struct {
-	ID            string           `json:"id"`
-	Type          string           `json:"type"`
-	Name          string           `json:"name"`
-	Enabled       bool             `json:"enabled"`
-	Jellyfin      JellyfinSettings `json:"jellyfin,omitempty,omitzero"`
-	Libraries     []Library        `json:"libraries,omitempty"`
-	Revision      int64            `json:"revision"`
-	KeyUnreadable bool             `json:"-"`
+	CredentialGeneration string           `json:"credentialGeneration,omitempty"`
+	ID                   string           `json:"id"`
+	Type                 string           `json:"type"`
+	Name                 string           `json:"name"`
+	Enabled              bool             `json:"enabled"`
+	Jellyfin             JellyfinSettings `json:"jellyfin,omitempty,omitzero"`
+	Libraries            []Library        `json:"libraries,omitempty"`
+	Revision             int64            `json:"revision"`
+	KeyUnreadable        bool             `json:"-"`
 }
 
 func VirtualSource() Source {
 	return Source{ID: media.VirtualID, Type: media.Virtual, Name: "Watch collection", Enabled: true}
 }
 
-// Fingerprint describes a snapshot's identity boundary, including its credential
-// (hashed, never exported in plaintext) and exact library selection, not its name.
+// Fingerprint hashes only non-secret identity metadata. The manager-owned
+// credential generation changes on key replacement without exposing key material.
 func (s Source) Fingerprint() string {
 	ids := []string{}
 	for _, l := range s.Libraries {
@@ -52,7 +53,7 @@ func (s Source) Fingerprint() string {
 		}
 	}
 	sort.Strings(ids)
-	b, _ := json.Marshal([]any{s.ID, s.Type, strings.TrimRight(s.Jellyfin.URL, "/"), s.Jellyfin.UserID, s.Jellyfin.APIKey, ids})
+	b, _ := json.Marshal([]any{s.ID, s.Type, strings.TrimRight(s.Jellyfin.URL, "/"), s.Jellyfin.UserID, s.CredentialGeneration, ids})
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
@@ -154,6 +155,9 @@ func (m *Manager) updateSource(id string, revision int64, explicitKey bool, upda
 			return fmt.Errorf("enter a new key when changing the server address")
 		}
 		s.Sources[i].Revision++
+		if explicitKey {
+			return m.saveLocked(s, id)
+		}
 		return m.saveLocked(s)
 	}
 	return fmt.Errorf("source not found")

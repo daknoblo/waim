@@ -99,6 +99,10 @@ when those inputs still match; address changes and local-ID reuse cannot inherit
 an unrelated identity. The aliases live in the latest snapshot, not an unbounded
 history. Snapshots created before this binding was introduced acquire bindings
 on their next scan or recalculation.
+The source fingerprint hashes only public identity metadata, including a
+manager-owned credential-generation token rather than API-key material.
+Credential replacement and readability changes advance that persisted token;
+ordinary source renames do not invalidate inventory.
 
 Watch-only titles have ratings and gap/release evaluations but contribute no
 owned count, runtime or growth. Source/library memberships overlap; global owned

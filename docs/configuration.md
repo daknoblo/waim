@@ -21,6 +21,7 @@ first start and kept as `master.key` next to `config.json`.
       "name": "Living room",
       "enabled": true,
       "revision": 1,
+      "credentialGeneration": "<manager-generated public token>",
       "jellyfin": {
         "url": "https://jellyfin.example.com",
         "apiKeyEnc": "<base64>",
@@ -88,6 +89,19 @@ address, user, key or enabled libraries changes the snapshot identity; the old
 snapshot is never reused under the new identity. A failed same-identity refresh
 keeps the last good snapshot and marks it stale. Without any successful snapshot
 inventory is **unknown**, not empty, and gaps/completion are unconfirmed.
+
+Source fingerprints contain a non-secret `credentialGeneration`, never the API
+key or a hash of it. The manager generates and persists this token; submitted
+tokens are ignored on all save paths. Changing or explicitly replacing a key,
+including restoring an earlier key, creates a fresh generation. Renames and
+ordinary encryption-at-rest rewrites retain it. A persisted `keyUnreadable` flag
+records the last observed readability state so losing/restoring `master.key`
+also advances the generation once, without deleting unreadable ciphertext.
+
+Existing configs acquire generation tokens automatically without rewriting
+encrypted keys. Snapshots created with the previous key-derived fingerprint need
+one successful real-source refresh after this upgrade; until then their inventory
+is reported as unknown. No credential-derived fingerprint fallback is used.
 
 The reserved virtual source is always enabled and cannot be deleted. Its entries
 live in SQLite, not the config export. Use the sync export for evaluated metadata.

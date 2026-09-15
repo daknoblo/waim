@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/daknoblo/waim/internal/crypto"
@@ -44,13 +45,15 @@ type stored struct {
 }
 
 type storedSource struct {
-	ID        string    `json:"id"`
-	Type      string    `json:"type"`
-	Name      string    `json:"name"`
-	Enabled   bool      `json:"enabled"`
-	Revision  int64     `json:"revision"`
-	Libraries []Library `json:"libraries,omitempty"`
-	Jellyfin  struct {
+	CredentialGeneration string    `json:"credentialGeneration,omitempty"`
+	KeyUnreadable        bool      `json:"keyUnreadable,omitempty"`
+	ID                   string    `json:"id"`
+	Type                 string    `json:"type"`
+	Name                 string    `json:"name"`
+	Enabled              bool      `json:"enabled"`
+	Revision             int64     `json:"revision"`
+	Libraries            []Library `json:"libraries,omitempty"`
+	Jellyfin             struct {
 		URL       string `json:"url"`
 		UserID    string `json:"userId"`
 		APIKeyEnc string `json:"apiKeyEnc"`
@@ -133,6 +136,9 @@ func Load(dataDir string) (*Manager, error) {
 	if err := validateSources(m.settings); err != nil {
 		return nil, err
 	}
+	if err := m.initializeCredentialGenerations(&st); err != nil {
+		return nil, err
+	}
 	m.disk = st
 
 	// Persist on first run and to upgrade the on-disk schema.
@@ -188,7 +194,7 @@ func (m *Manager) SaveGlobals(s Settings) error {
 	return m.saveLocked(s)
 }
 
-func (m *Manager) saveLocked(s Settings) error {
+func (m *Manager) saveLocked(s Settings, replacedCredentials ...string) error {
 	s = s.Clone()
 	s.Jellyfin = JellyfinSettings{}
 	s.Libraries = nil
@@ -225,6 +231,9 @@ func (m *Manager) saveLocked(s Settings) error {
 	preserve(s.TMDB.APIKey, m.disk.TMDB.APIKeyEnc, &st.TMDB.APIKeyEnc)
 	preserve(s.AI.APIKey, m.disk.AI.APIKeyEnc, &st.AI.APIKeyEnc)
 	for i, src := range s.Sources {
+		if src.ID == "virtual" {
+			continue
+		}
 		enc, err := m.cipher.Encrypt(src.Jellyfin.APIKey)
 		if err != nil {
 			return err
@@ -235,6 +244,21 @@ func (m *Manager) saveLocked(s Settings) error {
 			}
 		}
 		st.Sources[i].Jellyfin.APIKeyEnc = enc
+		_, decryptErr := m.cipher.Decrypt(enc)
+		unreadable := decryptErr != nil
+		old, exists := m.settings.Source(src.ID)
+		// Ignore submitted generations: even a stale full Settings save can
+		// only retain the current token or mint a fresh, unrelated generation.
+		generation := old.CredentialGeneration
+		if !exists || generation == "" || old.Jellyfin.APIKey != src.Jellyfin.APIKey ||
+			old.KeyUnreadable != unreadable || slices.Contains(replacedCredentials, src.ID) {
+			generation, err = newCredentialGeneration()
+			if err != nil {
+				return err
+			}
+		}
+		st.Sources[i].CredentialGeneration = generation
+		st.Sources[i].KeyUnreadable = unreadable
 	}
 
 	if err := m.persist(st); err != nil {
@@ -293,7 +317,7 @@ func (m *Manager) decryptStored(st stored) (Settings, bool) {
 		if err != nil {
 			unreadable = true
 		}
-		s.Sources = append(s.Sources, Source{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, Revision: src.Revision, Libraries: append([]Library(nil), src.Libraries...), Jellyfin: JellyfinSettings{URL: src.Jellyfin.URL, UserID: src.Jellyfin.UserID, APIKey: key}, KeyUnreadable: err != nil})
+		s.Sources = append(s.Sources, Source{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, Revision: src.Revision, CredentialGeneration: src.CredentialGeneration, Libraries: append([]Library(nil), src.Libraries...), Jellyfin: JellyfinSettings{URL: src.Jellyfin.URL, UserID: src.Jellyfin.UserID, APIKey: key}, KeyUnreadable: err != nil})
 	}
 
 	// Backfill defaults for zero values that should not be empty.
@@ -398,7 +422,7 @@ func storedFromSettings(s Settings) stored {
 	st.Scan = s.Scan
 	st.Cache = s.Cache
 	for _, src := range s.Sources {
-		ss := storedSource{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, Revision: src.Revision, Libraries: src.Libraries}
+		ss := storedSource{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, Revision: src.Revision, CredentialGeneration: src.CredentialGeneration, Libraries: src.Libraries}
 		ss.Jellyfin.URL, ss.Jellyfin.UserID = src.Jellyfin.URL, src.Jellyfin.UserID
 		st.Sources = append(st.Sources, ss)
 	}
