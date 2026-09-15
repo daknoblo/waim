@@ -79,7 +79,7 @@ func (a *jellyfinAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) 
 			}
 			n := normalize(it)
 			n.ID = media.Qualify(a.source.ID, it.ID)
-			n.References = []media.Reference{{ID: a.source.ID, Type: a.source.Type, Name: a.source.Name, LibraryID: libID, LibraryName: lib.Name, ItemID: it.ID, URL: strings.TrimRight(a.source.Jellyfin.URL, "/") + "/web/#/details?id=" + url.QueryEscape(it.ID)}}
+			n.References = []media.Reference{{ID: a.source.ID, Type: a.source.Type, Name: a.source.Name, LibraryID: libID, LibraryName: lib.Name, ItemID: it.ID, ServerURL: a.source.Jellyfin.URL, URL: strings.TrimRight(a.source.Jellyfin.URL, "/") + "/web/#/details?id=" + url.QueryEscape(it.ID)}}
 			if it.Type == media.Series {
 				eps, err := a.client.Episodes(ctx, user, it.ID)
 				if err != nil {

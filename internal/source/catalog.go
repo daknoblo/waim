@@ -62,6 +62,9 @@ func Catalog(ctx context.Context, st *store.Store, settings config.Settings, ref
 			for i := range item.References {
 				item.References[i].Name = src.Name
 				item.References[i].Stale = stale
+				if src.Type == media.Jellyfin {
+					item.References[i].ServerURL = src.Jellyfin.URL
+				}
 			}
 			out.Items = append(out.Items, item)
 		}

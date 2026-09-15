@@ -57,6 +57,9 @@ func TestJellyfinSnapshotsAndPartialFailures(t *testing.T) {
 	if c.Items[0].References[0].LibraryID == c.Items[0].References[1].LibraryID {
 		t.Fatal("local libraries collided")
 	}
+	if c.Items[0].References[0].ServerURL != server.URL {
+		t.Fatal("source reference did not retain its server address")
+	}
 	fail.Store(true)
 	c, err = Catalog(ctx, st, settings, true, nil)
 	if err != nil || len(c.Items) != 1 || len(c.Items[0].Episodes) != 1 || len(c.Warnings) != 2 {

@@ -139,13 +139,27 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 									}
 									<span class="font-medium text-slate-100">{ r.Title }</span>
 								</div>
-								@MediaActions(t,r.TMDBLink)
-								if len(r.ContextReferences)>0 {
-									<div class="mt-1 text-xs text-slate-400">{ t.T("sources.context") }</div>
-									@SourceBadges(t,r.ContextReferences)
+								if target := Target(ctx,r.TMDBLink); target.ID > 0 {
+									<div class="mt-1 flex flex-wrap items-center gap-1 text-xs">
+										if target.WatchOnly {
+											<span class="text-amber-200">{ t.T("sources.watchOnly") }</span>
+										}
+										@WatchForm(t,target.Kind,target.ID,target.Watching)
+									</div>
 								}
 							</td>
-								<td class="px-3 py-2"><span class={ "badge", r.LibraryColor }>{ r.Library }</span></td>
+								<td class="px-3 py-2" data-label={ t.T("finding.col.library") }>
+									<div class="grid gap-1">
+										for _, label := range FindingLibraryLabels(t,r.LibraryReferences,r.LibraryID,r.Library) {
+											<span class={ "badge whitespace-normal break-words", label.Color } title={ label.Name }>
+												{ label.Text }
+												if label.Stale {
+													<span class="text-amber-200"> · { t.T("sources.stale") }</span>
+												}
+											</span>
+										}
+									</div>
+								</td>
 								<td class="px-3 py-2 text-slate-300" data-label={ t.T("finding.col.detail") }>
 									<div class="font-bold text-slate-100">{ r.Detail }</div>
 									if len(r.DetailItems) > 0 {
@@ -163,7 +177,6 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 													if di.IMDbURL != "" {
 														<a class="link-imdb" href={ templ.SafeURL(di.IMDbURL) } target="_blank" rel="noreferrer noopener" title="IMDb">IMDb</a>
 													}
-													@MediaActions(t,di.TMDBLink)
 												</li>
 											}
 										</ul>

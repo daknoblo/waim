@@ -23,13 +23,13 @@ func demoSources(run *store.ScanRun, findings []store.Finding) (media.Catalog, [
 			kind = media.Series
 		}
 		src := sources[i%2]
-		ref := media.Reference{ID: src.ID, Type: src.Type, Name: src.Name, LibraryID: m.LibraryID, LibraryName: m.LibraryName, ItemID: m.JellyfinID, URL: src.Jellyfin.URL + "/web/#/details?id=" + m.JellyfinID}
+		ref := media.Reference{ID: src.ID, Type: src.Type, Name: src.Name, LibraryID: m.LibraryID, LibraryName: m.LibraryName, ItemID: m.JellyfinID, ServerURL: src.Jellyfin.URL, URL: src.Jellyfin.URL + "/web/#/details?id=" + m.JellyfinID}
 		m.References = []media.Reference{ref}
 		item := media.Item{ID: media.Qualify(src.ID, m.JellyfinID), Name: m.Title, Type: kind, ProviderIDs: map[string]string{"Tmdb": strconv.FormatInt(m.TMDBID, 10)}, References: m.References}
 		catalog.Items = append(catalog.Items, item)
 		if i == 0 {
 			second := item
-			second.References = []media.Reference{{ID: sources[1].ID, Type: media.Jellyfin, Name: sources[1].Name, URL: sources[1].Jellyfin.URL + "/web/#/details?id=" + m.JellyfinID}}
+			second.References = []media.Reference{{ID: sources[1].ID, Type: media.Jellyfin, Name: sources[1].Name, LibraryID: m.LibraryID, LibraryName: m.LibraryName, ServerURL: sources[1].Jellyfin.URL, URL: sources[1].Jellyfin.URL + "/web/#/details?id=" + m.JellyfinID}}
 			catalog.Items = append(catalog.Items, second)
 			v := store.VirtualEntry{Type: kind, TMDBID: m.TMDBID, Title: m.Title, Year: m.Year}
 			entries = append(entries, v)
@@ -47,6 +47,10 @@ func demoSources(run *store.ScanRun, findings []store.Finding) (media.Catalog, [
 	for i := range findings {
 		f := &findings[i]
 		for _, m := range run.Media {
+			if f.Kind == store.KindMissingCollection && m.CollectionID == f.TMDBID {
+				f.ContextReferences = append(f.ContextReferences, m.References...)
+				continue
+			}
 			if m.TMDBID == f.TMDBID && m.Type == f.MediaType {
 				f.Provenance = m.Provenance
 			}

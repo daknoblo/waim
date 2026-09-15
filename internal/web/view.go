@@ -39,7 +39,7 @@ type DetailItem struct {
 
 // FindingRow is a display-ready representation of a store.Finding.
 type FindingRow struct {
-	ContextReferences []media.Reference
+	LibraryReferences []media.Reference
 	LibraryIDs        []string
 	KindLabel         string
 	MediaIcon         string
@@ -90,10 +90,10 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 
 		switch f.Kind {
 		case store.KindMissingMovie:
-			rows = append(rows, FindingRow{KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), TMDBLink: tmdbLink("movie", f.TMDBID)})
+			rows = append(rows, FindingRow{LibraryReferences: findingReferences(f), LibraryIDs: findingLibraries(f), KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), TMDBLink: tmdbLink("movie", f.TMDBID)})
 		case store.KindMissingCollection:
 			row := FindingRow{
-				ContextReferences: f.ContextReferences,
+				LibraryReferences: findingReferences(f),
 				LibraryIDs:        findingLibraries(f),
 				KindLabel:         t.T("finding.kind." + f.Kind),
 				MediaIcon:         mediaIcon(f.MediaType),
@@ -149,6 +149,8 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			if g.PosterURL == "" {
 				g.PosterURL = posterURL(d.PosterPath)
 			}
+			g.LibraryReferences = append(g.LibraryReferences, findingReferences(f)...)
+			g.LibraryIDs = append(g.LibraryIDs, findingLibraries(f)...)
 			var text string
 			if f.Kind == store.KindMissingSeason {
 				text = t.T("finding.missingSeason", d.SeasonNumber, len(d.MissingEpisodes))
@@ -178,10 +180,16 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 
 func findingLibraries(f store.Finding) []string {
 	out := []string{f.LibraryID}
-	for _, ref := range append(f.References, f.ContextReferences...) {
+	for _, ref := range findingReferences(f) {
 		out = append(out, ref.LibraryID, ref.ID)
 	}
+
 	return out
+}
+
+func findingReferences(f store.Finding) []media.Reference {
+	refs := append([]media.Reference(nil), f.References...)
+	return append(refs, f.ContextReferences...)
 }
 
 func seriesKey(f store.Finding) string {

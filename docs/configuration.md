@@ -115,6 +115,13 @@ Collection search returns at most the first 20 TMDB matches; refine your query
 if a desired result is not on that page. Add/remove is idempotent and only edits
 watch membership. No media-server files are written.
 
+Dashboard findings show their source references in the Library column as
+`type / server URL / library`, with one label per source/library membership.
+Virtual entries use a localized virtual-collection label. Collection origins
+are represented by these labels rather than a separate context link below
+the title. Individual missing movie parts do not offer watch-list actions;
+use collection search when intentionally adding a title to the watch list.
+
 ### Jellyfin
 
 | Field    | Description                                                                 |

@@ -29,6 +29,7 @@ type Reference struct {
 	LibraryName string `json:"libraryName,omitempty"`
 	ItemID      string `json:"itemId,omitempty"`
 	URL         string `json:"url,omitempty"`
+	ServerURL   string `json:"serverUrl,omitempty"`
 	Stale       bool   `json:"stale,omitempty"`
 }
 

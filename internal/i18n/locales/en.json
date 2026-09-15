@@ -12,6 +12,7 @@
   "sources.enabled": "Enabled",
   "sources.keyHint": "Leave blank to keep the key. Changing the address requires entering its key again.",
   "sources.save": "Save source",
+  "sources.typeVirtual": "Virtual",
   "sources.test": "Test saved connection",
   "sources.add": "Add source",
   "sources.remove": "Remove source",

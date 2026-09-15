@@ -12,6 +12,7 @@
   "sources.enabled": "Aktiviert",
   "sources.keyHint": "Leer lassen, um den Schlüssel zu behalten. Bei Adresswechsel den Schlüssel erneut eingeben.",
   "sources.save": "Quelle speichern",
+  "sources.typeVirtual": "Virtuell",
   "sources.test": "Gespeicherte Verbindung testen",
   "sources.add": "Quelle hinzufügen",
   "sources.remove": "Quelle entfernen",
