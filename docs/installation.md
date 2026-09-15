@@ -28,18 +28,24 @@ after the maintainer merges the promotion pull request and CI passes.
 New version tags (`X.Y.Z`, including patches) are stable releases from `main`.
 
 For development testing, change the image tag to `dev` in a separate Compose
-setup and use a different container name, host port and named data volume.
-Never let stable and dev share `/appdata`: database/configuration migrations
+setup and use a different container name, host port and host data directory.
+Never let stable and dev share the same persistent data: database/configuration migrations
 may not be reversible. If testing with existing data, use a separate backup
 copy, including its `master.key`; keep that backup private.
 
 ## Running with Docker
 
+Create `./appdata` on the host first. The container runs as UID/GID **65532**
+and needs write access to this directory and its contents. For a new directory
+on Linux, create it with `mkdir -p ./appdata` and assign its ownership with
+`sudo chown 65532:65532 ./appdata`. Existing data must remain accessible to
+that UID; do not loosen permissions to world-writable.
+
 ```bash
 docker run -d \
   --name waim \
   -p 8080:8080 \
-  -v waim-data:/appdata \
+  --mount type=bind,src="$(pwd)/appdata",dst=/data \
   --read-only \
   --security-opt no-new-privileges:true \
   --cap-drop ALL \
@@ -48,7 +54,8 @@ docker run -d \
 ```
 
 > On first start waim generates the encryption key for the stored API keys and
-> writes it to `/appdata/master.key`. Keep the volume: without that file the
+> writes it to `/data/master.key` (`./appdata/master.key` on the host).
+> Keep the directory: without that file the
 > API keys in `config.json` can no longer be decrypted and must be re-entered.
 
 ## Running with Docker Compose
@@ -61,11 +68,16 @@ cp deploy/docker-compose.example.yml docker-compose.yml
 docker compose up -d
 ```
 
+Prepare `./appdata` as described above before starting Compose. The bind mount
+deliberately refuses to create a missing host directory, avoiding a silently
+created root-owned empty directory. The path is relative to the Compose file.
+
 ## Environment variables
 
 | Variable          | Default        | Description                                           |
 | ----------------- | -------------- | ----------------------------------------------------- |
 | `WAIM_ADDR`       | `:8080`        | Listen address.                                       |
+| `WAIM_DATA_DIR`   | `/data` (image), `./appdata` (local) | Persistent data directory; mount storage at the same container path if overridden. |
 | `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
 
 Everything else is configured in the web UI. Log verbosity is set on the
@@ -87,8 +99,8 @@ and `X-Content-Type-Options: nosniff`; the proxy does not need to add them.
 
 ## Persistence
 
-Everything waim needs lives in the container data directory `/appdata`
-(this path is fixed; mount a volume there to keep your data):
+Everything waim needs lives in the container data directory `/data`
+(mounted from `./appdata` on the host in the Compose example):
 
 - `config.json` — settings, with API keys stored encrypted.
 - `master.key` — the generated encryption key for those API keys.
@@ -97,6 +109,28 @@ Everything waim needs lives in the container data directory `/appdata`
 Back up this directory to preserve your configuration and history. Treat the
 backup as a secret: it contains `master.key` and therefore everything needed to
 decrypt the stored API keys.
+
+## Upgrading the container data path
+
+This change is available on `develop` / `:dev` first. Until it is promoted,
+existing `:latest` and older pinned images still use `/appdata`. Change the
+image and mount target together; do not apply a `/data` mount to an old image.
+
+For an existing **bind mount** `./appdata:/appdata`, stop the old container,
+back up the whole host directory, then change only the container target to
+`./appdata:/data` and start the new image. The host directory, database,
+configuration and `master.key` stay where they are; no data move is needed.
+
+If using a **named volume**, retain that exact volume and change its target
+from `/appdata` to `/data`, for example `waim-data:/data`. Do not replace a
+named volume with the new bind-mount example without explicitly copying your
+data first, and never use `docker compose down -v` during this change.
+
+An explicit `WAIM_DATA_DIR` override must agree with your mount target.
+There is no automatic copy or fallback to the old directory. A missing or
+wrong mount may otherwise look like a fresh installation; stop and correct
+the mount instead of overwriting your existing data. Test dev against a
+separate copy, not the live stable directory.
 
 ## First-time setup
 

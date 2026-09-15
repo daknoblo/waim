@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Pre-create the data directory so a freshly mounted named volume inherits the
 # correct (non-root) ownership.
-RUN mkdir -p /out/appdata
+RUN mkdir -p /out/data
 
 # ---- Runtime stage --------------------------------------------------------
 # distroless/static: no shell, no package manager, minimal attack surface.
@@ -41,12 +41,13 @@ FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
 COPY --from=builder /out/waim /app/waim
-COPY --from=builder --chown=65532:65532 /out/appdata /appdata
+COPY --from=builder --chown=65532:65532 /out/data /data
 
-ENV WAIM_ADDR=:8080
+ENV WAIM_ADDR=:8080 \
+    WAIM_DATA_DIR=/data
 
 EXPOSE 8080
-VOLUME ["/appdata"]
+VOLUME ["/data"]
 
 # Run as the built-in non-root user provided by the distroless image.
 USER nonroot:nonroot

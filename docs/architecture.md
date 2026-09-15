@@ -134,6 +134,10 @@ closes. No plugin framework, Plex/Emby implementation or media write API is adde
 
 ## Persistence
 
+The image sets `WAIM_DATA_DIR=/data`. The Compose bind mount keeps the host
+directory at `./appdata`; without an override, local execution also uses
+`./appdata`. Container detection does not depend on the existence of `/app`.
+
 - `config.json` — settings (encrypted keys).
 - `master.key` — generated encryption key.
 - `waim.db` — SQLite database. Older scan runs are pruned automatically (the

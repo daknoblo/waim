@@ -195,12 +195,10 @@ func ParseLogLevel(level string) slog.Level {
 }
 
 // DataDir resolves the directory used to store the config file and database:
-// /appdata inside the container image, or ./appdata for local development.
+// WAIM_DATA_DIR is set to /data by the image; local development uses ./appdata.
 func DataDir() string {
-	// In containers the image lays out the data directory under /appdata.
-	if _, err := os.Stat("/app"); err == nil {
-		return "/appdata"
+	if dir := strings.TrimSpace(os.Getenv("WAIM_DATA_DIR")); dir != "" {
+		return dir
 	}
-	// Local development fallback (a gitignored ./appdata in the working dir).
 	return "appdata"
 }

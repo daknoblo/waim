@@ -165,7 +165,7 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
   back to `develop`.
 - Test the automatically published `:dev` image (or a specific `sha-dev-…`)
   with a **separate data volume**, container name and host port. Do not share
-  `/appdata` between stable and dev; migrations may make downgrades unsafe.
+  the host data directory between stable and dev; migrations may make downgrades unsafe.
 - When ready, open a promotion PR from `develop` to `main`. The maintainer
   manually merges it after testing. No auto-merge: a green test alone is not
   a release approval.
