@@ -18,6 +18,7 @@ import (
 	"time"
 	_ "time/tzdata" // embed the timezone database so TZ works on any base image
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
@@ -101,10 +102,11 @@ func run() error {
 		return err
 	}
 
-	sched := scheduler.New(cfg, st, logger)
-	suggestSvc := suggest.New(cfg, st, logger)
+	activities := activity.New()
+	sched := scheduler.New(cfg, st, logger, activities)
+	suggestSvc := suggest.New(cfg, st, logger, activities)
 	defer suggestSvc.Close()
-	ref := refresher.New(cfg, st, logger)
+	ref := refresher.New(cfg, st, logger, activities)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -115,7 +117,7 @@ func run() error {
 	go func() { defer workers.Done(); ref.Run(ctx) }()
 	defer func() { stop(); workers.Wait() }()
 
-	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar)
+	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar, activities)
 	httpServer := &http.Server{
 		Addr:              envDefault("WAIM_ADDR", ":8080"),
 		Handler:           srv.Handler(),

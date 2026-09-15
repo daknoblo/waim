@@ -9,6 +9,9 @@ templ logsBody(d LogPageData) {
 		<div class="flex items-center justify-between">
 			<h1 class="text-lg font-semibold">{ d.Layout.T.T("nav.logs") }</h1>
 		</div>
+		<div id="activity" hx-get="/partials/activity" hx-trigger="every 2s" hx-swap="innerHTML">
+			@ActivityPanel(d.Layout.T, d.Activities)
+		</div>
 		<div
 			id="log"
 			hx-get="/partials/log"

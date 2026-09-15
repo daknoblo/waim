@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
@@ -168,6 +169,8 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 		sum := summaries[libID]
 		s.reporter.LibraryStart(libID, sum.Name, sum.Total)
 	}
+	run := activity.FromContext(ctx)
+	run.Phase(activity.Metadata, len(movies)+len(series))
 
 	// --- Movies: build owned-TMDB set, then evaluate collections. ---
 	ownedMovie := map[int64]bool{}
@@ -197,6 +200,8 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 		}
 		s.reporter.SetCurrent(m.item.Name)
 
+		run.Current(m.item.Name)
+		beforeWarnings := len(res.Warnings)
 		missingCount := 0
 		if id := movieTMDB[m.item.ID]; id != 0 {
 			movie, err := s.td.Movie(ctx, id)
@@ -218,6 +223,7 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			sum.Missing += missingCount
 		}
 		s.reporter.ItemDone(m.libID, missingCount)
+		run.Advance(len(res.Warnings) > beforeWarnings, m.item.TMDBID() == 0)
 	}
 
 	// --- Series: evaluate seasons and episodes. ---
@@ -230,11 +236,14 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			sum.Scanned++
 		}
 		s.reporter.SetCurrent(sv.item.Name)
+		run.Current(sv.item.Name)
+		beforeWarnings := len(res.Warnings)
 		missing := s.scanSeries(ctx, sv.libID, libNames[sv.libID], sv.item, &res)
 		if sum := summaries[sv.libID]; sum != nil {
 			sum.Missing += missing
 		}
 		s.reporter.ItemDone(sv.libID, missing)
+		run.Advance(len(res.Warnings) > beforeWarnings, sv.item.TMDBID() == 0)
 	}
 
 	for _, libID := range order {

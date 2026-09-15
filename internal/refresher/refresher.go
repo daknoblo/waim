@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
@@ -15,9 +16,10 @@ import (
 
 // Refresher incrementally refreshes cached TMDB responses in the background.
 type Refresher struct {
-	cfg   *config.Manager
-	store *store.Store
-	log   *slog.Logger
+	cfg        *config.Manager
+	store      *store.Store
+	log        *slog.Logger
+	activities *activity.Tracker
 }
 
 // cleanupHour is the local hour of day (24h) at which the nightly orphan
@@ -25,11 +27,15 @@ type Refresher struct {
 const cleanupHour = 3
 
 // New creates a Refresher.
-func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Refresher {
+func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*activity.Tracker) *Refresher {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Refresher{cfg: cfg, store: st, log: log}
+	r := &Refresher{cfg: cfg, store: st, log: log}
+	if len(activities) > 0 {
+		r.activities = activities[0]
+	}
+	return r
 }
 
 // Run blocks until ctx is cancelled, refreshing a batch of the oldest cache
@@ -87,7 +93,16 @@ func resetTimer(t *time.Timer, d time.Duration) {
 func (r *Refresher) refreshBatch(ctx context.Context) {
 	settings := r.cfg.Get()
 	cache := settings.Cache
-	if !cache.RefreshEnabled || settings.TMDB.APIKey == "" {
+	if !cache.RefreshEnabled {
+		return
+	}
+	run := r.activities.Start(activity.Cache)
+	ctx = activity.WithRun(ctx, run)
+	outcome := activity.Failed
+	defer func() { run.Finish(ctx, outcome, 0) }()
+	run.Phase(activity.Refresh, -1)
+	if settings.TMDB.APIKey == "" {
+		outcome = activity.Waiting
 		return
 	}
 
@@ -97,6 +112,8 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 		return
 	}
 	if count == 0 {
+		run.Phase(activity.Refresh, 0)
+		outcome = activity.Completed
 		return
 	}
 
@@ -118,8 +135,11 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 		return
 	}
 	if len(keys) == 0 {
+		run.Phase(activity.Refresh, 0)
+		outcome = activity.Completed
 		return
 	}
+	run.Phase(activity.Refresh, len(keys))
 
 	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
 		WithCache(tmdbcache.New(r.store))
@@ -130,12 +150,15 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 			return
 		}
 		if err := td.RefreshKey(ctx, key); err != nil {
+			run.Advance(true, false)
 			failed++
 			r.log.Debug("refresher: refresh failed", "key", key, "error", err)
 			continue
 		}
 		refreshed++
+		run.Advance(false, false)
 	}
+	outcome = activity.Completed
 	r.log.Info("tmdb cache refreshed", "refreshed", refreshed, "failed", failed, "total", count)
 }
 
@@ -146,6 +169,10 @@ func (r *Refresher) cleanup(ctx context.Context) {
 	if !cache.CleanupEnabled {
 		return
 	}
+	run := r.activities.Start(activity.Cache)
+	outcome := activity.Failed
+	defer func() { run.Finish(ctx, outcome, 0) }()
+	run.Phase(activity.Cleanup, -1)
 	days := cache.CleanupMaxAgeDays
 	if days <= 0 {
 		days = 30
@@ -159,4 +186,5 @@ func (r *Refresher) cleanup(ctx context.Context) {
 	if n > 0 {
 		r.log.Info("tmdb cache cleanup", "removed", n, "olderThanDays", days)
 	}
+	outcome = activity.Completed
 }

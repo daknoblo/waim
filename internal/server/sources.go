@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/source"
@@ -149,7 +150,19 @@ func (s *Server) handleSourceLibraries(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/sources", http.StatusSeeOther)
 }
 
-func (s *Server) refreshSourceLibraries(ctx context.Context, src config.Source) error {
+func (s *Server) refreshSourceLibraries(ctx context.Context, src config.Source) (resultErr error) {
+	run := s.activities.Start(activity.Sources)
+	ctx = activity.WithRun(ctx, run)
+	run.Phase(activity.Inventory, -1)
+	run.Subject(src.Name)
+	run.Operation(activity.Libraries)
+	defer func() {
+		status := activity.Completed
+		if resultErr != nil {
+			status = activity.Failed
+		}
+		run.Finish(ctx, status, 0)
+	}()
 	adapter, err := source.New(src)
 	var libs []media.Library
 	if err == nil {
@@ -158,6 +171,8 @@ func (s *Server) refreshSourceLibraries(ctx context.Context, src config.Source) 
 	if err != nil {
 		return err
 	}
+	run.Phase(activity.Persistence, -1)
+	run.Subject(src.Name)
 	return s.cfg.UpdateSource(src.ID, src.Revision, func(current *config.Source) error {
 		enabled := map[string]bool{}
 		for _, lib := range current.Libraries {
@@ -177,6 +192,12 @@ func (s *Server) handleTestSource(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	run := s.activities.Start(activity.Sources)
+	run.Phase(activity.Inventory, -1)
+	run.Subject(src.Name)
+	run.Operation(activity.Test)
+	status := activity.Failed
+	defer func() { run.Finish(r.Context(), status, 0) }()
 	adapter, err := source.New(src)
 	if err == nil {
 		err = adapter.(source.Tester).Test(r.Context())
@@ -185,5 +206,6 @@ func (s *Server) handleTestSource(w http.ResponseWriter, r *http.Request) {
 		s.renderSources(w, r, s.translator(r).T("sources.connectionError"), true)
 		return
 	}
+	status = activity.Completed
 	s.renderSources(w, r, s.translator(r).T("sources.connectionOK"), false)
 }

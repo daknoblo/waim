@@ -165,8 +165,9 @@ type SuggestionsData struct {
 
 // LogPageData is the model for the dedicated activity-log page.
 type LogPageData struct {
-	Layout Layout
-	Logs   []LogEntryView
+	Layout     Layout
+	Logs       []LogEntryView
+	Activities []ActivityView
 }
 
 // LangChoice is a selectable metadata language for TMDB.

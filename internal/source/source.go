@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/jellyfin"
 	"github.com/daknoblo/waim/internal/media"
@@ -59,6 +60,9 @@ func (a *jellyfinAdapter) Libraries(ctx context.Context) ([]media.Library, error
 
 func (a *jellyfinAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) {
 	var out media.Snapshot
+	run := activity.FromContext(ctx)
+	run.Subject(a.source.Name)
+	run.Operation(activity.Account)
 	user, err := a.client.ResolveUserID(ctx, a.source.Jellyfin.UserID)
 	if err != nil {
 		return out, err
@@ -68,6 +72,9 @@ func (a *jellyfinAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) 
 			continue
 		}
 		libID := media.Qualify(a.source.ID, lib.ID)
+		run.Subject(a.source.Name + " · " + lib.Name)
+		run.Current("")
+		run.Operation(activity.Libraries)
 		out.Libraries = append(out.Libraries, media.Library{ID: libID, Name: a.source.Name + " · " + lib.Name, Type: lib.Type})
 		items, err := a.client.ItemsInLibrary(ctx, user, lib.ID)
 		if err != nil {
@@ -81,6 +88,8 @@ func (a *jellyfinAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) 
 			n.ID = media.Qualify(a.source.ID, it.ID)
 			n.References = []media.Reference{{ID: a.source.ID, Type: a.source.Type, Name: a.source.Name, LibraryID: libID, LibraryName: lib.Name, ItemID: it.ID, ServerURL: a.source.Jellyfin.URL, URL: strings.TrimRight(a.source.Jellyfin.URL, "/") + "/web/#/details?id=" + url.QueryEscape(it.ID)}}
 			if it.Type == media.Series {
+				run.Current(it.Name)
+				run.Operation(activity.Episodes)
 				eps, err := a.client.Episodes(ctx, user, it.ID)
 				if err != nil {
 					return media.Snapshot{}, err

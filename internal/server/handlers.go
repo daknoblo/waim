@@ -23,8 +23,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	d := web.LogPageData{
-		Layout: s.layout(r, web.NavLogs),
-		Logs:   web.BuildLogViews(s.logs.Entries()),
+		Layout:     s.layout(r, web.NavLogs),
+		Logs:       web.BuildLogViews(s.logs.Entries()),
+		Activities: s.activityViews(),
 	}
 	s.render(w, r, web.Logs(d))
 }

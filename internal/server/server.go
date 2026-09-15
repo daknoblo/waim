@@ -16,6 +16,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
@@ -34,22 +35,23 @@ const (
 
 // Server holds the dependencies shared by all HTTP handlers.
 type Server struct {
-	cfg      *config.Manager
-	store    *store.Store
-	sched    *scheduler.Scheduler
-	suggest  *suggest.Service
-	logs     *logbuf.Buffer
-	catalog  *i18n.Catalog
-	log      *slog.Logger
-	logLevel *slog.LevelVar
-	info     version.Info
-	assetVer string
+	cfg        *config.Manager
+	store      *store.Store
+	sched      *scheduler.Scheduler
+	suggest    *suggest.Service
+	logs       *logbuf.Buffer
+	catalog    *i18n.Catalog
+	log        *slog.Logger
+	logLevel   *slog.LevelVar
+	info       version.Info
+	assetVer   string
+	activities *activity.Tracker
 }
 
 // New constructs a Server.
-func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *suggest.Service, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger, logLevel *slog.LevelVar) *Server {
+func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *suggest.Service, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger, logLevel *slog.LevelVar, activities ...*activity.Tracker) *Server {
 	info := version.Get()
-	return &Server{
+	s := &Server{
 		cfg:      cfg,
 		store:    st,
 		sched:    sched,
@@ -61,6 +63,10 @@ func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *
 		info:     info,
 		assetVer: computeAssetVersion(info),
 	}
+	if len(activities) > 0 {
+		s.activities = activities[0]
+	}
+	return s
 }
 
 // computeAssetVersion returns a token used to cache-bust static assets. It uses
@@ -110,6 +116,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /partials/status", s.handlePartialStatus)
 	mux.HandleFunc("GET /partials/findings", s.handlePartialFindings)
 	mux.HandleFunc("GET /partials/log", s.handlePartialLog)
+	mux.HandleFunc("GET /partials/activity", s.handlePartialActivity)
 	mux.HandleFunc("GET /partials/series-flow", s.handlePartialSeriesDetail)
 	mux.HandleFunc("GET /partials/upcoming", s.handlePartialUpcoming)
 

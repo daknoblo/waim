@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
@@ -355,6 +356,11 @@ func demoLogs(t *i18n.Translator) web.LogPageData {
 	return web.LogPageData{
 		Layout: demoLayout(t, web.NavLogs),
 		Logs:   web.BuildLogViews(entries),
+		Activities: web.BuildActivities([]activity.State{
+			{Job: activity.Scan, Status: activity.Running, Phase: activity.Metadata, Current: "Chronicles of the Deep", Subject: "Living room · Series", Query: "/tv/901/season/4", Known: true, Done: 42, Total: 60, StartedAt: now.Add(-94 * time.Second)},
+			{Job: activity.Cache, Status: activity.Running, Phase: activity.Refresh, Query: "/movie/301", Known: true, Done: 7, Total: 20, Failures: 1, StartedAt: now.Add(-31 * time.Second)},
+			{Job: activity.Suggestions, Status: activity.Running, Phase: activity.AI, StartedAt: now.Add(-16 * time.Second)},
+		}, true, now),
 	}
 }
 

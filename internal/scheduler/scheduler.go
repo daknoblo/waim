@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/scanner"
 	"github.com/daknoblo/waim/internal/source"
@@ -48,14 +49,15 @@ type Scheduler struct {
 	running     atomic.Bool
 	progress    *progressState
 	tmdbFactory func(config.Settings) scanner.TMDBAPI
+	activities  *activity.Tracker
 }
 
 // New creates a Scheduler.
-func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Scheduler {
+func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*activity.Tracker) *Scheduler {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Scheduler{
+	s := &Scheduler{
 		cfg:         cfg,
 		store:       st,
 		log:         log,
@@ -64,6 +66,10 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Scheduler {
 		recomputeCh: make(chan struct{}, 1),
 		progress:    &progressState{},
 	}
+	if len(activities) > 0 {
+		s.activities = activities[0]
+	}
+	return s
 }
 
 // Progress is a live snapshot of an in-flight scan.
@@ -226,8 +232,19 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool) {
 	}
 	defer s.running.Store(false)
 
+	run := s.activities.Start(activity.Scan)
+	ctx = activity.WithRun(ctx, run)
+	outcome, warnings := activity.Failed, 0
+	defer func() { run.Finish(ctx, outcome, warnings) }()
+	run.Phase(activity.Inventory, -1)
+	if refresh {
+		run.Mode(activity.SourceRefresh)
+	} else {
+		run.Mode(activity.Recompute)
+	}
 	settings := s.cfg.Get()
 	if settings.TMDB.APIKey == "" {
+		outcome = activity.Waiting
 		s.setStatus(func(st *Status) {
 			st.State = StateIdle
 			st.NextRun = nil
@@ -273,11 +290,13 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool) {
 		mode = "refresh"
 	}
 	if scanErr == nil {
+		run.Phase(activity.Persistence, -1)
 		scanErr = s.cfg.WithSourcesToken(settings.SourcesToken(), func() error {
 			return s.store.PublishScan(ctx, runID, result.Findings, result.Libraries, result.Media, result.Upcoming, store.RunMetadata{SourcesToken: settings.SourcesToken(), Basis: "owned-v1", Mode: mode, Revision: catalog.Revision, Warnings: result.Warnings})
 		})
 	}
 	if errors.Is(scanErr, store.ErrCatalogChanged) || errors.Is(scanErr, config.ErrSourcesChanged) {
+		outcome = activity.Cancelled
 		s.Recompute()
 	}
 	finished := time.Now()
@@ -300,8 +319,11 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool) {
 	}
 
 	if err := s.store.PruneRuns(ctx, 20); err != nil {
+		warnings++
 		s.log.Error("failed to prune scan history", "err", err)
 	}
+	warnings += len(result.Warnings)
+	outcome = activity.Completed
 
 	s.setStatus(func(st *Status) {
 		st.State = StateIdle

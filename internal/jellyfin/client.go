@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/httpx"
 )
 
@@ -146,7 +147,10 @@ type itemsResultLibraries struct {
 func (c *Client) ItemsInLibrary(ctx context.Context, userID, libraryID string) ([]Item, error) {
 	var all []Item
 	start := 0
+	page := 0
 	for {
+		page++
+		activity.FromContext(ctx).Page(page)
 		q := url.Values{}
 		q.Set("ParentId", libraryID)
 		q.Set("Recursive", "true")
@@ -183,7 +187,10 @@ func (c *Client) Episodes(ctx context.Context, userID, seriesID string) ([]Item,
 		q.Set("userId", userID)
 	}
 	var all []Item
+	page := 0
 	for start := 0; ; {
+		page++
+		activity.FromContext(ctx).Page(page)
 		q.Set("StartIndex", strconv.Itoa(start))
 		q.Set("Limit", strconv.Itoa(pageSize))
 		var res itemsResult

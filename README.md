@@ -87,8 +87,37 @@ Huntarr or Missingarr.
 - Bilingual UI (English / German) with an in-app language switch.
 - **Responsive layout**: on phones the navigation collapses into a menu button
   and wide tables turn into stacked cards.
-- Activity log and live scan status in the dashboard.
+- **Live activity** above the log window, with separate cards for scan/recompute,
+  cache maintenance and suggestions. Source connection/discovery work appears
+  when used. The dashboard retains its existing live scan status.
 - Multi-arch images published to GitHub Container Registry.
+
+## Reading live activity
+
+The activity panel polls every two seconds, independently of the three-second
+log refresh. Unchanged partials return HTTP 204; progress never replaces the log
+window. No extra upstream requests are made to measure progress.
+
+The ring and remaining percentage apply **only to the current phase**, not the
+whole job or the other workers. Metadata evaluation counts unique catalog titles,
+not duplicated library memberships; identity resolution counts the current
+catalog before newly resolved identities are merged. Cache refresh counts the
+actual selected batch; trending counts feeds and recommendations count sampled
+owned titles. Inventory (including library/episode pages), persistence, upcoming
+discovery and the pending AI response are explicitly indeterminate.
+
+Processed counts include failed/skipped units; diagnostic counts span the run
+and can include the same title in different phases. Stale source fallback,
+unresolved titles and metadata failures finish **with warnings**, never as fully
+verified success. Cancellation and failure are separate outcomes. Initial missing
+TMDB configuration shows **Waiting for setup**; the global setup banner links to
+settings without repeating setup instructions in each activity card.
+
+Activity is process-local: one bounded running/latest entry per logical job,
+not a persisted history. Concurrent source connection requests show the latest
+request; old handles cannot overwrite a newer run. Logs and persisted scan
+history remain available. Titles/source names are bounded, while metadata paths
+are allowlisted and exclude every query string, credential and response body.
 
 ## Screenshots
 

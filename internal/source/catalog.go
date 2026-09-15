@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
@@ -13,6 +14,8 @@ import (
 // Remote failures are safe bounded warnings, not raw URLs or credentials.
 func Catalog(ctx context.Context, st *store.Store, settings config.Settings, refresh bool, factory Factory) (media.Catalog, error) {
 	out := media.Catalog{}
+	run := activity.FromContext(ctx)
+	run.Phase(activity.Inventory, -1)
 	if factory == nil {
 		factory = New
 	}
@@ -21,6 +24,8 @@ func Catalog(ctx context.Context, st *store.Store, settings config.Settings, ref
 			continue
 		}
 		fp := src.Fingerprint()
+		run.Subject(src.Name)
+		run.Current("")
 		if refresh {
 			adapter, err := factory(src)
 			var snapshot media.Snapshot
@@ -31,6 +36,8 @@ func Catalog(ctx context.Context, st *store.Store, settings config.Settings, ref
 				return out, ctx.Err()
 			}
 			var saveErr error
+			run.Phase(activity.Persistence, -1)
+			run.Subject(src.Name)
 			if err != nil {
 				saveErr = st.SaveSourceAttempt(ctx, src.ID, fp, nil, "Source refresh failed; check connection and access.")
 			} else {
@@ -39,6 +46,8 @@ func Catalog(ctx context.Context, st *store.Store, settings config.Settings, ref
 			if saveErr != nil {
 				return out, saveErr
 			}
+			run.Phase(activity.Inventory, -1)
+			run.Subject(src.Name)
 		}
 		saved, err := st.SourceSnapshot(ctx, src.ID, fp)
 		if err != nil {
@@ -49,6 +58,7 @@ func Catalog(ctx context.Context, st *store.Store, settings config.Settings, ref
 		}
 		if saved.Snapshot == nil {
 			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: unknown inventory; refresh required", src.Name))
+			run.Warnings(len(out.Warnings))
 			continue
 		}
 		stale := saved.Error != ""
@@ -58,6 +68,7 @@ func Catalog(ctx context.Context, st *store.Store, settings config.Settings, ref
 		if stale {
 			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: stale inventory (last successful snapshot)", src.Name))
 		}
+		run.Warnings(len(out.Warnings))
 		for _, item := range saved.Snapshot.Items {
 			for i := range item.References {
 				item.References[i].Name = src.Name

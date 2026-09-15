@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
@@ -62,20 +63,29 @@ func ResolveID(ctx context.Context, item media.Item, td Resolver) int64 {
 }
 
 func resolveCatalog(ctx context.Context, c media.Catalog, td Resolver) (media.Catalog, []media.Item) {
+	run := activity.FromContext(ctx)
+	run.Phase(activity.Identity, len(c.Items))
 	c.Items = append([]media.Item(nil), c.Items...)
 	c.Warnings = append([]string(nil), c.Warnings...)
 	var resolved []media.Item
 	for i := range c.Items {
+		if ctx.Err() != nil {
+			break
+		}
+		run.Current(c.Items[i].Name)
 		if c.Items[i].TMDBID() > 0 {
+			run.Advance(false, false)
 			continue
 		}
 		id := ResolveID(ctx, c.Items[i], td)
 		if id <= 0 {
+			run.Advance(false, true)
 			c.Warnings = append(c.Warnings, "Unresolved title: "+c.Items[i].Name)
 			continue
 		}
 		c.Items[i] = c.Items[i].WithResolvedID(id)
 		resolved = append(resolved, c.Items[i])
+		run.Advance(false, false)
 	}
 	c.Items = media.Merge(c.Items)
 	return c, resolved
@@ -102,6 +112,7 @@ func ResolveSavedCatalog(ctx context.Context, st *store.Store, settings config.S
 		}
 	}
 	for id, items := range bySource {
+		activity.FromContext(ctx).Phase(activity.Persistence, -1)
 		src, ok := settings.Source(id)
 		if !ok || !src.Enabled {
 			return c, store.ErrCatalogChanged

@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/ai"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/media"
@@ -80,22 +81,27 @@ type Service struct {
 	log   *slog.Logger
 	ttl   time.Duration
 
-	mu      sync.RWMutex
-	result  *Result
-	running atomic.Bool
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	epoch   uint64
+	mu         sync.RWMutex
+	result     *Result
+	running    atomic.Bool
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	epoch      uint64
+	activities *activity.Tracker
 }
 
 // New creates a suggestion service.
-func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Service {
+func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*activity.Tracker) *Service {
 	if log == nil {
 		log = slog.Default()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{cfg: cfg, store: st, log: log, ttl: 6 * time.Hour, ctx: ctx, cancel: cancel}
+	s := &Service{cfg: cfg, store: st, log: log, ttl: 6 * time.Hour, ctx: ctx, cancel: cancel}
+	if len(activities) > 0 {
+		s.activities = activities[0]
+	}
+	return s
 }
 
 // Close cooperatively cancels and joins background work before the store closes.
@@ -149,24 +155,36 @@ func (s *Service) Generate() {
 	}
 	s.wg.Add(1)
 	epoch := s.epoch
+	run := s.activities.Start(activity.Suggestions)
 	s.mu.Unlock()
 	go func() {
 		defer s.wg.Done()
 		defer s.running.Store(false)
 		ctx, cancel := context.WithTimeout(s.ctx, generateLimit)
 		defer cancel()
+		ctx = activity.WithRun(ctx, run)
 		res := s.build(ctx)
+		run.Phase(activity.Persistence, -1)
+		outcome := activity.Completed
 		s.mu.Lock()
 		if epoch == s.epoch && ctx.Err() == nil {
 			s.result = res
+		} else {
+			outcome = activity.Cancelled
 		}
 		s.mu.Unlock()
+		if s.cfg.Get().TMDB.APIKey == "" {
+			outcome = activity.Waiting
+		}
+		run.Finish(ctx, outcome, len(res.Errors))
 		s.log.Info("suggestions generated", "trending", len(res.Trending), "similar", len(res.Similar),
 			"upcoming", len(res.UpcomingTaste)+len(res.UpcomingRegion), "ai", len(res.AI))
 	}()
 }
 
 func (s *Service) build(ctx context.Context) *Result {
+	run := activity.FromContext(ctx)
+	run.Phase(activity.Inventory, -1)
 	res := &Result{GeneratedAt: time.Now()}
 	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
 		res.BasedOnRunID = run.ID
@@ -187,10 +205,12 @@ func (s *Service) build(ctx context.Context) *Result {
 	ownedMovie := map[int64]bool{}
 	var sampleTV, sampleMovie []int64
 	var seriesNames, movieNames []string
+	titles := map[string]string{}
 
 	catalog, err := source.Catalog(ctx, s.store, settings, false, nil)
 	if err != nil {
 		res.Errors = append(res.Errors, "Catalog unavailable")
+		run.Finish(ctx, activity.Failed, 1)
 		return res
 	}
 	res.Revision = catalog.Revision
@@ -198,14 +218,17 @@ func (s *Service) build(ctx context.Context) *Result {
 	if err != nil {
 		s.log.Error("catalog resolution failed", "err", err)
 		res.Errors = append(res.Errors, "Catalog resolution unavailable")
+		run.Finish(ctx, activity.Failed, 1)
 		return res
 	}
 	res.Errors = append(res.Errors, catalog.Warnings...)
+	run.Warnings(len(res.Errors))
 	for _, it := range catalog.Items {
 		if it.WatchOnly {
 			continue
 		}
 		id := it.TMDBID()
+		titles[fmt.Sprintf("%s:%d", it.Type, id)] = it.Name
 		switch it.Type {
 		case "Series":
 			if id != 0 {
@@ -230,10 +253,15 @@ func (s *Service) build(ctx context.Context) *Result {
 		}
 	}
 
+	run.Phase(activity.Trending, 2)
 	res.Trending = s.buildTrending(ctx, td, ownedTV, ownedMovie, res)
-	res.Similar = s.buildSimilar(ctx, td, sampleTV, sampleMovie, ownedTV, ownedMovie, res)
+	run.Phase(activity.Similar, len(sampleTV)+len(sampleMovie))
+	res.Similar = s.buildSimilar(ctx, td, sampleTV, sampleMovie, ownedTV, ownedMovie, res, titles)
+	run.Phase(activity.Upcoming, -1)
 	res.UpcomingTaste, res.UpcomingRegion = s.buildUpcoming(ctx, td, ownedTV, ownedMovie, res)
+	run.Warnings(len(res.Errors))
 	if res.AIEnabled {
+		run.Phase(activity.AI, -1)
 		res.AI = s.buildAI(ctx, settings.AI, seriesNames, movieNames, res)
 	}
 	return res
@@ -241,14 +269,19 @@ func (s *Service) build(ctx context.Context) *Result {
 
 func (s *Service) buildTrending(ctx context.Context, td *tmdb.Client, ownedTV, ownedMovie map[int64]bool, res *Result) []Item {
 	var out []Item
+	run := activity.FromContext(ctx)
 	if tv, err := td.TrendingTV(ctx); err != nil {
+		run.Advance(true, false)
 		res.Errors = append(res.Errors, "tmdb trending tv: "+err.Error())
 	} else {
+		run.Advance(false, false)
 		out = append(out, dedupeTake(tv, "series", ownedTV, trendingTake)...)
 	}
 	if mv, err := td.TrendingMovie(ctx); err != nil {
+		run.Advance(true, false)
 		res.Errors = append(res.Errors, "tmdb trending movies: "+err.Error())
 	} else {
+		run.Advance(false, false)
 		out = append(out, dedupeTake(mv, "movie", ownedMovie, trendingTake)...)
 	}
 	return out
@@ -259,11 +292,18 @@ type scored struct {
 	count int
 }
 
-func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, sampleMovie []int64, ownedTV, ownedMovie map[int64]bool, res *Result) []Item {
+func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, sampleMovie []int64, ownedTV, ownedMovie map[int64]bool, res *Result, titles map[string]string) []Item {
+	run := activity.FromContext(ctx)
 	tvScores := map[int64]*scored{}
 	for _, id := range sampleTV {
+		if ctx.Err() != nil {
+			return nil
+		}
+		run.Current(titles[fmt.Sprintf("Series:%d", id)])
 		recs, err := td.TVRecommendations(ctx, id)
+		run.Advance(err != nil, false)
 		if err != nil {
+			res.Errors = append(res.Errors, "TV recommendations unavailable")
 			continue
 		}
 		for _, r := range recs {
@@ -278,8 +318,14 @@ func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, s
 	}
 	movieScores := map[int64]*scored{}
 	for _, id := range sampleMovie {
+		if ctx.Err() != nil {
+			return nil
+		}
+		run.Current(titles[fmt.Sprintf("Movie:%d", id)])
 		recs, err := td.MovieRecommendations(ctx, id)
+		run.Advance(err != nil, false)
 		if err != nil {
+			res.Errors = append(res.Errors, "Movie recommendations unavailable")
 			continue
 		}
 		for _, r := range recs {

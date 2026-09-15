@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/httpx"
 )
 
@@ -87,6 +88,7 @@ func (c *Client) WithCache(cache Cache) *Client {
 // configured and out is non-nil, successful responses are served from and
 // written to the cache, so repeated calls avoid hitting the TMDB API.
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
+	activity.FromContext(ctx).Endpoint(path)
 	if q == nil {
 		q = url.Values{}
 	}
@@ -186,6 +188,7 @@ func (c *Client) fetchRaw(ctx context.Context, path string, q url.Values) ([]byt
 // RefreshKey re-fetches the cached entry identified by key (path?query) and
 // stores the fresh payload. Used by the background refresher.
 func (c *Client) RefreshKey(ctx context.Context, key string) error {
+	activity.FromContext(ctx).Endpoint(key)
 	if c.cache == nil {
 		return nil
 	}
