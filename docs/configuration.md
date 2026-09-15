@@ -178,6 +178,26 @@ ordinary encryption-at-rest rewrites retain it. A persisted `keyUnreadable` flag
 records the last observed readability state so losing/restoring `master.key`
 also advances the generation once, without deleting unreadable ciphertext.
 
+Jellyfin inventory fingerprints also include an episode-normalization version.
+The first version explicitly requests `IsMissing=false`, rejects missing/virtual
+placeholders defensively, and expands combined episode files using
+`IndexNumberEnd` before the season/episode ownership union. A combined E01–E02
+file and another source's E02 therefore represent two owned episodes, not three.
+Ranges are limited to 1,000 episode numbers per physical item. An invalid,
+reversed or larger range retains only a valid starting episode and adds a warning;
+episodes without a valid season/start are omitted with an explicit warning.
+
+Old Jellyfin snapshots lack this normalization guarantee and are excluded once
+after this upgrade: inventories become **unknown** until a successful full scan
+(startup, scheduled, or **Scan now**). This is not a silent repair of old episode counts. The upgrade itself
+does not delete the previous snapshot; the next refresh attempt follows the
+normal fingerprint rules, so a failed attempt cannot reuse its incompatible
+payload. Configured sources, credentials and all virtual-collection entries are
+retained. Historical scans are not rewritten. Old derived scans remain pending or
+unconfirmed until their inputs have been refreshed/recomputed. Source-native
+provider IDs remain authoritative; incompatible old snapshot aliases are resolved
+again from the fresh inventory when needed.
+
 Existing configs acquire generation tokens automatically without rewriting
 encrypted keys. Snapshots created with the previous key-derived fingerprint need
 one successful real-source refresh after this upgrade; until then their inventory

@@ -2,7 +2,7 @@
 
 # ---- Build stage ----------------------------------------------------------
 ARG GO_VERSION=1.25
-FROM golang:${GO_VERSION}-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
 # git is needed for module metadata; ca-certificates for HTTPS module fetches.
 RUN apk add --no-cache ca-certificates git
@@ -19,11 +19,14 @@ COPY . .
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
-# Build a fully static, CGO-free binary (modernc.org/sqlite is pure Go).
+# Cross-compile on the builder's native platform; no target emulation is needed
+# for this fully static, CGO-free binary (modernc.org/sqlite is pure Go).
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
     -trimpath \
     -ldflags="-s -w \
       -X github.com/daknoblo/waim/internal/version.Version=${VERSION} \

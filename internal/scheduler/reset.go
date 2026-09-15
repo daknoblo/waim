@@ -17,4 +17,8 @@ func (s *Scheduler) ResetState() {
 	case <-s.recomputeCh:
 	default:
 	}
+	select {
+	case s.resetScheduleCh <- struct{}{}:
+	default:
+	}
 }

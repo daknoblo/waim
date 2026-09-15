@@ -59,9 +59,3 @@ func (i Info) IsRelease() bool {
 func (i Info) IsDevelopment() bool {
 	return i.Version == "dev" || strings.HasPrefix(i.Version, "dev-")
 }
-
-// IsFeatureRelease classifies X.Y.0 versions. Patch versions also have release
-// pages; use IsRelease when deciding whether to link to release notes.
-func (i Info) IsFeatureRelease() bool {
-	return i.IsRelease() && strings.HasSuffix(i.Version, ".0")
-}

@@ -84,6 +84,10 @@ func (a *jellyfinAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) 
 			if it.Type != media.Movie && it.Type != media.Series {
 				continue
 			}
+			if virtualPlaceholder(it) {
+				out.Warnings = append(out.Warnings, "Ignored virtual title: "+it.Name)
+				continue
+			}
 			n := normalize(it)
 			n.ID = media.Qualify(a.source.ID, it.ID)
 			n.References = []media.Reference{{ID: a.source.ID, Type: a.source.Type, Name: a.source.Name, LibraryID: libID, LibraryName: lib.Name, ItemID: it.ID, ServerURL: a.source.Jellyfin.URL, URL: strings.TrimRight(a.source.Jellyfin.URL, "/") + "/web/#/details?id=" + url.QueryEscape(it.ID)}}
@@ -94,12 +98,9 @@ func (a *jellyfinAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) 
 				if err != nil {
 					return media.Snapshot{}, err
 				}
-				for _, ep := range eps {
-					if ep.IndexNumber == nil || ep.ParentIndexNumber == nil {
-						out.Warnings = append(out.Warnings, "Unidentified episode: "+it.Name)
-					}
-					n.Episodes = append(n.Episodes, normalize(ep))
-				}
+				normalized, warnings := normalizeEpisodes(eps, it.Name)
+				n.Episodes = normalized
+				out.Warnings = append(out.Warnings, warnings...)
 			}
 			out.Items = append(out.Items, n)
 		}

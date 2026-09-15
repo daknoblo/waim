@@ -15,6 +15,7 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 SEED_OUT ?= appdata
+COVERAGE_DIR ?= coverage
 
 # Passed through the environment rather than expanded into the recipe, so
 # multi-line release notes survive instead of breaking the shell command.
@@ -26,7 +27,7 @@ LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Commit=$(COMMIT) \
 	-X github.com/daknoblo/waim/internal/version.Date=$(DATE)
 
-.PHONY: all generate css build run test vet tidy tools clean docker demo docs-version seed release
+.PHONY: all generate css build run test coverage vet tidy tools clean docker demo docs-version seed release
 
 all: generate css build
 
@@ -143,6 +144,10 @@ release:
 test:
 	go test $(PKG)
 	bash scripts/test-release-channels.sh
+
+## Measure cross-package coverage, with a separate handwritten-code report.
+coverage:
+	bash scripts/coverage.sh "$(COVERAGE_DIR)"
 
 ## Static analysis.
 vet:

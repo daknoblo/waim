@@ -367,24 +367,16 @@ func demoLogs(t *i18n.Translator) web.LogPageData {
 func demoSettings(t *i18n.Translator) web.SettingsData {
 	s := config.Defaults()
 	s.Locale = t.Locale()
-	s.Jellyfin.URL = "https://jellyfin.example.com"
 	s.TMDB.Language = "en-US"
 	s.TMDB.Region = "US"
 	s.Scan.IntervalMinutes = 360
 	s.Scan.TMDBRateLimitRPS = 2
 	s.Scan.EpisodeRatings = true
-	s.Libraries = []config.Library{
-		{ID: libMovies, Name: "Movies", Type: "movies", Enabled: true},
-		{ID: libSeries, Name: "Series", Type: "tvshows", Enabled: true},
-		{ID: "lib-music", Name: "Music videos", Type: "musicvideos"},
-	}
 	return web.SettingsData{
-		Layout:         demoLayout(t, web.NavSettings),
-		Settings:       s,
-		Libraries:      s.Libraries,
-		HasJellyfinKey: true,
-		HasTMDBKey:     true,
-		CacheEntries:   4820,
+		Layout:       demoLayout(t, web.NavSettings),
+		Settings:     s,
+		HasTMDBKey:   true,
+		CacheEntries: 4820,
 	}
 }
 

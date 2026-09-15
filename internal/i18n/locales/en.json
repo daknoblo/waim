@@ -405,7 +405,6 @@
   "settings.libraries": "Libraries",
   "settings.librariesHint": "Select which libraries to include in scans.",
   "settings.refreshLibraries": "Refresh libraries from Jellyfin",
-  "settings.noLibraries": "No libraries loaded yet. Save your Jellyfin connection, then refresh.",
   "settings.testJellyfin": "Test Jellyfin connection",
   "settings.testTmdb": "Test TMDB connection",
   "settings.keyPlaceholderSet": "•••••••• (stored, leave blank to keep)",

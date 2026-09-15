@@ -219,7 +219,7 @@ func changedSections(r *http.Request, pending []string) map[string]bool {
 	return out
 }
 
-// parseSettingsForm builds a Settings value from the submitted form, preserving
+// parseSettingsFormFrom builds settings from a section's form, preserving
 // existing API keys when the corresponding field is left blank.
 //
 // A stored key only stays with an endpoint that keeps addressing the same
@@ -228,10 +228,6 @@ func changedSections(r *http.Request, pending []string) map[string]bool {
 // applying the change would either send the stored credential to an address
 // the user just typed, or silently drop it. The returned slice names the
 // sections that were held back so the caller can ask for the key.
-func (s *Server) parseSettingsForm(r *http.Request) (config.Settings, []string) {
-	return parseSettingsFormFrom(r, s.cfg.Get())
-}
-
 func parseSettingsFormFrom(r *http.Request, cur config.Settings) (config.Settings, []string) {
 	ns := cur.Clone()
 	var rebound []string

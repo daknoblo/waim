@@ -1,7 +1,6 @@
 package web
 
 import "strconv"
-import "github.com/daknoblo/waim/internal/config"
 import "github.com/daknoblo/waim/internal/i18n"
 
 templ Settings(d SettingsData) {
@@ -168,28 +167,6 @@ templ settingsBody(d SettingsData) {
 	}
 }
 
-// LibraryList is the swap target of "refresh libraries", so reloading the list
-// does not disturb the rest of the form.
-templ LibraryList(t *i18n.Translator, libs []config.Library) {
-	<div id="library-list">
-		if len(libs) == 0 {
-			<p class="text-sm text-slate-500">{ t.T("settings.noLibraries") }</p>
-		} else {
-			<div class="grid gap-2 sm:grid-cols-2">
-				for _, lib := range libs {
-					<label class="flex items-center gap-2 rounded-lg bg-slate-900/60 px-3 py-2 text-sm">
-						<input type="checkbox" name="library" value={ lib.ID } checked?={ lib.Enabled } class="checkbox"/>
-						<span class="font-medium text-slate-200">{ lib.Name }</span>
-						if lib.Type != "" {
-							<span class="text-xs text-slate-500">({ lib.Type })</span>
-						}
-					</label>
-				}
-			</div>
-		}
-	</div>
-}
-
 // connStatusBlock is the swap target for one section's connection state, so a
 // save can update it without re-rendering the form and stealing focus.
 templ connStatusBlock(id string, c ConnCheck) {
@@ -201,7 +178,7 @@ templ connStatusBlock(id string, c ConnCheck) {
 // SettingsFeedbackFragment answers an auto-save: the touched connection chips
 // and the save indicator, each swapped in place.
 templ SettingsFeedbackFragment(t *i18n.Translator, fb SettingsFeedback) {
-	for _, section := range []string{"jellyfin", "tmdb", "ai"} {
+	for _, section := range []string{"tmdb", "ai"} {
 		if c, ok := fb.Checks[section]; ok {
 			<div id={ "conn-" + section } hx-swap-oob="true">
 				@connStatus(c)
@@ -266,13 +243,4 @@ templ connStatus(c ConnCheck) {
 			{ c.Message }
 		</div>
 	}
-}
-
-// LibraryListWithFeedback swaps the refreshed library list and updates the save
-// indicator in the same response.
-templ LibraryListWithFeedback(t *i18n.Translator, libs []config.Library, fb SettingsFeedback) {
-	@LibraryList(t, libs)
-	<div id="save-indicator" hx-swap-oob="true" class={ "text-sm", saveStateClass(fb.SaveState) }>
-		{ fb.SaveMessage }
-	</div>
 }

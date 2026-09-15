@@ -155,6 +155,10 @@ the ones to scan and save the source.
 **Scan now** refreshes all active real sources; watch edits only recalculate
 using saved snapshots.
 
+Recalculations keep the scheduled source-scan deadline unchanged. Changing the
+scan interval rearms the timer and its displayed deadline together; nightly
+cache cleanup stays at 03:00 local time across daylight-saving changes.
+
 > **Upgrading from 1.3 or older?** The encryption key is now generated
 > automatically, so API keys stored by those older versions have to be
 > entered once more. See
@@ -227,6 +231,12 @@ Bug reports, ideas and pull requests are welcome — see
 [Contributing](.github/CONTRIBUTING.md) for the development setup and the
 conventions this project follows. Participation is governed by the
 [Code of Conduct](.github/CODE_OF_CONDUCT.md).
+
+Run `make coverage` for cross-package Go statement coverage. Reports under
+`coverage/` include both the full codebase and handwritten code excluding
+generated `*_templ.go` files, so template boilerplate does not obscure the
+application's test coverage. These are coverage measurements, not a substitute
+for behavior tests or the JavaScript navigation tests in CI.
 
 Found a security problem? Please report it privately as described in the
 [Security Policy](.github/SECURITY.md) rather than in a public issue.

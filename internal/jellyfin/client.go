@@ -181,6 +181,7 @@ func (c *Client) ItemsInLibrary(ctx context.Context, userID, libraryID string) (
 // Episodes returns all episodes of a series with their season/episode numbers.
 func (c *Client) Episodes(ctx context.Context, userID, seriesID string) ([]Item, error) {
 	q := url.Values{}
+	q.Set("IsMissing", "false")
 	q.Set("Fields", "ProviderIds")
 	q.Set("EnableImages", "false")
 	if userID != "" {

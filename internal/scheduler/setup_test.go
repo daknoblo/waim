@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/store"
@@ -21,9 +22,12 @@ func TestMissingTMDBWaitsForSetupWithoutRecordingFailure(t *testing.T) {
 	}
 	defer func() { _ = st.Close() }()
 	s := New(cfg, st, nil)
+	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
+	schedule := scanSchedule{}
 	ctx := context.Background()
 	for _, refresh := range []bool{true, false} {
-		s.updateNextRun()
+		s.syncSchedule(timer, &schedule, time.Now(), false)
 		s.runScan(ctx, refresh)
 		status := s.Status()
 		if status.LastError != "" || status.NextRun != nil || status.State != StateIdle || s.Running() {
@@ -44,7 +48,7 @@ func TestMissingTMDBWaitsForSetupWithoutRecordingFailure(t *testing.T) {
 	if err := cfg.Save(settings); err != nil {
 		t.Fatal(err)
 	}
-	s.updateNextRun()
+	s.syncSchedule(timer, &schedule, time.Now(), false)
 	if s.Status().NextRun == nil {
 		t.Fatal("configured scheduler did not resume scheduling")
 	}

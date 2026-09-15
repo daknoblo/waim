@@ -17,14 +17,6 @@ type fakeJF struct {
 	episodes map[string][]jellyfin.Item
 }
 
-func (f *fakeJF) ResolveUserID(_ context.Context, _ string) (string, error) { return "user", nil }
-func (f *fakeJF) ItemsInLibrary(_ context.Context, _, libID string) ([]jellyfin.Item, error) {
-	return f.items[libID], nil
-}
-func (f *fakeJF) Episodes(_ context.Context, _, seriesID string) ([]jellyfin.Item, error) {
-	return f.episodes[seriesID], nil
-}
-
 func (f *fakeJF) catalog(settings config.Settings) jellyfin.Catalog {
 	var c jellyfin.Catalog
 	for _, lib := range settings.Libraries {

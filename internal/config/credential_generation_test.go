@@ -126,7 +126,10 @@ func TestRenameAndGlobalSavesPreserveGenerationButIgnoreSubmittedTokens(t *testi
 	}
 	changed := credentialSource(t, m)
 	stale.Locale = LocaleDE
-	if err := m.SaveGlobals(stale); err != nil {
+	if _, err := m.UpdateGlobals(func(current *Settings) error {
+		current.Locale = stale.Locale
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if current := credentialSource(t, m); current.CredentialGeneration != changed.CredentialGeneration || current.Jellyfin.APIKey != "key-b" {

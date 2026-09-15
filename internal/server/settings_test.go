@@ -19,7 +19,7 @@ import (
 )
 
 // newTestServer returns a Server wired to a throwaway config directory.
-// parseSettingsForm only touches s.cfg, so nothing else has to be built.
+// Form parsing only needs current settings, so nothing else has to be built.
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	mgr, err := config.Load(t.TempDir())
@@ -36,7 +36,7 @@ func parse(t *testing.T, s *Server, values url.Values) (config.Settings, []strin
 	if err := req.ParseForm(); err != nil {
 		t.Fatalf("ParseForm: %v", err)
 	}
-	return s.parseSettingsForm(req)
+	return parseSettingsFormFrom(req, s.cfg.Get())
 }
 
 // baseForm carries the numeric fields so validation-relevant values stay sane.

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"sort"
 
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/source"
@@ -69,9 +70,22 @@ func (s *Server) currentRun(ctx context.Context) (*store.ScanRun, error) {
 			oldEpisodes := m.Episodes
 			present := map[[2]int]bool{}
 			for _, ep := range item.Episodes {
-				if ep.ParentIndexNumber != nil && ep.IndexNumber != nil {
+				if ep.ParentIndexNumber != nil && ep.IndexNumber != nil && (*ep.ParentIndexNumber != 0 || settings.Scan.IncludeSpecials) {
 					present[[2]int{*ep.ParentIndexNumber, *ep.IndexNumber}] = true
 				}
+			}
+			if m.MetadataUnavailable || m.TMDBID <= 0 {
+				known := map[int]bool{}
+				for _, sn := range m.Seasons {
+					known[sn.Number] = true
+				}
+				for key := range present {
+					if !known[key[0]] {
+						m.Seasons = append(m.Seasons, store.SeasonStat{Number: key[0]})
+						known[key[0]] = true
+					}
+				}
+				sort.Slice(m.Seasons, func(i, j int) bool { return m.Seasons[i].Number < m.Seasons[j].Number })
 			}
 			m.Episodes, m.Minutes = 0, 0
 			for i := range m.Seasons {
@@ -82,9 +96,6 @@ func (s *Server) currentRun(ctx context.Context) (*store.ScanRun, error) {
 						sn.Episodes++
 					}
 				}
-				if oldEpisodes != m.Episodes {
-					run.Metadata.Pending = true
-				}
 				m.Episodes += sn.Episodes
 				m.Minutes += sn.Episodes * m.Runtime
 				for j := range sn.Ratings {
@@ -94,6 +105,9 @@ func (s *Server) currentRun(ctx context.Context) (*store.ScanRun, error) {
 						m.Minutes += rating.Minutes - m.Runtime
 					}
 				}
+			}
+			if oldEpisodes != m.Episodes {
+				run.Metadata.Pending = true
 			}
 		}
 		if i, exists := statIndex[key]; exists {
@@ -134,22 +148,53 @@ func (s *Server) currentRun(ctx context.Context) (*store.ScanRun, error) {
 	for _, u := range run.Upcoming {
 		u.Unconfirmed = unconfirmed
 		keep := false
+		var direct *store.MediaStat
+		collectionContext := store.Provenance{WatchOnly: true}
 		for _, m := range stats {
 			if u.MediaType == store.MediaSeries && m.Type == store.MediaSeries && u.TMDBID == m.TMDBID {
 				keep = true
 				u.Provenance = m.Provenance
 			}
 			if u.MediaType == store.MediaMovie {
-				if m.Type == store.MediaMovie && u.TMDBID == m.TMDBID && m.WatchOnly {
-					keep = true
-					u.Provenance = m.Provenance
+				if m.Type == store.MediaMovie && u.TMDBID == m.TMDBID {
+					direct = &m
+					if m.WatchOnly {
+						keep = true
+					}
 				}
-				if u.Kind == store.UpcomingCollectionPart && m.CollectionID > 0 && m.CollectionID == u.SourceTMDBID {
+				if u.Kind == store.UpcomingCollectionPart && m.Type == store.MediaMovie && m.CollectionID > 0 && m.CollectionID == u.SourceTMDBID {
 					keep = true
+					collectionContext.ContextReferences = append(collectionContext.ContextReferences, m.References...)
+					collectionContext.WatchOnly = collectionContext.WatchOnly && m.WatchOnly
 				}
 			}
 		}
 		if keep {
+			if u.MediaType == store.MediaMovie {
+				u.Provenance = collectionContext
+				if direct != nil {
+					u.Provenance = direct.Provenance
+				}
+				u.Unconfirmed = u.Unconfirmed || unconfirmed
+				refs := u.References
+				if direct == nil {
+					refs = u.ContextReferences
+				}
+				u.LibraryID, u.LibraryName, u.JellyfinID = "", "", ""
+				if len(refs) > 0 {
+					primary := refs[0]
+					for _, ref := range refs {
+						if ref.Type != media.Virtual {
+							primary = ref
+							break
+						}
+					}
+					u.LibraryID, u.LibraryName = primary.LibraryID, primary.LibraryName
+					if direct != nil {
+						u.JellyfinID = primary.ItemID
+					}
+				}
+			}
 			upcoming = append(upcoming, u)
 		}
 	}

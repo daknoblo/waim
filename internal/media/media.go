@@ -14,12 +14,15 @@ import (
 )
 
 const (
-	Jellyfin    = "jellyfin"
-	Virtual     = "virtual"
-	VirtualID   = "virtual"
-	VirtualName = "Virtual collection"
-	Movie       = "Movie"
-	Series      = "Series"
+	// Version 1 excludes Jellyfin placeholders and expands combined episodes.
+	// Changing normalization invalidates old physical inventories, not sources.
+	JellyfinInventoryVersion = 1
+	Jellyfin                 = "jellyfin"
+	Virtual                  = "virtual"
+	VirtualID                = "virtual"
+	VirtualName              = "Virtual collection"
+	Movie                    = "Movie"
+	Series                   = "Series"
 )
 
 type Reference struct {

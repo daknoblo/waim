@@ -149,17 +149,6 @@ func (s Settings) Redacted() Settings {
 	return cp
 }
 
-// EnabledLibraryIDs returns the IDs of libraries selected for scanning.
-func (s Settings) EnabledLibraryIDs() []string {
-	var ids []string
-	for _, l := range s.Libraries {
-		if l.Enabled {
-			ids = append(ids, l.ID)
-		}
-	}
-	return ids
-}
-
 // NormalizeLocale returns a supported locale, defaulting to English.
 func NormalizeLocale(loc string) string {
 	switch strings.ToLower(strings.TrimSpace(loc)) {

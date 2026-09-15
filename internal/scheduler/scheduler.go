@@ -42,14 +42,16 @@ type Scheduler struct {
 	store *store.Store
 	log   *slog.Logger
 
-	mu          sync.RWMutex
-	status      Status
-	triggerCh   chan int64
-	recomputeCh chan int64
-	running     atomic.Bool
-	progress    *progressState
-	tmdbFactory func(config.Settings) scanner.TMDBAPI
-	activities  *activity.Tracker
+	mu              sync.RWMutex
+	status          Status
+	triggerCh       chan int64
+	recomputeCh     chan int64
+	scheduleCh      chan struct{}
+	resetScheduleCh chan struct{}
+	running         atomic.Bool
+	progress        *progressState
+	tmdbFactory     func(config.Settings) scanner.TMDBAPI
+	activities      *activity.Tracker
 }
 
 // New creates a Scheduler.
@@ -58,13 +60,15 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*
 		log = slog.Default()
 	}
 	s := &Scheduler{
-		cfg:         cfg,
-		store:       st,
-		log:         log,
-		status:      Status{State: StateIdle},
-		triggerCh:   make(chan int64, 1),
-		recomputeCh: make(chan int64, 1),
-		progress:    &progressState{},
+		cfg:             cfg,
+		store:           st,
+		log:             log,
+		status:          Status{State: StateIdle},
+		triggerCh:       make(chan int64, 1),
+		recomputeCh:     make(chan int64, 1),
+		scheduleCh:      make(chan struct{}, 1),
+		resetScheduleCh: make(chan struct{}, 1),
+		progress:        &progressState{},
 	}
 	if len(activities) > 0 {
 		s.activities = activities[0]
@@ -175,6 +179,10 @@ func (s *Scheduler) Recompute() {
 	}
 	defer release()
 	select {
+	case s.scheduleCh <- struct{}{}:
+	default:
+	}
+	select {
 	case s.recomputeCh <- s.cfg.Gate().Epoch():
 	default:
 	}
@@ -186,19 +194,27 @@ func (s *Scheduler) Run(ctx context.Context) {
 	if s.cfg.Get().Scan.RunOnStart {
 		s.Trigger()
 	}
-	timer := time.NewTimer(s.nextInterval())
+	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
+	schedule := scanSchedule{}
+	s.syncSchedule(timer, &schedule, time.Now(), false)
 
 	for {
-		s.updateNextRun()
 		select {
 		case <-ctx.Done():
 			return
 		case epoch := <-s.triggerCh:
+			s.syncSchedule(timer, &schedule, time.Now(), false)
 			s.runScan(ctx, true, epoch)
-			s.resetTimer(timer)
+			s.syncSchedule(timer, &schedule, time.Now(), true)
 		case epoch := <-s.recomputeCh:
+			s.syncSchedule(timer, &schedule, time.Now(), false)
 			s.runScan(ctx, false, epoch)
+			s.syncSchedule(timer, &schedule, time.Now(), false)
+		case <-s.scheduleCh:
+			s.syncSchedule(timer, &schedule, time.Now(), false)
+		case <-s.resetScheduleCh:
+			s.syncSchedule(timer, &schedule, time.Now(), true)
 		case due := <-timer.C:
 			release, err := s.cfg.Gate().EnterScheduled(due)
 			if err != nil {
@@ -209,37 +225,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 				}
 				release()
 			}
-			s.resetTimer(timer)
+			s.syncSchedule(timer, &schedule, time.Now(), true)
 		}
-	}
-}
-
-func (s *Scheduler) nextInterval() time.Duration {
-	m := s.cfg.Get().Scan.IntervalMinutes
-	if m <= 0 {
-		return time.Hour // park; periodic runs are skipped when interval is 0
-	}
-	return time.Duration(m) * time.Minute
-}
-
-func (s *Scheduler) resetTimer(t *time.Timer) {
-	if !t.Stop() {
-		select {
-		case <-t.C:
-		default:
-		}
-	}
-	t.Reset(s.nextInterval())
-}
-
-func (s *Scheduler) updateNextRun() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.cfg.Get().Scan.IntervalMinutes > 0 {
-		next := time.Now().Add(s.nextInterval())
-		s.status.NextRun = &next
-	} else {
-		s.status.NextRun = nil
 	}
 }
 

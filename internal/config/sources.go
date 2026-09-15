@@ -53,7 +53,11 @@ func (s Source) Fingerprint() string {
 		}
 	}
 	sort.Strings(ids)
-	b, _ := json.Marshal([]any{s.ID, s.Type, strings.TrimRight(s.Jellyfin.URL, "/"), s.Jellyfin.UserID, s.CredentialGeneration, ids})
+	identity := []any{s.ID, s.Type, strings.TrimRight(s.Jellyfin.URL, "/"), s.Jellyfin.UserID, s.CredentialGeneration, ids}
+	if s.Type == media.Jellyfin {
+		identity = append(identity, media.JellyfinInventoryVersion)
+	}
+	b, _ := json.Marshal(identity)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }

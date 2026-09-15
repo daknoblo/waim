@@ -91,7 +91,10 @@ func TestSourceUpdatesAreTargetedAndRevisionChecked(t *testing.T) {
 		}(id)
 	}
 	wg.Wait()
-	if err := m.SaveGlobals(staleGlobals); err != nil {
+	if _, err := m.UpdateGlobals(func(current *Settings) error {
+		current.Locale = staleGlobals.Locale
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"a", "b"} {

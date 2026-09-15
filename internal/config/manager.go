@@ -186,17 +186,6 @@ func (m *Manager) Save(s Settings) error {
 	return m.saveLocked(s)
 }
 
-// SaveGlobals preserves sources even when a global settings form was opened
-// before a concurrent source edit.
-func (m *Manager) SaveGlobals(s Settings) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s.Sources = m.settings.Clone().Sources
-	s.Jellyfin = m.settings.Jellyfin
-	s.Libraries = m.settings.Libraries
-	return m.saveLocked(s)
-}
-
 func (m *Manager) saveLocked(s Settings, replacedCredentials ...string) error {
 	s = s.Clone()
 	s.Jellyfin = JellyfinSettings{}

@@ -295,14 +295,6 @@ func imdbSeasonURL(id string, season int) string {
 	return fmt.Sprintf("https://www.imdb.com/title/%s/episodes/?season=%d", id, season)
 }
 
-// FormatTime renders a time for display, or a localised "never" placeholder.
-func FormatTime(t *i18n.Translator, ts *time.Time) string {
-	if ts == nil || ts.IsZero() {
-		return t.T("common.never")
-	}
-	return ts.Local().Format("2006-01-02 15:04:05")
-}
-
 // FormatRelative renders a time relative to now, e.g. "5 minutes ago" or
 // "in 1 hour". Zero times yield a localised "never" placeholder.
 func FormatRelative(t *i18n.Translator, ts *time.Time) string {

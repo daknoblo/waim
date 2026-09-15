@@ -100,6 +100,56 @@ same-TMDB overlapping season ownership, watch add/remove during a scan, a
 standalone movie before/after release, per-instance badges/links and stale or
 unknown sources. Static demo checks do not replace live mutation acceptance.
 
+## Coverage and reachability
+
+```bash
+make coverage
+go tool cover -html=coverage/handwritten.out
+```
+
+The coverage target instruments all project packages, including calls made
+through integration tests in other packages. It writes full and handwritten
+profiles plus per-function reports under the gitignored `coverage/` directory;
+override the location with `COVERAGE_DIR=/path/to/output`. The handwritten view
+excludes generated `*_templ.go`, not application logic. Percentages measure Go
+statements, not JavaScript behavior or end-to-end completeness. The regular CI
+still runs its race-enabled suite; this optional measurement does not add a
+second coverage run to every image build.
+
+Go's `cover` tool merges repeated profile blocks from cross-package tests.
+Do not compute percentages by naively summing every raw profile line: one
+statement can appear in multiple test executables. For dead-code checks,
+include all three commands and tests and inspect template source before
+removing generated functions. Code reachable only from tests is not
+automatically obsolete; prefer testing the actual production API over keeping
+retired wrappers alive solely for their old tests.
+
+## Container builds
+
+The Docker builder runs on BuildKit's native `BUILDPLATFORM` and cross-compiles
+the static Go binary using `TARGETOS` and `TARGETARCH`. Release images target
+`linux/amd64` and `linux/arm64`; neither the Go build nor the runtime stage
+requires QEMU. The runtime remains distroless, running as `nonroot` with `/data`
+as its writable data volume.
+
+To validate both image architectures locally, including SBOM and provenance,
+use a Buildx builder with the `docker-container` driver:
+
+```bash
+docker buildx build --builder YOUR_BUILDER \
+  --platform linux/amd64,linux/arm64 \
+  --sbom=true --provenance=true \
+  --output type=oci,dest=/tmp/waim-multiarch.tar .
+```
+
+Module downloads and Go compilation use BuildKit cache mounts. Release jobs
+also retain channel-scoped GitHub Actions layer caches; cache mounts are local
+to a builder and are not restored by that layer-cache export. When measuring
+build changes, compare the same source, build arguments and output mode on
+isolated builders, distinguishing cold builds from warm rebuilds. Changing the
+build date forces relinking even when source code is unchanged. Local timings
+exclude registry pushes and are not a substitute for measurements on CI runners.
+
 ## Editing the UI
 
 The settings navigation has dependency-free JavaScript regression tests. With

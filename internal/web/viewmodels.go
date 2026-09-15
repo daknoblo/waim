@@ -126,22 +126,20 @@ type SettingsFeedback struct {
 
 // SettingsData is the full model for the settings page.
 type SettingsData struct {
-	Tab            string
-	Demo           bool
-	Sources        SourcesData
-	DataDir        string
-	DBSize         string
-	ConfigSize     string
-	Layout         Layout
-	Settings       config.Settings
-	Libraries      []config.Library
-	HasJellyfinKey bool
-	HasTMDBKey     bool
-	HasAIKey       bool
-	CacheEntries   int
-	Message        string
-	IsError        bool
-	Checks         map[string]ConnCheck
+	Tab          string
+	Demo         bool
+	Sources      SourcesData
+	DataDir      string
+	DBSize       string
+	ConfigSize   string
+	Layout       Layout
+	Settings     config.Settings
+	HasTMDBKey   bool
+	HasAIKey     bool
+	CacheEntries int
+	Message      string
+	IsError      bool
+	Checks       map[string]ConnCheck
 }
 
 // Check returns the connection result of a section, if one was produced.

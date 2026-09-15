@@ -84,9 +84,9 @@ func (r *Refresher) scheduled(ctx context.Context, due time.Time, work func(cont
 func untilNextCleanup(now time.Time) time.Duration {
 	next := time.Date(now.Year(), now.Month(), now.Day(), cleanupHour, 0, 0, 0, now.Location())
 	if !next.After(now) {
-		next = next.Add(24 * time.Hour)
+		next = next.AddDate(0, 0, 1)
 	}
-	return time.Until(next)
+	return next.Sub(now)
 }
 
 func resetTimer(t *time.Timer, d time.Duration) {

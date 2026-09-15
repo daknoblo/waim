@@ -149,11 +149,7 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			if !slices.Contains(s.catalog.Warnings, warning) {
 				res.Warnings = append(res.Warnings, warning)
 			}
-			kind := store.MediaMovie
-			if it.Type == media.Series {
-				kind = store.MediaSeries
-			}
-			res.Media = append(res.Media, store.MediaStat{Provenance: provenance(it), Type: kind, Title: it.Name, Year: it.ProductionYear, LibraryID: libID, LibraryName: libNames[libID]})
+			res.Media = append(res.Media, s.basicStat(it, libID, libNames[libID]))
 		}
 		if it.Type == media.Movie {
 			movies = append(movies, libItem{libID, it})
@@ -161,8 +157,10 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 		if it.Type == media.Series {
 			series = append(series, libItem{libID, it})
 		}
-		if sum := summaries[libID]; sum != nil {
-			sum.Total++
+		for _, id := range itemLibraries(it, libID) {
+			if sum := summaries[id]; sum != nil {
+				sum.Total++
+			}
 		}
 	}
 	for _, libID := range order {
@@ -171,6 +169,15 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 	}
 	run := activity.FromContext(ctx)
 	run.Phase(activity.Metadata, len(movies)+len(series))
+	itemDone := func(item media.Item, fallback string, missing int) {
+		for _, id := range itemLibraries(item, fallback) {
+			if sum := summaries[id]; sum != nil {
+				sum.Scanned++
+				sum.Missing += missing
+				s.reporter.ItemDone(id, missing)
+			}
+		}
+	}
 
 	// --- Movies: build owned-TMDB set, then evaluate collections. ---
 	ownedMovie := map[int64]bool{}
@@ -195,9 +202,6 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			return res, err
 		}
 		res.ItemsScanned++
-		if sum := summaries[m.libID]; sum != nil {
-			sum.Scanned++
-		}
 		s.reporter.SetCurrent(m.item.Name)
 
 		run.Current(m.item.Name)
@@ -219,10 +223,7 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 				}
 			}
 		}
-		if sum := summaries[m.libID]; sum != nil {
-			sum.Missing += missingCount
-		}
-		s.reporter.ItemDone(m.libID, missingCount)
+		itemDone(m.item, m.libID, missingCount)
 		run.Advance(len(res.Warnings) > beforeWarnings, m.item.TMDBID() == 0)
 	}
 
@@ -232,17 +233,11 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			return res, err
 		}
 		res.ItemsScanned++
-		if sum := summaries[sv.libID]; sum != nil {
-			sum.Scanned++
-		}
 		s.reporter.SetCurrent(sv.item.Name)
 		run.Current(sv.item.Name)
 		beforeWarnings := len(res.Warnings)
 		missing := s.scanSeries(ctx, sv.libID, libNames[sv.libID], sv.item, &res)
-		if sum := summaries[sv.libID]; sum != nil {
-			sum.Missing += missing
-		}
-		s.reporter.ItemDone(sv.libID, missing)
+		itemDone(sv.item, sv.libID, missing)
 		run.Advance(len(res.Warnings) > beforeWarnings, sv.item.TMDBID() == 0)
 	}
 
