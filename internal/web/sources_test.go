@@ -7,10 +7,46 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
 )
+
+func TestSourceRemovalSharesActionRowAndRequiresConfirmation(t *testing.T) {
+	cat, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, locale := range []string{"en", "de"} {
+		var b bytes.Buffer
+		d := SourcesData{Layout: Layout{T: cat.For(locale)}, Sources: []config.Source{
+			config.VirtualSource(),
+			{ID: "test-source", Type: media.Jellyfin, Name: "Test", Revision: 2},
+		}}
+		if err := Sources(d).Render(context.Background(), &b); err != nil {
+			t.Fatal(err)
+		}
+		html := b.String()
+		start := strings.Index(html, `class="source-actions `)
+		if start < 0 {
+			t.Fatal("action row missing")
+		}
+		end := strings.Index(html[start:], "</details>")
+		if end < 0 {
+			t.Fatal("removal not inside action row")
+		}
+		row := html[start : start+end]
+		for _, part := range []string{"/sources/test-source/libraries", "/sources/test-source/test", `class="ml-auto max-w-full text-right"`, `class="btn-danger cursor-pointer"`, `name="confirm"`, `required`, "/sources/test-source/remove"} {
+			if !strings.Contains(row, part) {
+				t.Fatalf("action row missing %s", part)
+			}
+		}
+		if strings.Contains(html, "/sources/virtual/remove") {
+			t.Fatal("virtual source has removal action")
+		}
+	}
+}
 
 func TestActionsUseCurrentMembershipAndSafeLinks(t *testing.T) {
 	cat, err := i18n.Load()

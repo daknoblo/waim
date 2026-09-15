@@ -117,7 +117,8 @@ docker compose up -d
 
 Then open <http://localhost:8080> and enter your TMDB API key on **Settings**.
 Use **Watch collection** immediately, or add Jellyfin instances on **Media
-sources**. Save each source, refresh its libraries, select them and save again.
+sources**. Adding a source automatically loads its available libraries; select
+the ones to scan and save the source.
 **Scan now** refreshes all active real sources; watch edits only recalculate
 using saved snapshots.
 

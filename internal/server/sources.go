@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -57,6 +58,17 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 	src := config.Source{ID: hex.EncodeToString(id[:]), Type: media.Jellyfin, Name: strings.TrimSpace(r.FormValue("name")), Enabled: true, Jellyfin: config.JellyfinSettings{URL: strings.TrimRight(strings.TrimSpace(r.FormValue("url")), "/"), APIKey: strings.TrimSpace(r.FormValue("key")), UserID: strings.TrimSpace(r.FormValue("user"))}}
 	if err := s.cfg.AddSource(src); err != nil {
 		s.renderSources(w, r, err.Error(), true)
+		return
+	}
+	s.changedCatalog()
+	saved, ok := s.cfg.Get().Source(src.ID)
+	if !ok {
+		http.Error(w, "source not found", http.StatusNotFound)
+		return
+	}
+	if err := s.refreshSourceLibraries(r.Context(), saved); err != nil {
+		s.log.Warn("initial library discovery failed", "sourceId", src.ID, "err", err)
+		s.renderSources(w, r, s.translator(r).T("sources.addedLibrariesFailed"), true)
 		return
 	}
 	s.changedCatalog()
@@ -128,16 +140,25 @@ func (s *Server) handleSourceLibraries(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if err := s.refreshSourceLibraries(r.Context(), src); err != nil {
+		s.log.Warn("library refresh failed", "sourceId", src.ID, "err", err)
+		s.renderSources(w, r, s.translator(r).T("sources.librariesFailed"), true)
+		return
+	}
+	s.changedCatalog()
+	http.Redirect(w, r, "/sources", http.StatusSeeOther)
+}
+
+func (s *Server) refreshSourceLibraries(ctx context.Context, src config.Source) error {
 	adapter, err := source.New(src)
 	var libs []media.Library
 	if err == nil {
-		libs, err = adapter.Libraries(r.Context())
+		libs, err = adapter.Libraries(ctx)
 	}
 	if err != nil {
-		s.renderSources(w, r, s.translator(r).T("sources.connectionError"), true)
-		return
+		return err
 	}
-	err = s.cfg.UpdateSource(src.ID, src.Revision, func(current *config.Source) error {
+	return s.cfg.UpdateSource(src.ID, src.Revision, func(current *config.Source) error {
 		enabled := map[string]bool{}
 		for _, lib := range current.Libraries {
 			enabled[lib.ID] = lib.Enabled
@@ -148,12 +169,6 @@ func (s *Server) handleSourceLibraries(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
-	if err != nil {
-		s.renderSources(w, r, err.Error(), true)
-		return
-	}
-	s.changedCatalog()
-	http.Redirect(w, r, "/sources", http.StatusSeeOther)
 }
 
 func (s *Server) handleTestSource(w http.ResponseWriter, r *http.Request) {

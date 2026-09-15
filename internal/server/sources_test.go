@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -101,6 +102,13 @@ func TestCollectionEndpointsUseVerifiedMetadataAndProtectMutations(t *testing.T)
 
 func TestSourceFormsAreIndependent(t *testing.T) {
 	s := featureServer(t)
+	jf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/Library/MediaFolders" {
+			t.Errorf("unexpected discovery request: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"Items":[]}`))
+	}))
+	defer jf.Close()
 	post := func(path string, form url.Values) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("POST", path, strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -110,19 +118,20 @@ func TestSourceFormsAreIndependent(t *testing.T) {
 	}
 
 	for _, name := range []string{"A", "B"} {
-		if w := post("/sources", url.Values{"name": {name}, "url": {"https://" + name + ".example"}, "key": {"key-" + name}}); w.Code != 303 {
+		if w := post("/sources", url.Values{"name": {name}, "url": {jf.URL}, "key": {"key-" + name}}); w.Code != 303 {
 			t.Fatal(w.Body.String())
 		}
 	}
 	a, b := s.cfg.Get().Sources[1], s.cfg.Get().Sources[2]
-	if w := post("/sources/"+a.ID, url.Values{"revision": {"1"}, "name": {"Renamed"}, "url": {a.Jellyfin.URL}, "enabled": {"on"}}); w.Code != 303 {
+	revision := strconv.FormatInt(a.Revision, 10)
+	if w := post("/sources/"+a.ID, url.Values{"revision": {revision}, "name": {"Renamed"}, "url": {a.Jellyfin.URL}, "enabled": {"on"}}); w.Code != 303 {
 		t.Fatal(w.Body.String())
 	}
 	bNow, _ := s.cfg.Get().Source(b.ID)
-	if bNow.Jellyfin.APIKey != "key-B" || bNow.Revision != 1 {
+	if bNow.Jellyfin.APIKey != "key-B" || bNow.Revision != b.Revision {
 		t.Fatal("independent source overwritten")
 	}
-	if w := post("/sources/"+a.ID, url.Values{"revision": {"1"}, "name": {"Old form"}, "url": {a.Jellyfin.URL}}); !strings.Contains(w.Body.String(), "reload") {
+	if w := post("/sources/"+a.ID, url.Values{"revision": {revision}, "name": {"Old form"}, "url": {a.Jellyfin.URL}}); !strings.Contains(w.Body.String(), "reload") {
 		t.Fatal("stale form accepted")
 	}
 	aNow, _ := s.cfg.Get().Source(a.ID)

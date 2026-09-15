@@ -50,6 +50,12 @@
   .btn-ghost {
     @apply inline-flex min-h-[2.75rem] items-center justify-center rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white sm:min-h-0;
   }
+  .btn-danger {
+    @apply inline-flex min-h-[2.75rem] items-center justify-center rounded-lg border border-red-600 bg-red-600 px-3 py-1.5 text-sm text-white transition hover:border-red-500 hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 sm:min-h-0;
+  }
+  summary.btn-danger::-webkit-details-marker {
+    display: none;
+  }
 
   .input {
     @apply min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-base text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:min-h-0;

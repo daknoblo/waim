@@ -76,6 +76,12 @@ rejected instead of overwriting another edit. Changing a Jellyfin address
 Blank keys otherwise retain the saved value. Test/refresh buttons use **saved**
 settings, not unsaved form fields. AI host changes also require a key.
 
+Adding a Jellyfin source immediately fetches its available libraries. They start
+unselected so you can choose what to scan. If discovery fails, the saved source
+is retained with a visible retry message; do not add it again. A later manual
+refresh preserves existing library selections. Source removal is the red,
+right-aligned action alongside refresh/test and still requires confirmation.
+
 ### Migration and snapshot identity
 
 Legacy schema 2 configuration migrates once to `jellyfin-default`, preserving

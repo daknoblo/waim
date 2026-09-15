@@ -194,8 +194,9 @@ Docker does not automatically repair permissions on populated volumes.
    connection is tested as soon as its details are complete.
 3. Optionally add named Jellyfin instances on **Media sources**.
 4. Enter your TMDB API key.
-5. For each saved source, click **Refresh libraries from Jellyfin**, select
-   libraries and **Save source**. Or open **Watch collection** and add TMDB titles.
+5. Adding a source automatically loads its libraries. Select libraries and
+   **Save source**; use **Refresh libraries from Jellyfin** to retry a failed
+   fetch or load later changes. Or open **Watch collection** and add TMDB titles.
 6. Adjust the scan interval and rate limit if needed.
 7. Trigger a scan with **Scan now** or wait for the scheduled run.
 
