@@ -276,7 +276,125 @@
     });
   }
 
+  // Source forms are explicit saves: never submit one just to change tabs.
+  function sourceNavigationGuard() {
+    var forms = document.querySelectorAll("form[data-source-edit]");
+    var dirtySources = new Set();
+    var allowed = false;
+    forms.forEach(function (sourceForm) {
+      var draft = sourceForm.dataset.sourceDirty === "true";
+      var baseline = JSON.stringify(Array.from(new FormData(sourceForm).entries()));
+      if (draft) dirtySources.add(sourceForm);
+      function changed() {
+        allowed = false;
+        var current = JSON.stringify(Array.from(new FormData(sourceForm).entries()));
+        if (draft || current !== baseline) dirtySources.add(sourceForm);
+        else dirtySources.delete(sourceForm);
+      }
+      sourceForm.addEventListener("input", changed);
+      sourceForm.addEventListener("change", changed);
+      sourceForm.addEventListener("submit", function () {
+        dirtySources.delete(sourceForm);
+        allowed = false;
+      });
+    });
+    function confirmNavigation() {
+      if (!dirtySources.size || allowed) return true;
+      var first = dirtySources.values().next().value;
+      allowed = window.confirm(first.dataset.unsavedPrompt);
+      return allowed;
+    }
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest ? e.target.closest("a[data-settings-tab]") : null;
+      if (!link || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button > 0) return;
+      if (!confirmNavigation()) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    }, true);
+    window.addEventListener("beforeunload", function (e) {
+      if (dirtySources.size && !allowed) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
+    return {
+      confirmNavigation: confirmNavigation,
+      cancelNavigation: function () { allowed = false; }
+    };
+  }
+
+  // A tab navigation waits for the active form's final save, never aborting it.
+  // Failed saves keep the form and its draft in place instead of navigating.
+  function settingsNavigation() {
+    var sourceGuard = sourceNavigationGuard();
+    var form = document.getElementById("settings-form");
+    if (!form || !window.htmx) return;
+    var dirty = false, busy = false, destination = "", field = "";
+    function indicator(message) {
+      var el = document.getElementById("save-indicator");
+      if (el) el.textContent = message;
+    }
+    form.addEventListener("input", function (e) {
+      dirty = true;
+      field = e.target.name || "";
+    }, true);
+    form.addEventListener("change", function (e) {
+      dirty = true;
+      field = e.target.name || "";
+    }, true);
+    form.addEventListener("htmx:configRequest", function (e) {
+      if (field) e.detail.headers["HX-Trigger-Name"] = field;
+    });
+    form.addEventListener("htmx:beforeRequest", function () {
+      busy = true;
+      dirty = false;
+      indicator(form.dataset.saving);
+    });
+    form.addEventListener("htmx:afterRequest", function (e) {
+      busy = false;
+      var saved = e.detail.xhr && e.detail.xhr.getResponseHeader("X-Waim-Save") === "ok";
+      if (!saved) {
+        dirty = true;
+        destination = "";
+        sourceGuard.cancelNavigation();
+        if (!e.detail.xhr || e.detail.xhr.status >= 400) indicator(form.dataset.failed);
+        return;
+      }
+      if (!destination) destination = e.detail.xhr.getResponseHeader("X-Waim-Redirect") || "";
+      if (destination) {
+        if (dirty) window.htmx.trigger(form, "settings-save");
+        else {
+          var next = destination;
+          destination = "";
+          if (sourceGuard.confirmNavigation()) window.location.assign(next);
+        }
+      }
+    });
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest ? e.target.closest("a[data-settings-tab]") : null;
+      if (e.defaultPrevented || !link || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || (!dirty && !busy)) return;
+      e.preventDefault();
+      destination = link.href;
+      if (!busy) {
+        if (!form.reportValidity()) { destination = ""; sourceGuard.cancelNavigation(); return; }
+        window.htmx.trigger(form, "settings-save");
+      }
+    });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (form.reportValidity()) window.htmx.trigger(form, "settings-save");
+    });
+    window.addEventListener("beforeunload", function (e) {
+      if (dirty || busy) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    settingsNavigation();
     var box = document.getElementById("finding-search");
     if (box) {
       box.addEventListener("input", filterFindings);

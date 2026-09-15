@@ -5,38 +5,48 @@ import "github.com/daknoblo/waim/internal/config"
 import "github.com/daknoblo/waim/internal/i18n"
 
 templ Settings(d SettingsData) {
-	@Page(d.Layout, settingsBody(d))
+	@Page(d.Layout, settingsBody(d.normalized()))
 }
 
 templ settingsBody(d SettingsData) {
+	<h1 class="mb-4 text-2xl font-semibold">{ d.Layout.T.T("nav.settings") }</h1>
+	<nav aria-label={ d.Layout.T.T("settings.tabs.label") } class="mb-5 flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900/50 p-2">
+		for _, tab := range SettingsTabs {
+			<a href={ templ.SafeURL(SettingsURL(tab)) } data-settings-tab={ tab } class={ "nav-link text-sm", templ.KV("nav-link-active", d.Tab == tab) }
+				if d.Tab == tab {
+					aria-current="page"
+				}
+			>{ d.Layout.T.T("settings.tab." + tab) }</a>
+		}
+	</nav>
+	if d.Message != "" {
+		<div role="status" class={ "mb-4 rounded-lg px-4 py-3 text-sm", templ.KV("alert-ok", !d.IsError), templ.KV("alert-error", d.IsError) }>{ d.Message }</div>
+	}
+	if d.Tab == "media" {
+		@sourcesBody(d.Sources)
+	}
 	<noscript>
 		<p class="mb-4 rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{ d.Layout.T.T("settings.noScript") }</p>
 	</noscript>
 	<form
+		id="settings-form"
 		method="post"
-		action="/settings"
-		class="grid gap-4"
-		hx-post="/settings"
-		hx-trigger="change"
+		action={ SettingsURL(d.Tab) }
+		class="mt-4 grid gap-4"
+		hx-post={ SettingsURL(d.Tab) }
+		hx-trigger="change, settings-save"
 		hx-swap="none"
-		hx-sync="this:replace"
+		hx-sync="this:queue last"
 		hx-indicator="#save-indicator"
+		data-saving={ d.Layout.T.T("settings.saving") }
+		data-failed={ d.Layout.T.T("settings.saveRetry") }
 	>
-		if d.Message != "" {
-			<div class={ "rounded-lg px-4 py-3 text-sm", templ.KV("alert-ok", !d.IsError), templ.KV("alert-error", d.IsError) }>
-				{ d.Message }
-			</div>
-		}
-
-		<div class="card"><a href="/sources" class="btn-ghost">{ d.Layout.T.T("sources.title") }</a></div>
-
+		@MutationEpoch()
+		<input type="hidden" name="tab" value={ d.Tab }/>
+		if d.Tab == "metadata" {
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdb") }</h2>
 			@secretField(d.Layout.T, "tmdb_api_key", d.Layout.T.T("settings.tmdbApiKey"), d.HasTMDBKey)
-			<div class="grid gap-3 sm:grid-cols-2">
-				@choiceSelectField(d.Layout.T.T("settings.language"), "tmdb_language", d.Settings.TMDB.Language, MetadataLanguages(d.Settings.TMDB.Language))
-				@choiceSelectField(d.Layout.T.T("settings.region"), "tmdb_region", d.Settings.TMDB.Region, Regions(d.Settings.TMDB.Region))
-			</div>
 			@connStatusBlock("conn-tmdb", d.Check("tmdb"))
 		</div>
 
@@ -49,7 +59,8 @@ templ settingsBody(d SettingsData) {
 			@textField(d.Layout.T.T("settings.aiModel"), "ai_model", "text", d.Settings.AI.Model, "gpt-4o")
 			@connStatusBlock("conn-ai", d.Check("ai"))
 		</div>
-
+		}
+		if d.Tab == "media" {
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.scan") }</h2>
 			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.scanHint") }</p>
@@ -61,7 +72,8 @@ templ settingsBody(d SettingsData) {
 			@checkboxField(d.Layout.T.T("settings.includeSpecials"), "scan_include_specials", d.Settings.Scan.IncludeSpecials)
 			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.includeSpecialsHint") }</p>
 		</div>
-
+		}
+		if d.Tab == "metadata" {
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdbUsage") }</h2>
 			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.tmdbUsageHint") }</p>
@@ -98,7 +110,8 @@ templ settingsBody(d SettingsData) {
 				</div>
 			</div>
 		</div>
-
+		}
+		if d.Tab == "other" {
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.logging") }</h2>
 			<label class="grid max-w-xs gap-1 text-sm">
@@ -111,16 +124,31 @@ templ settingsBody(d SettingsData) {
 			</label>
 			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.logLevelHint") }</p>
 		</div>
-
+		}
+		if d.Tab == "interface" {
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.uiLanguage") }</h2>
-			<select name="locale" class="input w-full max-w-xs">
+			<select name="locale" aria-label={ d.Layout.T.T("settings.uiLanguage") } class="input w-full max-w-xs">
 				for _, lang := range d.Layout.Languages {
-					<option value={ lang.Code } selected?={ lang.Active }>{ lang.Label }</option>
+					<option value={ lang.Code } selected?={ lang.Code == d.Settings.Locale }>{ lang.Label }</option>
 				}
 			</select>
+			<div class="grid gap-3 sm:grid-cols-2">
+				@choiceSelectField(d.Layout.T.T("settings.language"), "tmdb_language", d.Settings.TMDB.Language, MetadataLanguages(d.Settings.TMDB.Language))
+				@choiceSelectField(d.Layout.T.T("settings.region"), "tmdb_region", d.Settings.TMDB.Region, Regions(d.Settings.TMDB.Region))
+			</div>
 		</div>
-
+		}
+		if d.Tab == "other" {
+		<div class="card grid gap-3">
+			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.storage") }</h2>
+			<dl class="grid gap-2 text-sm">
+				<div><dt class="text-slate-400">{ d.Layout.T.T("settings.dataDir") }</dt><dd class="break-all font-mono">{ d.DataDir }</dd></div>
+				<div><dt class="text-slate-400">{ d.Layout.T.T("settings.dbSize") }</dt><dd>{ d.DBSize }</dd></div>
+				<div><dt class="text-slate-400">{ d.Layout.T.T("settings.configSize") }</dt><dd>{ d.ConfigSize }</dd></div>
+				<div><dt class="text-slate-400">{ d.Layout.T.T("settings.cacheEntries") }</dt><dd>{ strconv.Itoa(d.CacheEntries) }</dd></div>
+			</dl>
+		</div>
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.exports") }</h2>
 			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.exportsHint") }</p>
@@ -129,11 +157,15 @@ templ settingsBody(d SettingsData) {
 				<a class="btn-ghost" href="/export/sync">{ d.Layout.T.T("settings.exportSync") }</a>
 			</div>
 		</div>
-
-		<div class="sticky-actions flex justify-end">
-			<div id="save-indicator" class="text-sm text-slate-400">{ d.Layout.T.T("settings.autoSaveHint") }</div>
+		}
+		<div class="sticky-actions flex flex-wrap items-center justify-end gap-3">
+			<div id="save-indicator" role="status" class="text-sm text-slate-400">{ d.Layout.T.T("settings.autoSaveHint") }</div>
+			<button class="btn-primary" type="submit">{ d.Layout.T.T("settings.save") }</button>
 		</div>
 	</form>
+	if d.Tab == "other" {
+		@dangerZone(d.Layout.T, d.Demo)
+	}
 }
 
 // LibraryList is the swap target of "refresh libraries", so reloading the list
@@ -176,7 +208,7 @@ templ SettingsFeedbackFragment(t *i18n.Translator, fb SettingsFeedback) {
 			</div>
 		}
 	}
-	<div id="save-indicator" hx-swap-oob="true" class={ "text-sm", saveStateClass(fb.SaveState) }>
+	<div id="save-indicator" role="status" hx-swap-oob="true" class={ "text-sm", saveStateClass(fb.SaveState) }>
 		{ fb.SaveMessage }
 	</div>
 }

@@ -139,7 +139,7 @@ func TestSourceFormsAreIndependent(t *testing.T) {
 		t.Fatal("stale form overwrote name")
 	}
 	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/sources", nil))
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/settings?tab=media", nil))
 	if strings.Contains(w.Body.String(), "key-A") || strings.Contains(w.Body.String(), "key-B") {
 		t.Fatal("source form leaked keys")
 	}

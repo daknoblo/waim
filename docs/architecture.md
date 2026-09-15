@@ -38,6 +38,8 @@ background scans. TMDB is required for metadata; Jellyfin instances are optional
 | --------------------- | --------------------------------------------------------------------- |
 | `cmd/waim`            | Entry point, wiring, graceful shutdown, container healthcheck mode.   |
 | `internal/config`     | Settings model, JSON load/save, transparent API-key encryption.       |
+| `internal/maintenance` | Shared nonblocking admission gate, reset epochs and stale-work protection. |
+| `internal/reset`      | Transactional reset orchestration and idempotent factory-reset recovery. |
 | `internal/crypto`     | Key file handling + AES-256-GCM encrypt/decrypt.                       |
 | `internal/httpx`      | Shared upstream HTTP behaviour: redirect policy and error sanitising.  |
 | `internal/store`      | SQLite persistence (scan runs, findings, key/value) + migrations.     |
@@ -117,6 +119,54 @@ erase real refresh growth history.
 
 Scheduler, refresher and suggestion workers are cancelled/joined before SQLite
 closes. No plugin framework, Plex/Emby implementation or media write API is added.
+
+## Settings and maintenance boundaries
+
+Settings use four server-rendered link tabs (`media`, `metadata`, `interface`,
+`other`). Only the active global form posts; `config.Manager.UpdateGlobals`
+applies its owned fields to the latest configuration under the manager mutex.
+Sources keep their independent revision-checked forms and existing POST routes;
+their page/feedback now lives in the media tab. Autosave navigation waits for
+`X-Waim-Save: ok`; failed or pending-key saves preserve the draft. Forms carry
+`_epoch`, a per-process nonce plus persisted reset generation. Legacy unversioned
+POSTs are accepted only before the database has ever been reset.
+
+All runtime services share `cfg.Gate()`. `Gate.Enter()` returns a release
+function or rejects immediately. HTTP data reads/exports also hold admission,
+so they cannot observe half of a reset. Scheduler, refresher and suggestion
+admission spans actual work and final publication, including goroutine startup.
+`Gate.TryReset()` succeeds only with no admitted work or other reset; it never
+cancels workers. Manual scan queues carry the epoch and timers use
+`EnterScheduled`, which discards pre-reset ticks instead of immediately
+refilling data after maintenance.
+
+Startup must call `reset.New(cfg, st).Recover(ctx)` before workers or HTTP.
+For a confirmed reset, `Service.Apply(ctx, scope, token, after)` owns the
+exclusive lease. The `after` callback clears suggestions, scheduler queues/status
+and activity; factory resets additionally clear retained logs and restore the
+log level. Tokens are checked while exclusive, so concurrent confirmed requests
+cannot apply the same reset twice.
+
+`Store.ResetData` transactionally deletes scoped data and increments both the
+catalog revision and the persistent reset epoch. Factory deletion also commits
+a `factory_pending` flag before `Manager.FactoryDefaults` replaces and flushes
+configuration. The marker is cleared only after configuration durability is
+established. A committed but incomplete factory reset returns failure, closes
+ordinary admission, and can only be finished by a confirmed factory retry or
+startup recovery. A failed DB transaction leaves the original configuration
+untouched. Reset transactions use SQLite `synchronous=FULL`; that connection
+remains in the stronger durability mode until reopened.
+
+Both deletion and marker completion explicitly promote and pin their own
+connection to `FULL` through commit. Recovery does not rely on deletion having
+set a previous connection's mode: a reopened Store starts at `NORMAL`. Ordinary
+admission is reopened only after the completion marker has durably committed.
+
+The marker contains no credentials or configuration backup. Reset recovery is
+idempotent and does not rerun committed deletion. `master.key`, the database
+file, migration records and monotonic epochs remain infrastructure. See
+[the scope matrix](configuration.md#danger-zone) for retained data and the
+distinction between logical deletion and secure disk erasure.
 
 ## Encryption model
 

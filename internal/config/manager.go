@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/daknoblo/waim/internal/crypto"
+	"github.com/daknoblo/waim/internal/maintenance"
 	"github.com/daknoblo/waim/internal/media"
 )
 
@@ -76,6 +77,7 @@ type Manager struct {
 	keysUnreadable bool
 	settings       Settings
 	disk           stored
+	gate           *maintenance.Gate
 }
 
 // Load reads (or initialises) the configuration in dataDir.
@@ -92,7 +94,7 @@ func Load(dataDir string) (*Manager, error) {
 	}
 	path := filepath.Join(dataDir, "config.json")
 
-	m := &Manager{path: path, keyPath: filepath.Join(dataDir, KeyFileName)}
+	m := &Manager{path: path, keyPath: filepath.Join(dataDir, KeyFileName), gate: maintenance.New()}
 
 	cipher, created, err := crypto.LoadOrCreateKeyFile(m.keyPath)
 	if err != nil {

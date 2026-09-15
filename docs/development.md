@@ -102,6 +102,11 @@ unknown sources. Static demo checks do not replace live mutation acceptance.
 
 ## Editing the UI
 
+The settings navigation has dependency-free JavaScript regression tests. With
+Node.js 22 or newer available, run `node --test scripts/settings-navigation.test.cjs`.
+CI runs these alongside the Go suite to guard pending saves and explicit source
+edits during tab navigation; Node.js is not required to build or run waim.
+
 The original film-reel/question-mark icon is shared by the header and the
 SVG favicon (`internal/web/assets/static/waim-icon.svg`). It is embedded and
 versioned with the other assets. Browser titles use `[DEV] waim — ...` for

@@ -22,11 +22,23 @@ func (s *Server) changedCatalog() {
 }
 
 func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
-	s.renderSources(w, r, "", false)
+	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
 }
 
-func (s *Server) renderSources(w http.ResponseWriter, r *http.Request, message string, failed bool) {
-	d := web.SourcesData{Layout: s.layout(r, "sources"), Sources: s.cfg.Get().Redacted().Sources, Message: message, Failed: failed}
+type sourceDraftKey struct{}
+
+func (s *Server) renderSources(w http.ResponseWriter, r *http.Request, message string, failed bool, drafts ...*config.Source) {
+	if len(drafts) > 0 {
+		r = r.WithContext(context.WithValue(r.Context(), sourceDraftKey{}, drafts[0]))
+	}
+	q := r.URL.Query()
+	q.Set("tab", "media")
+	r.URL.RawQuery = q.Encode()
+	s.renderSettings(w, r, message, failed)
+}
+
+func (s *Server) sourceSettingsData(r *http.Request) web.SourcesData {
+	d := web.SourcesData{Layout: s.layout(r, web.NavSettings), Sources: s.cfg.Get().Redacted().Sources}
 	for _, src := range s.cfg.Get().Sources {
 		if src.Type == media.Virtual || !src.Enabled {
 			continue
@@ -43,7 +55,20 @@ func (s *Server) renderSources(w http.ResponseWriter, r *http.Request, message s
 			d.Warnings = append(d.Warnings, src.Name+": "+s.translator(r).T("sources.stale"))
 		}
 	}
-	s.render(w, r, web.Sources(d))
+	if draft, ok := r.Context().Value(sourceDraftKey{}).(*config.Source); ok {
+		found := false
+		for i := range d.Sources {
+			if d.Sources[i].ID == draft.ID {
+				d.Sources[i] = *draft
+				d.EditDraftID = draft.ID
+				found = true
+			}
+		}
+		if !found {
+			d.AddDraft = *draft
+		}
+	}
+	return d
 }
 
 func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +83,8 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 	}
 	src := config.Source{ID: hex.EncodeToString(id[:]), Type: media.Jellyfin, Name: strings.TrimSpace(r.FormValue("name")), Enabled: true, Jellyfin: config.JellyfinSettings{URL: strings.TrimRight(strings.TrimSpace(r.FormValue("url")), "/"), APIKey: strings.TrimSpace(r.FormValue("key")), UserID: strings.TrimSpace(r.FormValue("user"))}}
 	if err := s.cfg.AddSource(src); err != nil {
-		s.renderSources(w, r, err.Error(), true)
+		src.Jellyfin.APIKey = ""
+		s.renderSources(w, r, err.Error(), true, &src)
 		return
 	}
 	s.changedCatalog()
@@ -73,7 +99,7 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.changedCatalog()
-	http.Redirect(w, r, "/sources", http.StatusSeeOther)
+	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
 }
 
 func sourceRevision(r *http.Request) (int64, error) {
@@ -114,11 +140,21 @@ func (s *Server) handleUpdateSource(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	if err != nil {
-		s.renderSources(w, r, err.Error(), true)
+		draft, _ := s.cfg.Get().Source(r.PathValue("id"))
+		draft.Name, draft.Revision, draft.Enabled = r.FormValue("name"), rev, r.FormValue("enabled") == "on"
+		draft.Jellyfin = config.JellyfinSettings{URL: r.FormValue("url"), UserID: r.FormValue("user")}
+		selected := map[string]bool{}
+		for _, id := range r.Form["library"] {
+			selected[id] = true
+		}
+		for i := range draft.Libraries {
+			draft.Libraries[i].Enabled = selected[draft.Libraries[i].ID]
+		}
+		s.renderSources(w, r, err.Error(), true, &draft)
 		return
 	}
 	s.changedCatalog()
-	http.Redirect(w, r, "/sources", http.StatusSeeOther)
+	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
 }
 
 func (s *Server) handleRemoveSource(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +168,7 @@ func (s *Server) handleRemoveSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.changedCatalog()
-	http.Redirect(w, r, "/sources", http.StatusSeeOther)
+	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
 }
 
 func (s *Server) handleSourceLibraries(w http.ResponseWriter, r *http.Request) {
@@ -147,10 +183,15 @@ func (s *Server) handleSourceLibraries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.changedCatalog()
-	http.Redirect(w, r, "/sources", http.StatusSeeOther)
+	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
 }
 
 func (s *Server) refreshSourceLibraries(ctx context.Context, src config.Source) (resultErr error) {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		return err
+	}
+	defer release()
 	run := s.activities.Start(activity.Sources)
 	ctx = activity.WithRun(ctx, run)
 	run.Phase(activity.Inventory, -1)

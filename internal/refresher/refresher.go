@@ -52,11 +52,11 @@ func (r *Refresher) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-refreshTimer.C:
-			r.refreshBatch(ctx)
+		case due := <-refreshTimer.C:
+			r.scheduled(ctx, due, r.refreshBatch)
 			resetTimer(refreshTimer, r.nextInterval())
-		case <-cleanupTimer.C:
-			r.cleanup(ctx)
+		case due := <-cleanupTimer.C:
+			r.scheduled(ctx, due, r.cleanup)
 			resetTimer(cleanupTimer, untilNextCleanup(time.Now()))
 		}
 	}
@@ -68,6 +68,16 @@ func (r *Refresher) nextInterval() time.Duration {
 		m = 1
 	}
 	return time.Duration(m) * time.Minute
+}
+
+func (r *Refresher) scheduled(ctx context.Context, due time.Time, work func(context.Context)) {
+	release, err := r.cfg.Gate().EnterScheduled(due)
+	if err != nil {
+		r.log.Info("scheduled cache work skipped after or during maintenance")
+		return
+	}
+	defer release()
+	work(ctx)
 }
 
 // untilNextCleanup returns the duration from now until the next cleanupHour.
@@ -91,6 +101,12 @@ func resetTimer(t *time.Timer, d time.Duration) {
 
 // refreshBatch re-fetches the oldest RefreshPercent share of cache entries.
 func (r *Refresher) refreshBatch(ctx context.Context) {
+	release, err := r.cfg.Gate().Enter()
+	if err != nil {
+		r.log.Warn("cache refresh skipped during maintenance")
+		return
+	}
+	defer release()
 	settings := r.cfg.Get()
 	cache := settings.Cache
 	if !cache.RefreshEnabled {
@@ -165,6 +181,12 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 // cleanup removes cache entries that have not been used by a scan or suggestion
 // for the configured number of days.
 func (r *Refresher) cleanup(ctx context.Context) {
+	release, err := r.cfg.Gate().Enter()
+	if err != nil {
+		r.log.Warn("cache cleanup skipped during maintenance")
+		return
+	}
+	defer release()
 	cache := r.cfg.Get().Cache
 	if !cache.CleanupEnabled {
 		return

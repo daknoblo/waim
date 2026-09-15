@@ -83,6 +83,10 @@ func TestSuggestionsReportTitleAndPendingAIAndJoinOnClose(t *testing.T) {
 			for i := range 2 {
 				select {
 				case state := <-entered:
+					if lease, err := cfg.Gate().TryReset(); err == nil {
+						lease.Finish(cfg.Gate().Epoch(), cfg.Gate().FactoryEpoch(), false)
+						t.Error("reset admitted while suggestions are in flight")
+					}
 					if state.Status != activity.Running {
 						t.Errorf("not live: %+v", state)
 					}

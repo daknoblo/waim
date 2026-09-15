@@ -144,13 +144,20 @@ func (s *Service) NeedsRefresh(ctx context.Context) bool {
 
 // Generate rebuilds suggestions in the background, ignoring overlapping calls.
 func (s *Service) Generate() {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		s.log.Warn("suggestions skipped during maintenance")
+		return
+	}
 	s.mu.Lock()
 	if s.ctx.Err() != nil {
 		s.mu.Unlock()
+		release()
 		return
 	}
 	if !s.running.CompareAndSwap(false, true) {
 		s.mu.Unlock()
+		release()
 		return
 	}
 	s.wg.Add(1)
@@ -158,6 +165,7 @@ func (s *Service) Generate() {
 	run := s.activities.Start(activity.Suggestions)
 	s.mu.Unlock()
 	go func() {
+		defer release()
 		defer s.wg.Done()
 		defer s.running.Store(false)
 		ctx, cancel := context.WithTimeout(s.ctx, generateLimit)

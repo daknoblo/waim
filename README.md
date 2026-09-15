@@ -80,8 +80,12 @@ Huntarr or Missingarr.
   suggestions reuse data instead of re-loading everything from TMDB.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
   rest** (AES-256-GCM with a key generated on first start). The settings page
-  saves global settings as you type. Source-specific forms use explicit saves,
-  revision checks, connection tests and library refreshes.
+  groups settings into **Media management**, **Metadata**, **Interface** and
+  **Other**. Global fields autosave within their own tab; source-specific forms
+  use explicit saves, revision checks, connection tests and library refreshes.
+- A guarded **Danger Zone** can reset metadata, imported inventories or all user
+  state. Resets reject active work instead of cancelling it, never delete media
+  on your servers, and keep the persistent encryption key and database file.
 - Export of settings (keys stay encrypted, never plaintext) and of the current
   sync state.
 - Bilingual UI (English / German) with an in-app language switch.
@@ -144,9 +148,9 @@ curl -fsSL https://raw.githubusercontent.com/daknoblo/waim/main/deploy/docker-co
 docker compose up -d
 ```
 
-Then open <http://localhost:8080> and enter your TMDB API key on **Settings**.
-Use **Virtual collection** immediately, or add Jellyfin instances on **Media
-sources**. Adding a source automatically loads its available libraries; select
+Then open <http://localhost:8080> and enter your TMDB API key on **Settings → Metadata**.
+Use **Virtual collection** immediately, or add Jellyfin instances on **Settings →
+Media management**. Adding a source automatically loads its available libraries; select
 the ones to scan and save the source.
 **Scan now** refreshes all active real sources; watch edits only recalculate
 using saved snapshots.

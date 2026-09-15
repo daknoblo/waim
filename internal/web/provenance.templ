@@ -42,6 +42,7 @@ func sourceLabel(t *i18n.Translator,ref media.Reference) string {
 
 templ WatchForm(t *i18n.Translator,kind string,id int64,remove bool) {
 	<form method="post" action={ watchAction(remove) }>
+		@MutationEpoch()
 		<input type="hidden" name="kind" value={ kind }/>
 		<input type="hidden" name="id" value={ strconv.FormatInt(id,10) }/>
 		<button class="btn-ghost text-xs" type="submit">

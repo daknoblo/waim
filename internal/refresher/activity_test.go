@@ -73,6 +73,10 @@ func TestCacheActivityReportsActualBatchAndSafePaths(t *testing.T) {
 	for i := range 2 {
 		select {
 		case path := <-entered:
+			if lease, err := cfg.Gate().TryReset(); err == nil {
+				lease.Finish(cfg.Gate().Epoch(), cfg.Gate().FactoryEpoch(), false)
+				t.Error("reset admitted while cache refresh is in flight")
+			}
 			s := tracker.Snapshot()[1]
 			if s.Status != activity.Running || s.Phase != activity.Refresh || !s.Known || s.Done != i || s.Total != 2 || "/3"+s.Query != path {
 				t.Errorf("bad live cache scope: %+v, request=%s", s, path)

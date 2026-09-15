@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/daknoblo/waim/internal/config"
@@ -242,7 +243,7 @@ func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 	}
 	loc := r.FormValue("locale")
 	if s.catalog.Has(loc) {
-		setLocaleCookie(w, r, loc)
+		setLocaleCookie(w, r, loc, s.cfg.Gate().FactoryEpoch())
 	}
 	redirectBack(w, r)
 }
@@ -250,7 +251,10 @@ func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 // setLocaleCookie persists the selected UI language for a year. It is HttpOnly
 // (no script needs it), SameSite=Lax and Secure whenever the request arrived
 // over HTTPS.
-func setLocaleCookie(w http.ResponseWriter, r *http.Request, locale string) {
+func setLocaleCookie(w http.ResponseWriter, r *http.Request, locale string, generations ...int64) {
+	if len(generations) > 0 {
+		http.SetCookie(w, &http.Cookie{Name: localeGenerationCookie, Value: strconv.FormatInt(generations[0], 10), Path: "/", MaxAge: int((365 * 24 * time.Hour).Seconds()), HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteLaxMode})
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     localeCookie,
 		Value:    locale,
@@ -427,7 +431,7 @@ func redirectBack(w http.ResponseWriter, r *http.Request) {
 // knownRoutes are the top-level pages a locale change may return to. Mapping to
 // constant values keeps the redirect target free of request-derived data.
 var knownRoutes = map[string]string{
-	"/sources":     "/sources",
+	"/sources":     "/settings?tab=media",
 	"/collection":  "/collection",
 	"/":            "/",
 	"/suggestions": "/suggestions",
@@ -447,6 +451,9 @@ func safeReturnPath(r *http.Request) string {
 		return "/"
 	}
 	if dest, ok := knownRoutes[u.EscapedPath()]; ok {
+		if dest == "/settings" {
+			return web.SettingsURL(u.Query().Get("tab"))
+		}
 		return dest
 	}
 	return "/"

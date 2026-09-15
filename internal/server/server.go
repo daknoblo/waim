@@ -99,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /logs", s.handleLogs)
 	mux.HandleFunc("GET /settings", s.handleSettings)
 	mux.HandleFunc("POST /settings", s.handleSaveSettings)
+	mux.HandleFunc("POST /settings/reset", s.handleReset)
 	mux.HandleFunc("GET /sources", s.handleSources)
 	mux.HandleFunc("POST /sources", s.handleAddSource)
 	mux.HandleFunc("POST /sources/{id}", s.handleUpdateSource)
@@ -127,13 +128,13 @@ func (s *Server) Handler() http.Handler {
 	// requests based on Sec-Fetch-Site / Origin, which protects every POST route
 	// against CSRF without needing per-form tokens.
 	csrf := http.NewCrossOriginProtection()
-	return logRequests(s.log, securityHeaders(limitRequestBody(csrf.Handler(mux))))
+	return logRequests(s.log, securityHeaders(limitRequestBody(csrf.Handler(s.admission(mux)))))
 }
 
 // locale resolves the active locale from the cookie, then the configured
 // default, then the package default.
 func (s *Server) locale(r *http.Request) string {
-	if c, err := r.Cookie(localeCookie); err == nil && s.catalog.Has(c.Value) {
+	if c, err := r.Cookie(localeCookie); err == nil && s.catalog.Has(c.Value) && s.validLocaleGeneration(r) {
 		return c.Value
 	}
 	return config.NormalizeLocale(s.cfg.Get().Locale)
@@ -198,6 +199,7 @@ func (s *Server) renderPartial(w http.ResponseWriter, r *http.Request, comp temp
 
 func (s *Server) provenanceRequest(r *http.Request) *http.Request {
 	ctx := web.WithActionTranslator(r.Context(), s.translator(r))
+	ctx = web.WithMutationEpoch(ctx, s.cfg.Gate().Token())
 	catalog, err := source.Catalog(ctx, s.store, s.cfg.Get(), false, nil)
 	if err != nil {
 		s.log.Error("catalog presentation failed", "err", err)

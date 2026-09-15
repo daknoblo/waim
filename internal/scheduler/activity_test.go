@@ -75,6 +75,10 @@ func TestScanActivityDuringMetadataAndTerminalOutcomes(t *testing.T) {
 				t.Fatal("metadata never started")
 			}
 			state := tracker.Snapshot()[0]
+			if lease, err := cfg.Gate().TryReset(); err == nil {
+				lease.Finish(cfg.Gate().Epoch(), cfg.Gate().FactoryEpoch(), false)
+				t.Error("reset admitted while metadata lookup is in flight")
+			}
 			if state.Status != activity.Running || state.Phase != activity.Metadata || state.Current != "Movie" || !state.Known || state.Done != 0 || state.Total != 1 {
 				t.Errorf("metadata scope must count unique titles, not memberships: %+v", state)
 			}

@@ -126,6 +126,12 @@ type SettingsFeedback struct {
 
 // SettingsData is the full model for the settings page.
 type SettingsData struct {
+	Tab            string
+	Demo           bool
+	Sources        SourcesData
+	DataDir        string
+	DBSize         string
+	ConfigSize     string
 	Layout         Layout
 	Settings       config.Settings
 	Libraries      []config.Library

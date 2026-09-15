@@ -14,11 +14,13 @@ func emptyGaps(t *i18n.Translator, unconfirmed bool) string {
 }
 
 type SourcesData struct {
-	Layout   Layout
-	Sources  []config.Source
-	Message  string
-	Failed   bool
-	Warnings []string
+	AddDraft    config.Source
+	EditDraftID string
+	Layout      Layout
+	Sources     []config.Source
+	Message     string
+	Failed      bool
+	Warnings    []string
 }
 
 type CollectionData struct {

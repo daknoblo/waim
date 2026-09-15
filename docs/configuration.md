@@ -2,7 +2,7 @@
 
 > This project is "vibe-coded" (AI-assisted). Review before relying on it.
 
-Global settings are managed on **Settings**, and instances on **Media sources**, persisted to
+Global settings and media instances are managed in the four **Settings** tabs, persisted to
 `config.json` inside the data directory. API keys are **always stored
 encrypted** and never written in plaintext. The encryption key is generated on
 first start and kept as `master.key` next to `config.json`.
@@ -72,10 +72,24 @@ the key file allows the stored credentials to be decrypted.
 
 ![Settings page](images/settings.png)
 
-Global changes are saved as soon as you leave a field, and switches and dropdowns take
-effect right away — there is no save button. Whenever a connection setting
-changes, that section is tested immediately and the result appears underneath
-it.
+| Tab | Contents |
+| --- | --- |
+| Media management (`/settings?tab=media`) | Full source management, library selection, scan interval/startup/specials. |
+| Metadata (`?tab=metadata`) | TMDB credentials, AI suggestions, shared rate limit, episode ratings and cache maintenance. The provider area currently implements TMDB only. |
+| Interface (`?tab=interface`) | UI language plus metadata language and region. |
+| Other (`?tab=other`) | Database size including WAL/SHM, configuration size, data directory, cache count, exports, log level and Danger Zone. |
+
+Old `/sources` bookmarks redirect to the media tab; source POST endpoints remain
+available. The virtual collection remains a separate main-navigation page.
+
+Global changes are saved as soon as you leave a field; **Save changes** also
+works without JavaScript. Only the active section is submitted. Other tabs'
+fields, including checkboxes and credentials, are preserved atomically.
+Tab navigation waits for pending autosave to finish, and remains on the draft
+if saving fails or a replacement key is required. Validation errors retain
+non-secret input; password fields are deliberately never echoed back.
+Connection edits still probe only the relevant provider. Language changes and
+source feedback preserve the active settings tab.
 
 Each source has a separate explicit save form and revision. An outdated form is
 rejected instead of overwriting another edit. Changing a Jellyfin address
@@ -83,11 +97,64 @@ rejected instead of overwriting another edit. Changing a Jellyfin address
 Blank keys otherwise retain the saved value. Test/refresh buttons use **saved**
 settings, not unsaved form fields. AI host changes also require a key.
 
+Unsaved source edits are never automatically submitted when switching tabs.
+A localized discard confirmation protects tab navigation, and the browser's
+native leave-page warning protects other navigation. **Save source** submits
+that source explicitly; validation drafts remain protected after a failed save.
+
 Adding a Jellyfin source immediately fetches its available libraries. They start
 unselected so you can choose what to scan. If discovery fails, the saved source
 is retained with a visible retry message; do not add it again. A later manual
 refresh preserves existing library selections. Source removal is the red,
 right-aligned action alongside refresh/test and still requires confirmation.
+
+## Danger Zone
+
+All reset operations require a dedicated POST, a checked confirmation and the
+exact text `RESET`. Unknown scopes and stale forms are rejected. Resets are
+**not cancellation commands**: ongoing scans, cache refresh/cleanup, suggestions,
+source discovery/tests, saves and data-serving requests prevent admission.
+Busy responses return HTTP 409 and require a retry when idle. Workers arriving
+during maintenance are skipped, not held until reset finishes. Queued scans and
+timer ticks from before/during the reset are discarded; future scheduled work
+or explicit user actions can load data again.
+
+| Scope | Deleted | Retained |
+| --- | --- | --- |
+| Metadata | TMDB response cache; scan history, findings, evaluated media metadata and upcoming results; in-memory suggestions; derived TMDB aliases in source snapshots. | Sources, credentials, raw inventory and its native provider IDs/episode ownership; virtual membership and its saved display title/year/poster. |
+| Imported media | Imported source snapshots, scan history/results and in-memory suggestions. Sources become **unknown**, not empty. | Sources, credentials, virtual entries and TMDB response cache. |
+| Factory | All real-source configuration and credentials, virtual entries, snapshots, cache, scan results, UI preferences and retained activity/log entries. | Exactly one enabled empty **Virtual collection**, default settings, `master.key`, the database file, migration/reset counters and the persistent data directory. |
+
+Metadata reset clears `ResolvedTMDBID` and `ResolutionInput` aliases, including
+episode aliases, without altering raw names, provider IDs, references, inventory
+timestamps or source warnings. It does not silently claim the retained inventory
+has just been verified. None of the resets immediately queues a refetch.
+
+These are logical application resets, not secure disk erasure. Existing backups,
+external log sinks and recoverable free space on storage are not wiped. No files
+or media on Jellyfin servers are modified. Do not delete the mounted volume or
+`master.key` to perform a reset.
+
+### Factory reset recovery
+
+SQLite deletion and a small `reset_state.factory_pending` journal flag commit
+together, with full synchronous durability, **before** replacing `config.json`
+with defaults. The configuration file and its directory are flushed before the
+completion flag is cleared. A database transaction failure rolls back and does
+not overwrite configuration or keys.
+
+Marker completion itself uses a pinned `synchronous=FULL` transaction, including
+after reopening the database during startup recovery. This prevents an
+acknowledged completion from relying on the reopened connection's weaker normal
+write mode before new user settings can be saved.
+
+If the database commits but configuration persistence or completion fails, waim
+reports failure and blocks data access/work (HTTP 503). Correct the storage
+problem and retry the confirmed factory reset, or restart. Startup recovery
+finishes the pending configuration reset idempotently before starting workers
+or HTTP; it does not repeat database deletion. Failed recovery prevents startup.
+The encryption key is always reused. Factory-reset generations also invalidate
+old language cookies in other browsers.
 
 ### Migration and snapshot identity
 

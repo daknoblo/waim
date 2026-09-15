@@ -14,6 +14,7 @@ templ suggestionsBody(d SuggestionsData) {
 		<div class="flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-lg font-semibold">{ d.Layout.T.T("nav.suggestions") }</h1>
 			<form hx-post="/suggestions/generate" hx-target="#suggestions" hx-swap="outerHTML" class="w-full sm:w-auto">
+				@MutationEpoch()
 				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ d.Running || !d.Configured }>
 					{ d.Layout.T.T("suggestions.generate") }
 				</button>

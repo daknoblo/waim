@@ -29,7 +29,7 @@ func TestBrandingAndDevelopmentTabTitles(t *testing.T) {
 		{"demo", false},
 	} {
 		for _, locale := range []string{"en", "de"} {
-			for _, path := range []string{"/", "/logs", "/sources", "/collection", "/about"} {
+			for _, path := range []string{"/", "/logs", "/settings?tab=media", "/collection", "/about"} {
 				t.Run(build.version+"/"+locale+path, func(t *testing.T) {
 					s.info = version.Info{Version: build.version}
 					req := httptest.NewRequest("GET", path, nil)

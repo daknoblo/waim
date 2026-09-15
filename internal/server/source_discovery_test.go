@@ -59,7 +59,7 @@ func TestAddSourceDiscoversLibrariesAndPreservesSelectionOnRefresh(t *testing.T)
 		t.Fatal("stale discovery revision overwrote a newer source")
 	}
 	w = httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/sources", nil))
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/settings?tab=media", nil))
 	if !strings.Contains(w.Body.String(), `value="`+strconv.FormatInt(refreshed.Revision, 10)+`"`) || !strings.Contains(w.Body.String(), "Films") {
 		t.Fatal("discovered libraries not visible in returned source form")
 	}

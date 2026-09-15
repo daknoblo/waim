@@ -32,7 +32,7 @@ func TestSetupNoticeIsCentralAndLocalized(t *testing.T) {
 					t.Fatalf("unexpected response %d: %s", w.Code, html)
 				}
 				notice := tr.T("sources.tmdbRequired")
-				if strings.Count(html, notice) != 1 || !strings.Contains(html, `<a href="/settings">`+notice+`</a>`) {
+				if strings.Count(html, notice) != 1 || !strings.Contains(html, `<a href="/settings?tab=metadata">`+notice+`</a>`) {
 					t.Fatal("expected exactly one setup notice linking to settings")
 				}
 				for _, unwanted := range []string{tr.T("common.stateUnconfigured"), tr.T("suggestions.notConfigured"), tr.T("dashboard.lastError"), "tmdb api key is not configured"} {

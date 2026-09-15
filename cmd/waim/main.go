@@ -23,6 +23,7 @@ import (
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
 	"github.com/daknoblo/waim/internal/refresher"
+	"github.com/daknoblo/waim/internal/reset"
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/server"
 	"github.com/daknoblo/waim/internal/store"
@@ -96,6 +97,10 @@ func run() error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	if err := reset.New(cfg, st).Recover(context.Background()); err != nil {
+		return err
+	}
+	levelVar.Set(config.ParseLogLevel(cfg.Get().LogLevel))
 
 	catalog, err := i18n.Load()
 	if err != nil {

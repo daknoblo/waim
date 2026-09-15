@@ -44,8 +44,8 @@ type Scheduler struct {
 
 	mu          sync.RWMutex
 	status      Status
-	triggerCh   chan struct{}
-	recomputeCh chan struct{}
+	triggerCh   chan int64
+	recomputeCh chan int64
 	running     atomic.Bool
 	progress    *progressState
 	tmdbFactory func(config.Settings) scanner.TMDBAPI
@@ -62,8 +62,8 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*
 		store:       st,
 		log:         log,
 		status:      Status{State: StateIdle},
-		triggerCh:   make(chan struct{}, 1),
-		recomputeCh: make(chan struct{}, 1),
+		triggerCh:   make(chan int64, 1),
+		recomputeCh: make(chan int64, 1),
 		progress:    &progressState{},
 	}
 	if len(activities) > 0 {
@@ -154,16 +154,28 @@ func (s *Scheduler) Running() bool { return s.running.Load() }
 // Trigger requests an immediate scan. It is non-blocking; if a scan is already
 // queued or running, the request is coalesced.
 func (s *Scheduler) Trigger() {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		s.log.Warn("scan request rejected during maintenance")
+		return
+	}
+	defer release()
 	select {
-	case s.triggerCh <- struct{}{}:
+	case s.triggerCh <- s.cfg.Gate().Epoch():
 	default:
 	}
 }
 
 // Recompute coalesces edits without contacting a media server.
 func (s *Scheduler) Recompute() {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		s.log.Warn("recompute request rejected during maintenance")
+		return
+	}
+	defer release()
 	select {
-	case s.recomputeCh <- struct{}{}:
+	case s.recomputeCh <- s.cfg.Gate().Epoch():
 	default:
 	}
 }
@@ -182,14 +194,20 @@ func (s *Scheduler) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-s.triggerCh:
-			s.runScan(ctx, true)
+		case epoch := <-s.triggerCh:
+			s.runScan(ctx, true, epoch)
 			s.resetTimer(timer)
-		case <-s.recomputeCh:
-			s.runScan(ctx, false)
-		case <-timer.C:
-			if settings := s.cfg.Get(); settings.Scan.IntervalMinutes > 0 && settings.TMDB.APIKey != "" {
-				s.runScan(ctx, true)
+		case epoch := <-s.recomputeCh:
+			s.runScan(ctx, false, epoch)
+		case due := <-timer.C:
+			release, err := s.cfg.Gate().EnterScheduled(due)
+			if err != nil {
+				s.log.Info("scheduled scan skipped after or during maintenance")
+			} else {
+				if settings := s.cfg.Get(); settings.Scan.IntervalMinutes > 0 && settings.TMDB.APIKey != "" {
+					s.runScan(ctx, true)
+				}
+				release()
 			}
 			s.resetTimer(timer)
 		}
@@ -226,7 +244,17 @@ func (s *Scheduler) updateNextRun() {
 }
 
 // runScan executes a single scan, ignoring overlapping invocations.
-func (s *Scheduler) runScan(ctx context.Context, refresh bool) {
+func (s *Scheduler) runScan(ctx context.Context, refresh bool, epochs ...int64) {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		s.log.Warn("scan skipped during maintenance")
+		return
+	}
+	defer release()
+	if len(epochs) > 0 && epochs[0] != s.cfg.Gate().Epoch() {
+		s.log.Info("queued scan discarded after reset")
+		return
+	}
 	if !s.running.CompareAndSwap(false, true) {
 		return
 	}
@@ -344,6 +372,12 @@ func (s *Scheduler) setStatus(mut func(*Status)) {
 // restoreStatus seeds the in-memory status from the most recent persisted run so
 // the dashboard still shows the last scan date after a restart.
 func (s *Scheduler) restoreStatus(ctx context.Context) {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		s.log.Info("status restoration skipped during maintenance")
+		return
+	}
+	defer release()
 	run, err := s.store.LatestSuccessfulRun(ctx)
 	if err != nil || run == nil {
 		return

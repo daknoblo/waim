@@ -48,6 +48,7 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				</div>
 			</div>
 			<form hx-post="/scan" hx-target="#status-card" hx-swap="outerHTML" class="w-full sm:w-auto">
+				@MutationEpoch()
 				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ s.Running || s.SetupRequired }>
 					{ t.T("dashboard.scanNow") }
 				</button>

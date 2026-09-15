@@ -17,7 +17,6 @@ templ navLinks(l Layout) {
 	@navLink(l.T, "/suggestions", NavSuggestions, l.Active, l.T.T("nav.suggestions"))
 	@navLink(l.T, "/stats", NavStats, l.Active, l.T.T("nav.stats"))
 	@navLink(l.T, "/collection", "collection", l.Active, l.T.T("sources.collection"))
-	@navLink(l.T, "/sources", "sources", l.Active, l.T.T("sources.title"))
 	@navLink(l.T, "/logs", NavLogs, l.Active, l.T.T("nav.logs"))
 	@navLink(l.T, "/settings", NavSettings, l.Active, l.T.T("nav.settings"))
 	@navLink(l.T, "/about", NavAbout, l.Active, l.T.T("nav.about"))
@@ -90,7 +89,7 @@ templ Page(l Layout, body templ.Component) {
 					if l.CatalogWarning != "" {
 						<p role="status" class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
 							if l.SetupRequired {
-								<a href="/settings">{ l.CatalogWarning }</a>
+								<a href="/settings?tab=metadata">{ l.CatalogWarning }</a>
 							} else {
 								{ l.CatalogWarning }
 							}
@@ -111,6 +110,7 @@ templ Page(l Layout, body templ.Component) {
 
 templ languageSwitcher(l Layout, class string) {
 	<form method="post" action="/locale" class={ class }>
+		@MutationEpoch()
 		<select
 			name="locale"
 			aria-label={ l.T.T("settings.uiLanguage") }
