@@ -17,8 +17,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build:
     name: Render Static Demo
+    needs: verify
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: "\U0001F4E5 Check out repository"

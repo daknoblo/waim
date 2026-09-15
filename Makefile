@@ -83,8 +83,8 @@ seed:
 	go run ./cmd/seed -out $(SEED_OUT) $(if $(SEED_FORCE),-force,)
 
 ## Point the pinned image examples in the docs at a release, e.g.
-## `make docs-version VERSION=1.3.0`. Only feature releases (X.Y.0) belong in
-## the docs; CI verifies that the docs match the newest one.
+## `make docs-version VERSION=1.3.0`. Update through a PR after publishing;
+## CI verifies that pinned versions have tags approved on main.
 docs-version:
 	@echo "$(VERSION)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$' \
 		|| (echo "usage: make docs-version VERSION=X.Y.Z (got '$(VERSION)')" && exit 1)
@@ -94,21 +94,21 @@ docs-version:
 	@find README.md docs -name '*.bak' -delete
 	@echo "docs now pin $(VERSION)"
 
-## Cut a release: regenerate assets, pin the docs (feature releases only),
-## commit and create the annotated tag.
+## Tag the clean, approved origin/main commit. No branch commits are created.
 ##
-##   make release BUMP=patch          # test build, 1.2.1 -> 1.2.2
-##   make release BUMP=minor          # feature release, 1.2.1 -> 1.3.0
+##   make release BUMP=patch          # stable fix, 1.2.1 -> 1.2.2
+##   make release BUMP=minor          # stable feature, 1.2.1 -> 1.3.0
 ##   make release VERSION=2.0.0       # explicit version
 ##
 ## The tag annotation becomes the body of the GitHub Release: $$EDITOR opens
 ## for it unless you pass MESSAGE="one line" or NOTES=path/to/notes.md.
 ## Pushing stays manual unless PUSH=1.
-release: generate css
+release:
+	@bash scripts/check-release-ready.sh
 	@set -e; \
 	v="$(VERSION)"; \
 	if [ -n "$(BUMP)" ]; then \
-		last=$$(git tag --list | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -n1); \
+		last=$$(git tag --merged HEAD --list | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -n1); \
 		[ -n "$$last" ] || last=0.0.0; \
 		v=$$(echo "$$last" | awk -F. -v part="$(BUMP)" '\
 			part=="major" { printf "%d.0.0", $$1+1 } \
@@ -117,22 +117,12 @@ release: generate css
 		[ -n "$$v" ] || { echo "usage: make release BUMP=major|minor|patch (got '$(BUMP)')"; exit 1; }; \
 		echo "$$last -> $$v"; \
 	fi; \
-	echo "$$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$' \
+	echo "$$v" | grep -qE '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$$' \
 		|| { echo "usage: make release BUMP=major|minor|patch or VERSION=X.Y.Z (got '$$v')"; exit 1; }; \
-	if git rev-parse -q --verify "refs/tags/$$v" >/dev/null; then \
+	if git rev-parse -q --verify "refs/tags/$$v" >/dev/null || \
+		git rev-parse -q --verify "refs/tags/v$$v" >/dev/null; then \
 		echo "error: tag $$v already exists"; exit 1; \
 	fi; \
-	if [ -n "$$(git status --porcelain)" ]; then \
-		echo "error: working tree is not clean — commit everything first"; \
-		echo "(regenerated *_templ.go or app.css? CI rejects stale ones)"; \
-		git status --short; exit 1; \
-	fi; \
-	case "$$v" in \
-		*.0) $(MAKE) --no-print-directory docs-version VERSION=$$v; \
-			git add README.md docs; \
-			git diff --cached --quiet || git commit -q -m "docs: pin $$v";; \
-		*) echo "patch release: docs keep pinning the newest feature release";; \
-	esac; \
 	if [ -n "$$NOTES" ]; then \
 		[ -f "$$NOTES" ] || { echo "error: NOTES file '$$NOTES' not found"; exit 1; }; \
 		git tag -a --cleanup=verbatim "$$v" -F "$$NOTES"; \
@@ -143,15 +133,16 @@ release: generate css
 	fi; \
 	echo; \
 	if [ -n "$(PUSH)" ]; then \
-		git push origin HEAD && git push origin "$$v"; \
+		git push origin "refs/tags/$$v"; \
 	else \
 		echo "tag $$v created. Publish with:"; \
-		echo "  git push origin main && git push origin $$v"; \
+		echo "  git push origin refs/tags/$$v"; \
 	fi
 
 ## Run tests.
 test:
 	go test $(PKG)
+	bash scripts/test-release-channels.sh
 
 ## Static analysis.
 vet:

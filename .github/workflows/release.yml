@@ -1,11 +1,11 @@
 # Builds the multi-arch Docker image, publishes it to GitHub Container Registry
-# (main -> :latest, tags -> versioned), scans it for vulnerabilities and opens a
-# GitHub Release for feature versions.
+# (main -> :latest, develop -> :dev, approved tags -> versioned), scans it for
+# vulnerabilities and opens a GitHub Release for every version.
 name: Publish Release (ghcr.io)
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     # Release tags are plain semver (1.2.3) to match the published image tags.
     # v-prefixed tags stay accepted so an out-of-habit `v1.2.3` still publishes
     # instead of silently doing nothing.
@@ -17,17 +17,39 @@ env:
 
 permissions:
   contents: read
-  packages: write
-  security-events: write
 
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  channel:
+    name: Validate release channel
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      version: ${{ steps.channel.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Reject version tags outside main
+        id: channel
+        run: bash scripts/release-channel.sh >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify before publishing
+    needs: channel
+    uses: ./.github/workflows/ci.yml
+
   publish:
     name: Build, Push & Scan Image
+    needs: [channel, verify]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
     steps:
       - name: "\U0001F4E5 Check out repository"
         uses: actions/checkout@v7
@@ -45,29 +67,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "\U0001F551 Compute build version"
+      - name: Compute build date
         id: buildmeta
-        # Tag builds report the release version, so the About page and the
-        # startup log match the image tag. Branch builds keep a build stamp.
-        run: |
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            version="${GITHUB_REF_NAME#v}"
-          else
-            version="$(date -u +%Y%m%d-%H%M)"
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "build version: $version"
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: "\U0001F3F7\uFE0F Determine image tags & labels"
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Never let semver metadata implicitly move :latest.
+          flavor: latest=false
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/develop' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
+            type=sha,format=short,prefix=sha-,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short,prefix=sha-dev-,enable=${{ github.ref == 'refs/heads/develop' }}
 
       - name: "\U0001F433 Build & push multi-arch image (amd64 + arm64)"
         id: build
@@ -81,11 +98,11 @@ jobs:
           provenance: true
           sbom: true
           build-args: |
-            VERSION=${{ steps.buildmeta.outputs.version }}
+            VERSION=${{ needs.channel.outputs.version }}
             COMMIT=${{ github.sha }}
-            DATE=${{ github.event.repository.updated_at }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            DATE=${{ steps.buildmeta.outputs.date }}
+          cache-from: type=gha,scope=${{ needs.channel.outputs.channel }}
+          cache-to: type=gha,mode=max,scope=${{ needs.channel.outputs.channel }}
 
       - name: "\U0001F6E1\uFE0F Scan image for vulnerabilities (Trivy)"
         uses: aquasecurity/trivy-action@v0.36.0
@@ -104,9 +121,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    # Only feature versions (X.Y.0) get a release page. Patch tags such as
-    # 1.1.7 still publish an image, they just do not add release noise.
-    if: github.ref_type == 'tag' && endsWith(github.ref_name, '.0')
+    if: github.ref_type == 'tag'
     needs: publish
     runs-on: ubuntu-latest
     permissions:
@@ -130,4 +145,4 @@ jobs:
           else
             notes=--generate-notes
           fi
-          gh release create "$TAG" --verify-tag --title "waim ${TAG#v}" "$notes"
+          gh release create "$TAG" --verify-tag --target main --title "waim ${TAG#v}" "$notes"

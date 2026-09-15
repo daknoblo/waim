@@ -2,7 +2,8 @@
 #
 # 1. Copy this file to docker-compose.yml.
 # 2. Pin a tag if you want reproducible deploys (`X.Y.Z` or `sha-…`);
-#    `latest` always tracks the current build of the main branch.
+#    `latest` tracks approved stable builds of main.
+#    To test `dev`, use a separate container, port and data volume.
 # 3. Configure Jellyfin and TMDB in the web UI at http://<host>:8080.
 #
 # The key used to encrypt the stored API keys is generated on first start and
