@@ -118,10 +118,23 @@ load your libraries and tick the ones to scan.
 
 | Tag                            | Source        | Purpose                       |
 | ------------------------------ | ------------- | ----------------------------- |
-| `ghcr.io/daknoblo/waim:latest` | `main`        | Current build of `main`       |
-| `ghcr.io/daknoblo/waim:X.Y.Z`  | git tag       | Pinned versions               |
-| `ghcr.io/daknoblo/waim:X.Y`    | git tag       | Latest patch of a minor line  |
-| `ghcr.io/daknoblo/waim:sha-…`  | every commit  | Exact commit, for rollbacks   |
+| `ghcr.io/daknoblo/waim:latest` | `main`        | Approved stable build         |
+| `ghcr.io/daknoblo/waim:dev`    | `develop`     | Development build for testing |
+| `ghcr.io/daknoblo/waim:X.Y.Z`  | tag on `main` | Pinned stable version         |
+| `ghcr.io/daknoblo/waim:X.Y`    | tag on `main` | Patch of a stable minor line  |
+| `ghcr.io/daknoblo/waim:sha-…`  | `main`        | Commit-specific stable build  |
+| `ghcr.io/daknoblo/waim:sha-dev-…` | `develop`  | Commit-specific dev build     |
+
+Development happens on `develop`. Only a maintainer-approved pull request
+merged into `main` updates `:latest` and the public demo; publishing waits for
+CI to pass. Every new version tag, including patches, creates a stable GitHub
+Release and must point to a commit already on `main`. Version tags do not move
+`:latest` backwards.
+
+Use `:latest` or a pinned version for normal use. Test `:dev` with a **separate
+data volume**: development versions may migrate the database or configuration
+in ways an older stable version cannot read. See [development](docs/development.md)
+for the promotion and release workflow.
 
 ## Configuration
 

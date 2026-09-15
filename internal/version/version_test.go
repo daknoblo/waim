@@ -9,10 +9,12 @@ func TestReleaseClassification(t *testing.T) {
 	}{
 		{"1.3.0", true, true},
 		{"1.10.0", true, true},
-		{"1.2.1", true, false},  // patch tags publish an image but no release page
+		{"1.2.1", true, false},  // patches are stable releases too
 		{"1.2.10", true, false}, // must not be mistaken for a ".0" suffix
 		{"dev", false, false},
 		{"20260816-1936", false, false},
+		{"dev-20260915-1200", false, false},
+		{"stable-20260915-1200", false, false},
 		{"v1.2.0", false, false},
 		{"1.2", false, false},
 		{"", false, false},

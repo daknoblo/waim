@@ -121,12 +121,9 @@ func (s *Server) handleAbout(w http.ResponseWriter, r *http.Request) {
 		GoVersion:  s.info.GoVer,
 		Repo:       repoURL,
 	}
-	// Release builds point at the tagged source; only feature releases also have
-	// release notes to link the version to.
+	// Every stable version, including patches, has a release page.
 	if s.info.IsRelease() {
-		if s.info.IsFeatureRelease() {
-			d.VersionURL = repoURL + "/releases/tag/" + s.info.Version
-		}
+		d.VersionURL = repoURL + "/releases/tag/" + s.info.Version
 		d.Ref = s.info.Version
 		d.RefURL = repoURL + "/tree/" + s.info.Version
 		d.RefIsTag = true

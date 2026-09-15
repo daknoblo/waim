@@ -41,14 +41,15 @@ make run        # build and run
 make seed       # fill ./appdata with a synthetic scan run
 make demo       # render the static GitHub Pages demo into ./dist
 make docker     # build the Docker image locally
-make release VERSION=1.3.0   # pin the docs, commit and tag (push stays manual)
-make release BUMP=patch      # same, with the next patch number computed
+make release VERSION=1.5.0   # tag approved main (push stays manual)
+make release BUMP=patch      # compute and tag the next stable patch
 ```
 
 The demo site is the real UI rendered with sample data (`cmd/demo`): htmx
 attributes are stripped and routes are rewritten to file names, so it works from
 any static host. `.github/workflows/pages.yml` publishes it to GitHub Pages on
-every push to `main`.
+every approved push to `main`, after CI passes. Manual demo deployment is also
+restricted to `main`; running the workflow on `develop` skips deployment.
 
 Run locally:
 
@@ -103,47 +104,94 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
 ## Continuous integration
 
 - `.github/workflows/ci.yml` — verifies generated templ code and CSS are up to
-  date, checks the docs pin the newest release tag, runs `go vet`,
-  golangci-lint, race-enabled tests and a build.
+  date, checks that documentation pins reference tags approved on `main`,
+  tests the release guards, runs `go vet`, golangci-lint, race-enabled tests
+  and a build. Runs on pushes/PRs to both branches and is reused as a
+  prerequisite by image and demo publishing.
 - `.github/workflows/release.yml` — builds and pushes multi-arch images to
-  `ghcr.io`. `main` → `:latest`, git tags → semver tags, every commit → a
-  `sha-…` tag. Images are scanned with Trivy.
+  `ghcr.io`. `main` → `:latest` and `sha-…`; `develop` → `:dev` and
+  `sha-dev-…`. Version tags on commits already in `main` publish `X.Y.Z` and
+  `X.Y` and create a GitHub Release, including patches. Tag builds do not
+  update `:latest` or commit-specific branch images. Images are scanned with
+  Trivy. Branch builds display `stable-YYYYMMDD-HHMM` or `dev-YYYYMMDD-HHMM`
+  on the About page; tagged builds display the release version.
+- `.github/workflows/codeql.yml` — analyses both branches and their PRs.
+- `.github/dependabot.yml` — sends dependency updates to `develop`, not stable.
 - `.github/workflows/prune-images.yml` — weekly retention for the `sha-…`
-  images, keeping the newest 20. Version tags and `:latest` are never touched,
-  and untagged versions are left alone because they are the per-architecture
+  images (including `sha-dev-…`), keeping the newest 20 combined.
+  Version tags, `:latest` and `:dev` are never touched, and untagged versions
+  are left alone because they are the per-architecture
   children of the multi-arch manifests. Run it manually with `dry-run` first if
   you change the retention.
 
 ## Branching & releases
 
-- `main` is the only long-lived branch; every merge publishes the `:latest`
-  image plus an immutable `sha-…` tag for rollbacks.
-- Use short-lived feature branches and pull requests against `main`; CI runs on
-  every PR.
-- **Patch tags are test builds, minor tags are releases.** `1.2.1` publishes an
-  image you can pin in Compose but creates no GitHub Release and does not touch
-  the docs; only `X.Y.0` does both (see the `release` job in `release.yml`). To
-  try a build without any tag at all, pin the `sha-…` image of the commit.
+### Development and promotion
 
-- Cut either kind with `make release`, which regenerates the assets, pins the
-  docs for feature releases, commits that and creates the annotated tag:
+- `main` is stable and remains the default branch. `develop` is the long-lived
+  integration branch. Create feature/fix branches from `develop` and send PRs
+  back to `develop`.
+- Test the automatically published `:dev` image (or a specific `sha-dev-…`)
+  with a **separate data volume**, container name and host port. Do not share
+  `/appdata` between stable and dev; migrations may make downgrades unsafe.
+- When ready, open a promotion PR from `develop` to `main`. The maintainer
+  manually merges it after testing. No auto-merge: a green test alone is not
+  a release approval.
+- Use a merge commit for promotion, not squash/rebase, to preserve shared
+  ancestry. Keep `develop` after merging. Merge `main` back into `develop`
+  when it contains changes not already there, especially after a stable hotfix.
+- Protection on `main` requires a PR, the `Lint, Test & Build` check on an
+  up-to-date branch and resolved review conversations, including for admins.
+  Force pushes and branch deletion are disabled. This is a solo-maintainer
+  flow: no second-person approving review is required; the manual merge is
+  the maintainer's approval.
+- Merging promotion updates `:latest` and the public demo only after publishing
+  CI passes. Development publishing can never move either.
 
-  ```bash
-  make release BUMP=patch MESSAGE="test build"   # 1.2.1 -> 1.2.2
-  make release BUMP=minor                        # 1.2.1 -> 1.3.0, opens $EDITOR
-  make release VERSION=2.0.0                     # explicit version
-  make release BUMP=minor PUSH=1                 # push right away
-  ```
+### Tagging a stable version
 
-  Without `MESSAGE="..."` it opens `$EDITOR` for the tag annotation, which
-  becomes the body of the GitHub Release. It refuses to run on a dirty working
-  tree, because CI rejects stale `*_templ.go` or `app.css` files, and it
-  refuses to reuse an existing tag. Pushing stays manual unless `PUSH=1`.
+Every **new** `X.Y.Z` tag is stable and gets release notes, including patch
+versions. Historical patch tags created under the old test-build convention
+are not retroactively converted. Tests now use `:dev` rather than version tags.
 
-  Tags are plain semver without a `v` prefix, matching the published image tags
-  — `docker/metadata-action` strips a leading `v`, so `ghcr.io/...:v1.2.3` would
-  never exist. A `v`-prefixed tag still triggers a release and is normalised to
-  `1.2.3`, but the plain form is the convention.
+After promoting, switch to the approved commit:
+
+```bash
+git switch main
+git pull --ff-only origin main
+make release BUMP=patch MESSAGE="Fix missing release dates"
+# Or: make release BUMP=minor, which opens $EDITOR for notes.
+# Or: make release VERSION=2.0.0 NOTES=/path/to/release-notes.md
+```
+
+`make release` first requires clean local `main`, fetches `origin/main` and
+tags, and verifies local `HEAD` is exactly the approved remote commit. It
+creates only an annotated tag: no generated-file changes, documentation
+commits, or branch pushes. Generate/test changes before promotion instead.
+It refuses duplicate versions, including an existing `v`-prefixed equivalent.
+
+Push the tag printed by the command, or use `PUSH=1` to publish it immediately.
+The publishing workflow independently rejects tags outside `main` before it
+can push an image. Tagging an older approved commit does not roll `:latest`
+back; that channel follows approved `main` pushes only. The `X.Y` alias tracks
+the most recently published tag in that minor line, so publish patches in order.
+
+Tags use plain semver without a `v` prefix, matching the image tags.
+A `v`-prefixed tag is still accepted and normalised for the image version.
+
+Once the version is published, update pinned installation examples through
+a normal PR with `make docs-version VERSION=X.Y.Z`. Pins must refer to an
+existing version tag on `main`, but need not change with every release.
+This avoids creating an unreviewed docs commit on protected `main` or a
+release/CI dependency cycle.
+
+### Repository settings versus workflow changes
+
+Branch protection is a GitHub repository setting, not something YAML enables
+on its own. Keep `main` protection enabled, repository auto-merge disabled,
+and automatic head-branch deletion disabled to retain `develop`. The initial
+workflow setup PR must be merged before these new rules govern publishing on
+`main`; until then its existing release workflow still applies.
 
 ## Contributing
 

@@ -18,6 +18,7 @@ and `curl`. Docker is only needed if you want to build the image.
 ```bash
 git clone https://github.com/daknoblo/waim.git
 cd waim
+git switch develop
 make tools   # installs the templ CLI and the Tailwind standalone binary
 ```
 
@@ -72,8 +73,8 @@ make test
 golangci-lint run ./...     # optional locally; CI runs it either way
 ```
 
-CI additionally runs the tests with the race detector and checks that the
-documented image version matches the latest feature release.
+CI additionally runs the tests with the race detector and checks that
+documented image versions refer to tags approved on `main`.
 
 A few things that are easy to miss:
 
@@ -108,6 +109,12 @@ feat!: generate the encryption key instead of requiring WAIM_MASTER_KEY
 
 ## Pull requests
 
+- Branch features and fixes from `develop` and target `develop` with your PR.
+  Dependency updates also target `develop`.
+- `main` is the protected stable branch. Promotion from `develop` is a separate
+  PR, merged manually by the maintainer after testing `:dev`. Do not enable
+  auto-merge for promotion PRs. Merge commits preserve the shared branch history;
+  keep `develop` after promotion and merge `main` back when needed.
 - Open an issue first for larger changes, so the approach can be discussed
   before you invest time. Small fixes can go straight to a PR.
 - Keep a PR focused on one thing. Unrelated cleanups are easier to review
@@ -118,6 +125,10 @@ feat!: generate the encryption key instead of requiring WAIM_MASTER_KEY
 
 ## Releases
 
-Releases are cut by the maintainer with `make release` and are not part of a
-regular pull request — please do not bump versions or pin documentation
-versions in a PR.
+Releases are tagged by the maintainer with `make release` on clean, up-to-date
+`main` after promotion. Every new `X.Y.Z` tag, including a patch, is stable and
+gets a GitHub Release. Testing uses `:dev`, not patch version tags.
+
+The command does not commit or push branch changes. After an image has been
+published, documentation pins can be updated through a normal PR with
+`make docs-version VERSION=X.Y.Z`. See [development](../docs/development.md).

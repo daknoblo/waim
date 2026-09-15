@@ -15,9 +15,22 @@ waim is distributed as a multi-arch container image (`linux/amd64`,
 ## Pulling the image
 
 ```bash
-docker pull ghcr.io/daknoblo/waim:latest   # current build of the main branch
+docker pull ghcr.io/daknoblo/waim:latest   # approved stable build of main
 docker pull ghcr.io/daknoblo/waim:1.4.0   # a specific version tag
 ```
+
+### Stable and development channels
+
+`main` publishes `:latest`; `develop` publishes `:dev`. A development push
+never updates the stable image or the public demo. Changes reach stable only
+after the maintainer merges the promotion pull request and CI passes.
+New version tags (`X.Y.Z`, including patches) are stable releases from `main`.
+
+For development testing, change the image tag to `dev` in a separate Compose
+setup and use a different container name, host port and named data volume.
+Never let stable and dev share `/appdata`: database/configuration migrations
+may not be reversible. If testing with existing data, use a separate backup
+copy, including its `master.key`; keep that backup private.
 
 ## Running with Docker
 
