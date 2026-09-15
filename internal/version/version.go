@@ -54,6 +54,12 @@ func (i Info) IsRelease() bool {
 	return semver.MatchString(i.Version)
 }
 
+// IsDevelopment identifies the explicit dev channel and local unversioned builds.
+// Stable timestamps, version tags and static demos must not acquire a dev label.
+func (i Info) IsDevelopment() bool {
+	return i.Version == "dev" || strings.HasPrefix(i.Version, "dev-")
+}
+
 // IsFeatureRelease classifies X.Y.0 versions. Patch versions also have release
 // pages; use IsRelease when deciding whether to link to release notes.
 func (i Info) IsFeatureRelease() bool {

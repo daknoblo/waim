@@ -102,6 +102,12 @@ unknown sources. Static demo checks do not replace live mutation acceptance.
 
 ## Editing the UI
 
+The original film-reel/question-mark icon is shared by the header and the
+SVG favicon (`internal/web/assets/static/waim-icon.svg`). It is embedded and
+versioned with the other assets. Browser titles use `[DEV] waim — ...` for
+explicit `dev` / `dev-*` builds only; stable builds and the static demo keep
+`waim — ...` without a channel suffix.
+
 1. Edit the relevant `internal/web/*.templ` file.
 2. Run `make generate` to regenerate the Go code.
 3. If you add new Tailwind classes, run `make css` to rebuild the stylesheet.
