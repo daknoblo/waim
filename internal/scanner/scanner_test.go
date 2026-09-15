@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/daknoblo/waim/internal/config"
-	"github.com/daknoblo/waim/internal/jellyfin"
+	jellyfin "github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
 )
@@ -23,6 +23,22 @@ func (f *fakeJF) ItemsInLibrary(_ context.Context, _, libID string) ([]jellyfin.
 }
 func (f *fakeJF) Episodes(_ context.Context, _, seriesID string) ([]jellyfin.Item, error) {
 	return f.episodes[seriesID], nil
+}
+
+func (f *fakeJF) catalog(settings config.Settings) jellyfin.Catalog {
+	var c jellyfin.Catalog
+	for _, lib := range settings.Libraries {
+		if !lib.Enabled {
+			continue
+		}
+		c.Libraries = append(c.Libraries, jellyfin.Library{ID: lib.ID, Name: lib.Name})
+		for _, item := range f.items[lib.ID] {
+			item.Episodes = f.episodes[item.ID]
+			item.References = []jellyfin.Reference{{ID: "test", Type: "jellyfin", LibraryID: lib.ID, LibraryName: lib.Name}}
+			c.Items = append(c.Items, item)
+		}
+	}
+	return c
 }
 
 type fakeTMDB struct {
@@ -121,7 +137,7 @@ func TestScanFindsGaps(t *testing.T) {
 		Scan:      config.ScanSettings{IncludeSpecials: false},
 	}
 
-	s := New(jf, td, settings, nil)
+	s := New(jf.catalog(settings), td, settings, nil)
 	s.now = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
 
 	res, err := s.Run(context.Background())
@@ -209,7 +225,7 @@ func TestScanCollectsUpcoming(t *testing.T) {
 	}
 
 	settings := config.Settings{Libraries: []config.Library{{ID: "lib1", Name: "Mixed", Enabled: true}}}
-	s := New(jf, td, settings, nil)
+	s := New(jf.catalog(settings), td, settings, nil)
 	s.now = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
 
 	res, err := s.Run(context.Background())

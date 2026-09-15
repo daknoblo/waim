@@ -1,4 +1,4 @@
-// Package suggest builds media recommendations from the user's Jellyfin library
+// Package suggest builds media recommendations from the shared real-owned catalog
 // using TMDB (trending + per-title recommendations) and, optionally, a remote
 // AI endpoint.
 package suggest
@@ -17,7 +17,8 @@ import (
 
 	"github.com/daknoblo/waim/internal/ai"
 	"github.com/daknoblo/waim/internal/config"
-	"github.com/daknoblo/waim/internal/jellyfin"
+	"github.com/daknoblo/waim/internal/media"
+	"github.com/daknoblo/waim/internal/source"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
 	"github.com/daknoblo/waim/internal/tmdbcache"
@@ -36,6 +37,8 @@ const (
 
 // Item is a display-ready TMDB suggestion.
 type Item struct {
+	TMDBID      int64
+	References  []media.Reference
 	MediaType   string
 	Title       string
 	Year        string
@@ -57,6 +60,8 @@ type AIItem struct {
 
 // Result is a cached set of suggestions.
 type Result struct {
+	SourcesToken   string
+	Revision       int64
 	Trending       []Item
 	Similar        []Item
 	UpcomingTaste  []Item
@@ -78,6 +83,10 @@ type Service struct {
 	mu      sync.RWMutex
 	result  *Result
 	running atomic.Bool
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	epoch   uint64
 }
 
 // New creates a suggestion service.
@@ -85,8 +94,13 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Service {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Service{cfg: cfg, store: st, log: log, ttl: 6 * time.Hour}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &Service{cfg: cfg, store: st, log: log, ttl: 6 * time.Hour, ctx: ctx, cancel: cancel}
 }
+
+// Close cooperatively cancels and joins background work before the store closes.
+func (s *Service) Close()      { s.mu.Lock(); s.cancel(); s.mu.Unlock(); s.wg.Wait() }
+func (s *Service) Invalidate() { s.mu.Lock(); s.result = nil; s.epoch++; s.mu.Unlock() }
 
 // Running reports whether a generation is in progress.
 func (s *Service) Running() bool { return s.running.Load() }
@@ -111,6 +125,10 @@ func (s *Service) NeedsRefresh(ctx context.Context) bool {
 	if res == nil {
 		return true
 	}
+	_, revision, err := s.store.VirtualEntries(ctx)
+	if err != nil || res.Revision != revision || res.SourcesToken != s.cfg.Get().SourcesToken() {
+		return true
+	}
 	var latest int64
 	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
 		latest = run.ID
@@ -120,16 +138,28 @@ func (s *Service) NeedsRefresh(ctx context.Context) bool {
 
 // Generate rebuilds suggestions in the background, ignoring overlapping calls.
 func (s *Service) Generate() {
-	if !s.running.CompareAndSwap(false, true) {
+	s.mu.Lock()
+	if s.ctx.Err() != nil {
+		s.mu.Unlock()
 		return
 	}
+	if !s.running.CompareAndSwap(false, true) {
+		s.mu.Unlock()
+		return
+	}
+	s.wg.Add(1)
+	epoch := s.epoch
+	s.mu.Unlock()
 	go func() {
+		defer s.wg.Done()
 		defer s.running.Store(false)
-		ctx, cancel := context.WithTimeout(context.Background(), generateLimit)
+		ctx, cancel := context.WithTimeout(s.ctx, generateLimit)
 		defer cancel()
 		res := s.build(ctx)
 		s.mu.Lock()
-		s.result = res
+		if epoch == s.epoch && ctx.Err() == nil {
+			s.result = res
+		}
 		s.mu.Unlock()
 		s.log.Info("suggestions generated", "trending", len(res.Trending), "similar", len(res.Similar),
 			"upcoming", len(res.UpcomingTaste)+len(res.UpcomingRegion), "ai", len(res.AI))
@@ -142,14 +172,14 @@ func (s *Service) build(ctx context.Context) *Result {
 		res.BasedOnRunID = run.ID
 	}
 	settings := s.cfg.Get()
+	res.SourcesToken = settings.SourcesToken()
 
-	if settings.Jellyfin.URL == "" || settings.Jellyfin.APIKey == "" || settings.TMDB.APIKey == "" {
-		res.Errors = append(res.Errors, "jellyfin and tmdb must be configured")
+	if settings.TMDB.APIKey == "" {
+		res.Errors = append(res.Errors, "TMDB must be configured")
 		return res
 	}
 	res.AIEnabled = settings.AI.Enabled && settings.AI.Endpoint != "" && settings.AI.APIKey != ""
 
-	jf := jellyfin.New(settings.Jellyfin.URL, settings.Jellyfin.APIKey)
 	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
 		WithCache(tmdbcache.New(s.store))
 
@@ -158,40 +188,44 @@ func (s *Service) build(ctx context.Context) *Result {
 	var sampleTV, sampleMovie []int64
 	var seriesNames, movieNames []string
 
-	userID, err := jf.ResolveUserID(ctx, settings.Jellyfin.UserID)
+	catalog, err := source.Catalog(ctx, s.store, settings, false, nil)
 	if err != nil {
-		res.Errors = append(res.Errors, "jellyfin: "+err.Error())
+		res.Errors = append(res.Errors, "Catalog unavailable")
 		return res
 	}
-	for _, lib := range settings.EnabledLibraryIDs() {
-		items, err := jf.ItemsInLibrary(ctx, userID, lib)
-		if err != nil {
-			res.Errors = append(res.Errors, "jellyfin: "+err.Error())
+	res.Revision = catalog.Revision
+	catalog, err = source.ResolveSavedCatalog(ctx, s.store, settings, catalog, td)
+	if err != nil {
+		s.log.Error("catalog resolution failed", "err", err)
+		res.Errors = append(res.Errors, "Catalog resolution unavailable")
+		return res
+	}
+	res.Errors = append(res.Errors, catalog.Warnings...)
+	for _, it := range catalog.Items {
+		if it.WatchOnly {
 			continue
 		}
-		for _, it := range items {
-			id := providerTMDB(it)
-			switch it.Type {
-			case "Series":
-				if id != 0 {
-					ownedTV[id] = true
-					if len(sampleTV) < sampleSize {
-						sampleTV = append(sampleTV, id)
-					}
+		id := it.TMDBID()
+		switch it.Type {
+		case "Series":
+			if id != 0 {
+				ownedTV[id] = true
+				if len(sampleTV) < sampleSize {
+					sampleTV = append(sampleTV, id)
 				}
-				if len(seriesNames) < aiOwnedNames {
-					seriesNames = append(seriesNames, it.Name)
+			}
+			if len(seriesNames) < aiOwnedNames {
+				seriesNames = append(seriesNames, it.Name)
+			}
+		case "Movie":
+			if id != 0 {
+				ownedMovie[id] = true
+				if len(sampleMovie) < sampleSize {
+					sampleMovie = append(sampleMovie, id)
 				}
-			case "Movie":
-				if id != 0 {
-					ownedMovie[id] = true
-					if len(sampleMovie) < sampleSize {
-						sampleMovie = append(sampleMovie, id)
-					}
-				}
-				if len(movieNames) < aiOwnedNames {
-					movieNames = append(movieNames, it.Name)
-				}
+			}
+			if len(movieNames) < aiOwnedNames {
+				movieNames = append(movieNames, it.Name)
 			}
 		}
 	}
@@ -386,7 +420,7 @@ func (s *Service) buildAI(ctx context.Context, cfg config.AISettings, seriesName
 
 func buildAIPrompt(seriesNames, movieNames []string) string {
 	var b strings.Builder
-	b.WriteString("My Jellyfin library.\n")
+	b.WriteString("My owned media catalog.\n")
 	if len(seriesNames) > 0 {
 		b.WriteString("TV series I own: ")
 		b.WriteString(strings.Join(seriesNames, ", "))
@@ -438,6 +472,7 @@ func rankScores(m map[int64]*scored, mediaType string, n int) []Item {
 
 func toItem(m tmdb.MediaResult, mediaType string) Item {
 	it := Item{
+		TMDBID:    m.ID,
 		MediaType: mediaType,
 		Title:     m.DisplayTitle(),
 		Year:      m.Year(),
@@ -459,15 +494,6 @@ func toItem(m tmdb.MediaResult, mediaType string) Item {
 	}
 	it.TMDBLink = "https://www.themoviedb.org/" + kind + "/" + strconv.FormatInt(m.ID, 10)
 	return it
-}
-
-func providerTMDB(it jellyfin.Item) int64 {
-	if v, ok := it.ProviderID("Tmdb"); ok {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return id
-		}
-	}
-	return 0
 }
 
 func truncate(s string, n int) string {

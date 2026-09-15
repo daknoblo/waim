@@ -310,14 +310,14 @@ func (s *Store) AddFindings(ctx context.Context, runID int64, fs []Finding) erro
 // LatestRun returns the most recent scan run regardless of status.
 func (s *Store) LatestRun(ctx context.Context) (*ScanRun, error) {
 	return s.queryRun(ctx, `SELECT id, started_at, finished_at, status, error,
-        libraries_scanned, items_scanned, missing_count, libraries_json, media_json, upcoming_json
+        libraries_scanned, items_scanned, missing_count, libraries_json, media_json, upcoming_json, metadata_json
         FROM scan_runs ORDER BY id DESC LIMIT 1`)
 }
 
 // LatestSuccessfulRun returns the most recent successfully completed run.
 func (s *Store) LatestSuccessfulRun(ctx context.Context) (*ScanRun, error) {
 	return s.queryRun(ctx, `SELECT id, started_at, finished_at, status, error,
-        libraries_scanned, items_scanned, missing_count, libraries_json, media_json, upcoming_json
+        libraries_scanned, items_scanned, missing_count, libraries_json, media_json, upcoming_json, metadata_json
         FROM scan_runs WHERE status = 'success' ORDER BY id DESC LIMIT 1`)
 }
 
@@ -337,7 +337,7 @@ func (s *Store) queryRun(ctx context.Context, query string, args ...any) (*ScanR
 func (s *Store) FindingsForRun(ctx context.Context, runID int64) ([]Finding, error) {
 	rows, err := s.db.QueryContext(ctx, `
         SELECT id, scan_run_id, kind, media_type, library_id, library_name, title,
-            tmdb_id, jellyfin_id, season_number, summary, details, created_at
+            tmdb_id, jellyfin_id, season_number, summary, details, created_at, provenance_json
         FROM findings WHERE scan_run_id = ?
         ORDER BY media_type, title, season_number`, runID)
 	if err != nil {
@@ -348,16 +348,17 @@ func (s *Store) FindingsForRun(ctx context.Context, runID int64) ([]Finding, err
 	var out []Finding
 	for rows.Next() {
 		var (
-			f         Finding
-			tmdbID    sql.NullInt64
-			jellyfin  sql.NullString
-			details   sql.NullString
-			season    sql.NullInt64
-			createdAt string
+			f          Finding
+			tmdbID     sql.NullInt64
+			jellyfin   sql.NullString
+			details    sql.NullString
+			season     sql.NullInt64
+			createdAt  string
+			provenance sql.NullString
 		)
 		if err := rows.Scan(&f.ID, &f.ScanRunID, &f.Kind, &f.MediaType, &f.LibraryID,
 			&f.LibraryName, &f.Title, &tmdbID, &jellyfin, &season, &f.Summary,
-			&details, &createdAt); err != nil {
+			&details, &createdAt, &provenance); err != nil {
 			return nil, fmt.Errorf("store: scan finding: %w", err)
 		}
 		if tmdbID.Valid {
@@ -368,6 +369,11 @@ func (s *Store) FindingsForRun(ctx context.Context, runID int64) ([]Finding, err
 		}
 		if details.Valid {
 			f.Details = details.String
+		}
+		if provenance.Valid {
+			if err := json.Unmarshal([]byte(provenance.String), &f.Provenance); err != nil {
+				return nil, err
+			}
 		}
 		if season.Valid {
 			n := int(season.Int64)
@@ -396,6 +402,9 @@ func (s *Store) SuccessfulRunTotals(ctx context.Context, limit int) ([]RunTotals
         SELECT finished_at, items_scanned, missing_count
         FROM scan_runs
         WHERE status = 'success' AND finished_at IS NOT NULL
+          AND json_extract(metadata_json, '$.basis') = 'owned-v1'
+          AND json_extract(metadata_json, '$.mode') = 'refresh'
+          AND COALESCE(json_array_length(json_extract(metadata_json, '$.warnings')), 0) = 0
         ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: run totals: %w", err)
@@ -426,7 +435,7 @@ func (s *Store) SuccessfulRunTotals(ctx context.Context, limit int) ([]RunTotals
 func (s *Store) RecentRuns(ctx context.Context, limit int) ([]ScanRun, error) {
 	rows, err := s.db.QueryContext(ctx, `
         SELECT id, started_at, finished_at, status, error,
-            libraries_scanned, items_scanned, missing_count, libraries_json, media_json, upcoming_json
+            libraries_scanned, items_scanned, missing_count, libraries_json, media_json, upcoming_json, metadata_json
         FROM scan_runs ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: recent runs: %w", err)
@@ -446,6 +455,11 @@ func (s *Store) RecentRuns(ctx context.Context, limit int) ([]ScanRun, error) {
 // ExportSyncState builds an exportable snapshot of the latest successful run.
 func (s *Store) ExportSyncState(ctx context.Context) (SyncState, error) {
 	state := SyncState{GeneratedAt: time.Now().UTC()}
+	entries, revision, err := s.VirtualEntries(ctx)
+	if err != nil {
+		return state, err
+	}
+	state.WatchCollection, state.VirtualRevision = entries, revision
 	run, err := s.LatestSuccessfulRun(ctx)
 	if err != nil {
 		return state, err
@@ -461,7 +475,8 @@ func (s *Store) ExportSyncState(ctx context.Context) (SyncState, error) {
 	return state, nil
 }
 
-// PruneRuns deletes all but the most recent keep runs (and their findings).
+// PruneRuns bounds recent result snapshots and complete refresh history
+// independently. Recomputations cannot evict the growth measurement baseline.
 func (s *Store) PruneRuns(ctx context.Context, keep int) error {
 	if keep < 1 {
 		keep = 1
@@ -469,7 +484,14 @@ func (s *Store) PruneRuns(ctx context.Context, keep int) error {
 	_, err := s.db.ExecContext(ctx, `
         DELETE FROM scan_runs WHERE id NOT IN (
             SELECT id FROM scan_runs ORDER BY id DESC LIMIT ?
-        )`, keep)
+        ) AND id NOT IN (
+            SELECT id FROM scan_runs
+            WHERE status = 'success' AND finished_at IS NOT NULL
+              AND json_extract(metadata_json, '$.basis') = 'owned-v1'
+              AND json_extract(metadata_json, '$.mode') = 'refresh'
+              AND COALESCE(json_array_length(json_extract(metadata_json, '$.warnings')), 0) = 0
+            ORDER BY id DESC LIMIT ?
+        )`, keep, keep)
 	if err != nil {
 		return fmt.Errorf("store: prune runs: %w", err)
 	}
@@ -490,9 +512,10 @@ func scanRunRow(row rowScanner) (*ScanRun, error) {
 		librariesJSON sql.NullString
 		mediaJSON     sql.NullString
 		upcomingJSON  sql.NullString
+		metadataJSON  sql.NullString
 	)
 	if err := row.Scan(&run.ID, &startedAt, &finishedAt, &run.Status, &errMsg,
-		&run.LibrariesScanned, &run.ItemsScanned, &run.MissingCount, &librariesJSON, &mediaJSON, &upcomingJSON); err != nil {
+		&run.LibrariesScanned, &run.ItemsScanned, &run.MissingCount, &librariesJSON, &mediaJSON, &upcomingJSON, &metadataJSON); err != nil {
 		return nil, err
 	}
 	if t, err := time.Parse(timeLayout, startedAt); err == nil {
@@ -505,6 +528,11 @@ func scanRunRow(row rowScanner) (*ScanRun, error) {
 	}
 	if errMsg.Valid {
 		run.Error = errMsg.String
+	}
+	if metadataJSON.Valid {
+		if err := json.Unmarshal([]byte(metadataJSON.String), &run.Metadata); err != nil {
+			return nil, err
+		}
 	}
 	if librariesJSON.Valid && librariesJSON.String != "" {
 		_ = json.Unmarshal([]byte(librariesJSON.String), &run.Libraries)

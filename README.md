@@ -17,7 +17,7 @@
 > golangci-lint, CodeQL and Dependabot, but it is a personal side project — see
 > [Disclaimer](#disclaimer).
 
-**waim** connects to your [Jellyfin](https://jellyfin.org/) server, reads your
+**waim** connects to your named [Jellyfin](https://jellyfin.org/) instances, reads your
 movies and series, and compares them against
 [The Movie Database (TMDB)](https://www.themoviedb.org/) to tell you **what you
 are missing**:
@@ -38,9 +38,18 @@ Huntarr or Missingarr.
 
 ## Features
 
-- Read-only Jellyfin integration (your library is never modified).
+- Multiple independent, named, read-only Jellyfin instances (your libraries are never modified).
+- A permanent **Watch collection** with TMDB movie/series search, add/remove and
+  watch actions throughout the UI. Works with TMDB alone; no Jellyfin server is required.
+- Global TMDB identity merging and union of real episode ownership across
+  instances. Source badges retain every instance and virtual membership.
+- Atomic source snapshots: failed refreshes retain the last successful inventory,
+  with explicit stale/unknown warnings. Collection edits update immediately and
+  queue a cache-backed recalculation, **not** a media-server rescan.
+- Watch-only ratings, gaps and releases are separate from real ownership,
+  runtime and growth. Plex and Emby adapters are not implemented.
 - TMDB matching that prefers Jellyfin's stored provider IDs and falls back to a
-  title/year search.
+  unique exact title/year search; ambiguous/unresolved titles remain source-local.
 - Detects missing seasons, missing episodes and missing collection entries.
 - Periodic scans (configurable interval), scan-on-startup and a manual
   **Scan now** button.
@@ -71,7 +80,8 @@ Huntarr or Missingarr.
   suggestions reuse data instead of re-loading everything from TMDB.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
   rest** (AES-256-GCM with a key generated on first start). The settings page
-  saves as you type and verifies each connection immediately.
+  saves global settings as you type. Source-specific forms use explicit saves,
+  revision checks, connection tests and library refreshes.
 - Export of settings (keys stay encrypted, never plaintext) and of the current
   sync state.
 - Bilingual UI (English / German) with an in-app language switch.
@@ -104,10 +114,11 @@ curl -fsSL https://raw.githubusercontent.com/daknoblo/waim/main/deploy/docker-co
 docker compose up -d
 ```
 
-Then open <http://localhost:8080>, go to **Settings**, and enter your Jellyfin
-URL + API key and your TMDB API key. Everything is saved as you go and each
-connection is tested right away. Use **Refresh libraries from Jellyfin** to
-load your libraries and tick the ones to scan.
+Then open <http://localhost:8080> and enter your TMDB API key on **Settings**.
+Use **Watch collection** immediately, or add Jellyfin instances on **Media
+sources**. Save each source, refresh its libraries, select them and save again.
+**Scan now** refreshes all active real sources; watch edits only recalculate
+using saved snapshots.
 
 > **Upgrading from 1.3 or older?** `WAIM_MASTER_KEY` was removed and the
 > encryption key is now generated automatically, so the stored API keys have to

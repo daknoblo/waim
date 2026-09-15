@@ -1,6 +1,17 @@
 package store
 
-import "time"
+import (
+	"github.com/daknoblo/waim/internal/media"
+	"time"
+)
+
+type Provenance struct {
+	CatalogID         string            `json:"catalogId,omitempty"`
+	ContextReferences []media.Reference `json:"contextSources,omitempty"`
+	References        []media.Reference `json:"sources,omitempty"`
+	WatchOnly         bool              `json:"watchOnly,omitempty"`
+	Unconfirmed       bool              `json:"unconfirmed,omitempty"`
+}
 
 // LibrarySummary captures per-library scan counts.
 type LibrarySummary struct {
@@ -13,24 +24,26 @@ type LibrarySummary struct {
 
 // MediaStat captures TMDB metadata of an owned title for statistics.
 type MediaStat struct {
-	Type           string       `json:"type"` // movie | series
-	Title          string       `json:"title"`
-	Year           int          `json:"year"`
-	Rating         float64      `json:"rating"`
-	Runtime        int          `json:"runtime"` // minutes (per movie, per episode for series)
-	Genres         []string     `json:"genres"`
-	LibraryID      string       `json:"libraryId"`
-	LibraryName    string       `json:"libraryName"`
-	TMDBID         int64        `json:"tmdbId,omitempty"`
-	JellyfinID     string       `json:"jellyfinId,omitempty"`
-	Language       string       `json:"language,omitempty"`      // ISO 639-1 original language
-	Country        string       `json:"country,omitempty"`       // ISO 3166-1 production country
-	Episodes       int          `json:"episodes,omitempty"`      // owned episodes (series)
-	TotalEpisodes  int          `json:"totalEpisodes,omitempty"` // episodes known to TMDB (series)
-	Minutes        int          `json:"minutes,omitempty"`       // runtime of the owned episodes (series)
-	Seasons        []SeasonStat `json:"seasons,omitempty"`       // seasons known to TMDB (series)
-	CollectionID   int64        `json:"collectionId,omitempty"`  // TMDB collection (movies)
-	CollectionName string       `json:"collectionName,omitempty"`
+	Provenance
+	MetadataUnavailable bool         `json:"metadataUnavailable,omitempty"`
+	Type                string       `json:"type"` // movie | series
+	Title               string       `json:"title"`
+	Year                int          `json:"year"`
+	Rating              float64      `json:"rating"`
+	Runtime             int          `json:"runtime"` // minutes (per movie, per episode for series)
+	Genres              []string     `json:"genres"`
+	LibraryID           string       `json:"libraryId"`
+	LibraryName         string       `json:"libraryName"`
+	TMDBID              int64        `json:"tmdbId,omitempty"`
+	JellyfinID          string       `json:"jellyfinId,omitempty"`
+	Language            string       `json:"language,omitempty"`      // ISO 639-1 original language
+	Country             string       `json:"country,omitempty"`       // ISO 3166-1 production country
+	Episodes            int          `json:"episodes,omitempty"`      // owned episodes (series)
+	TotalEpisodes       int          `json:"totalEpisodes,omitempty"` // episodes known to TMDB (series)
+	Minutes             int          `json:"minutes,omitempty"`       // runtime of the owned episodes (series)
+	Seasons             []SeasonStat `json:"seasons,omitempty"`       // seasons known to TMDB (series)
+	CollectionID        int64        `json:"collectionId,omitempty"`  // TMDB collection (movies)
+	CollectionName      string       `json:"collectionName,omitempty"`
 }
 
 // SeasonStat captures how many episodes of a season are owned and, when episode
@@ -56,6 +69,7 @@ type EpisodeRating struct {
 // library: a future episode of an owned series or an unreleased part of an
 // owned movie collection.
 type UpcomingItem struct {
+	Provenance
 	Kind          string  `json:"kind"`      // episode | collection_part
 	MediaType     string  `json:"mediaType"` // series | movie
 	Title         string  `json:"title"`
@@ -77,6 +91,7 @@ type UpcomingItem struct {
 const (
 	UpcomingEpisode        = "episode"
 	UpcomingCollectionPart = "collection_part"
+	UpcomingMovie          = "movie"
 )
 
 // Finding kinds.
@@ -84,6 +99,7 @@ const (
 	KindMissingSeason     = "missing_season"
 	KindMissingEpisodes   = "missing_episodes"
 	KindMissingCollection = "missing_collection"
+	KindMissingMovie      = "missing_movie"
 )
 
 // Media types.
@@ -101,6 +117,7 @@ const (
 
 // ScanRun records the lifecycle and summary of a single scan.
 type ScanRun struct {
+	Metadata         RunMetadata      `json:"metadata"`
 	ID               int64            `json:"id"`
 	StartedAt        time.Time        `json:"startedAt"`
 	FinishedAt       *time.Time       `json:"finishedAt,omitempty"`
@@ -124,6 +141,7 @@ func (r ScanRun) Duration() time.Duration {
 
 // Finding describes a single gap discovered during a scan.
 type Finding struct {
+	Provenance
 	ID           int64     `json:"id"`
 	ScanRunID    int64     `json:"scanRunId"`
 	Kind         string    `json:"kind"`
@@ -141,7 +159,10 @@ type Finding struct {
 
 // SyncState is the exportable snapshot of the most recent completed scan.
 type SyncState struct {
-	GeneratedAt time.Time `json:"generatedAt"`
-	Run         *ScanRun  `json:"run"`
-	Findings    []Finding `json:"findings"`
+	Catalog         *media.Catalog `json:"catalog,omitempty"`
+	WatchCollection []VirtualEntry `json:"watchCollection"`
+	VirtualRevision int64          `json:"virtualRevision"`
+	GeneratedAt     time.Time      `json:"generatedAt"`
+	Run             *ScanRun       `json:"run"`
+	Findings        []Finding      `json:"findings"`
 }

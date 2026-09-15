@@ -1,5 +1,7 @@
 package web
 
+import "strings"
+
 import "github.com/daknoblo/waim/internal/i18n"
 import "strconv"
 
@@ -92,6 +94,9 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				<span class="font-medium">{ t.T("dashboard.lastError") }:</span> { s.LastError }
 			</div>
 		}
+		if s.Warning != "" {
+			<p role="status" class="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">{ s.Warning }</p>
+		}
 	</div>
 }
 
@@ -124,7 +129,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 					</thead>
 					<tbody class="divide-y divide-slate-800 align-top">
 						for _, r := range rows {
-							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID }>
+							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID } data-libraries={ strings.Join(r.LibraryIDs," ") }>
 								<td class="px-3 py-2">
 								<div class="flex items-center gap-2">
 									if r.PosterURL != "" {
@@ -134,6 +139,11 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 									}
 									<span class="font-medium text-slate-100">{ r.Title }</span>
 								</div>
+								@MediaActions(t,r.TMDBLink)
+								if len(r.ContextReferences)>0 {
+									<div class="mt-1 text-xs text-slate-400">{ t.T("sources.context") }</div>
+									@SourceBadges(t,r.ContextReferences)
+								}
 							</td>
 								<td class="px-3 py-2"><span class={ "badge", r.LibraryColor }>{ r.Library }</span></td>
 								<td class="px-3 py-2 text-slate-300" data-label={ t.T("finding.col.detail") }>
@@ -153,6 +163,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 													if di.IMDbURL != "" {
 														<a class="link-imdb" href={ templ.SafeURL(di.IMDbURL) } target="_blank" rel="noreferrer noopener" title="IMDb">IMDb</a>
 													}
+													@MediaActions(t,di.TMDBLink)
 												</li>
 											}
 										</ul>
@@ -164,7 +175,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 											<a class="link-tmdb" href={ templ.SafeURL(r.TMDBLink) } target="_blank" rel="noreferrer noopener" title="TMDB">TMDB</a>
 										}
 										if r.JellyfinLink != "" {
-											<a class="link-jellyfin" href={ templ.SafeURL(r.JellyfinLink) } target="_blank" rel="noreferrer noopener" title="Jellyfin">Jellyfin</a>
+											<a class="link-jellyfin" href={ templ.SafeURL(MediaHref(ctx,r.JellyfinLink)) } target="_blank" rel="noreferrer noopener">{ t.T("sources.open") }</a>
 										}
 									</div>
 								</td>

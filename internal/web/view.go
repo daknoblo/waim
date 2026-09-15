@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
+	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
 )
 
@@ -28,6 +29,7 @@ const (
 
 // DetailItem is a single missing part/episode line, with an optional rating.
 type DetailItem struct {
+	TMDBLink string
 	Text     string
 	Rating   string
 	CopyText string
@@ -37,21 +39,24 @@ type DetailItem struct {
 
 // FindingRow is a display-ready representation of a store.Finding.
 type FindingRow struct {
-	KindLabel    string
-	MediaIcon    string
-	Title        string
-	Library      string
-	LibraryID    string
-	LibraryColor []string
-	Detail       string
-	DetailItems  []DetailItem
-	MissingCount int
-	PosterURL    string
-	TMDBLink     string
-	JellyfinLink string
+	ContextReferences []media.Reference
+	LibraryIDs        []string
+	KindLabel         string
+	MediaIcon         string
+	Title             string
+	Library           string
+	LibraryID         string
+	LibraryColor      []string
+	Detail            string
+	DetailItems       []DetailItem
+	MissingCount      int
+	PosterURL         string
+	TMDBLink          string
+	JellyfinLink      string
 }
 
 type detailPayload struct {
+	ReleaseDate     string            `json:"releaseDate"`
 	SeasonNumber    int               `json:"seasonNumber"`
 	EpisodeCount    int               `json:"episodeCount"`
 	MissingEpisodes []int             `json:"missingEpisodes"`
@@ -77,25 +82,30 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 	var groupOrder []string
 
 	for _, f := range findings {
+		f.LibraryName = LibraryDisplayName(t, f.LibraryID, f.LibraryName)
 		var d detailPayload
 		if f.Details != "" {
 			_ = json.Unmarshal([]byte(f.Details), &d)
 		}
 
 		switch f.Kind {
+		case store.KindMissingMovie:
+			rows = append(rows, FindingRow{KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), TMDBLink: tmdbLink("movie", f.TMDBID)})
 		case store.KindMissingCollection:
 			row := FindingRow{
-				KindLabel:    t.T("finding.kind." + f.Kind),
-				MediaIcon:    mediaIcon(f.MediaType),
-				Title:        f.Title,
-				Library:      f.LibraryName,
-				LibraryID:    f.LibraryID,
-				LibraryColor: LibraryColor(f.LibraryID),
-				JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
-				PosterURL:    posterURL(d.PosterPath),
-				Detail:       t.T("finding.missingCollection", len(d.MissingParts)),
-				MissingCount: len(d.MissingParts),
-				TMDBLink:     tmdbLink("collection", f.TMDBID),
+				ContextReferences: f.ContextReferences,
+				LibraryIDs:        findingLibraries(f),
+				KindLabel:         t.T("finding.kind." + f.Kind),
+				MediaIcon:         mediaIcon(f.MediaType),
+				Title:             f.Title,
+				Library:           f.LibraryName,
+				LibraryID:         f.LibraryID,
+				LibraryColor:      LibraryColor(f.LibraryID),
+				JellyfinLink:      "",
+				PosterURL:         posterURL(d.PosterPath),
+				Detail:            t.T("finding.missingCollection", len(d.MissingParts)),
+				MissingCount:      len(d.MissingParts),
+				TMDBLink:          tmdbLink("collection", f.TMDBID),
 			}
 			sort.SliceStable(d.MissingParts, func(i, j int) bool {
 				return yearValue(d.MissingParts[i].Year) < yearValue(d.MissingParts[j].Year)
@@ -105,7 +115,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				if p.Year != "" {
 					text += " (" + p.Year + ")"
 				}
-				item := DetailItem{Text: text}
+				item := DetailItem{Text: text, TMDBLink: tmdbLink("movie", p.TMDBID)}
 				if p.Rating > 0 {
 					item.Rating = fmt.Sprintf("%.1f", p.Rating)
 				}
@@ -123,13 +133,14 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			g := groups[key]
 			if g == nil {
 				g = &FindingRow{
+					LibraryIDs:   findingLibraries(f),
 					KindLabel:    t.T("finding.kind.series"),
 					MediaIcon:    mediaIcon(store.MediaSeries),
 					Title:        f.Title,
 					Library:      f.LibraryName,
 					LibraryID:    f.LibraryID,
 					LibraryColor: LibraryColor(f.LibraryID),
-					JellyfinLink: jellyfinItemURL(jellyfinURL, f.JellyfinID),
+					JellyfinLink: findingLink(f, jellyfinURL),
 					TMDBLink:     tmdbLink("tv", f.TMDBID),
 				}
 				groups[key] = g
@@ -163,6 +174,14 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 		rows = append(rows, *g)
 	}
 	return rows
+}
+
+func findingLibraries(f store.Finding) []string {
+	out := []string{f.LibraryID}
+	for _, ref := range append(f.References, f.ContextReferences...) {
+		out = append(out, ref.LibraryID, ref.ID)
+	}
+	return out
 }
 
 func seriesKey(f store.Finding) string {

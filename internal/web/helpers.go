@@ -104,11 +104,17 @@ const (
 	DataScanning     = "scanning"      // a scan is running and no successful one finished yet
 	DataNeverScanned = "never-scanned" // configured, but no successful scan yet
 	DataReady        = "ready"         // a successful scan is available
+	DataIncomplete   = "incomplete"
+	DataLegacy       = "legacy"
 )
 
 // dataStateKey maps a data state to the message explaining why a view is empty.
 func dataStateKey(state string) string {
 	switch state {
+	case DataIncomplete:
+		return "sources.incomplete"
+	case DataLegacy:
+		return "sources.legacy"
 	case DataUnconfigured:
 		return "common.stateUnconfigured"
 	case DataScanning:

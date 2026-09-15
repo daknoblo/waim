@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 	"github.com/daknoblo/waim/internal/ai"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
-	"github.com/daknoblo/waim/internal/jellyfin"
 	"github.com/daknoblo/waim/internal/tmdb"
 	"github.com/daknoblo/waim/internal/web"
 )
@@ -25,16 +23,14 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message 
 	cur := s.cfg.Get()
 	cacheEntries, _ := s.store.TMDBCacheCount(r.Context())
 	d := web.SettingsData{
-		Layout:         s.layout(r, web.NavSettings),
-		Settings:       cur,
-		Libraries:      cur.Libraries,
-		HasJellyfinKey: cur.Jellyfin.APIKey != "",
-		HasTMDBKey:     cur.TMDB.APIKey != "",
-		HasAIKey:       cur.AI.APIKey != "",
-		CacheEntries:   cacheEntries,
-		Message:        message,
-		IsError:        isErr,
-		Checks:         map[string]web.ConnCheck{},
+		Layout:       s.layout(r, web.NavSettings),
+		Settings:     cur,
+		HasTMDBKey:   cur.TMDB.APIKey != "",
+		HasAIKey:     cur.AI.APIKey != "",
+		CacheEntries: cacheEntries,
+		Message:      message,
+		IsError:      isErr,
+		Checks:       map[string]web.ConnCheck{},
 	}
 	if len(checks) > 0 && checks[0] != nil {
 		d.Checks = checks[0]
@@ -51,11 +47,13 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	ns, pending := s.parseSettingsForm(r)
 	localeChanged := ns.Locale != s.cfg.Get().Locale
 
-	if err := s.cfg.Save(ns); err != nil {
+	if err := s.cfg.SaveGlobals(ns); err != nil {
 		s.settingsResponse(w, r, t, settingsResult{Err: err})
 		return
 	}
 	s.applyLogLevel(ns.LogLevel)
+	s.sched.Recompute()
+	s.suggest.Invalidate()
 	if s.catalog.Has(ns.Locale) {
 		setLocaleCookie(w, r, ns.Locale)
 	}
@@ -69,7 +67,8 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := settingsResult{Settings: ns, Pending: pending}
-	res.Checks = s.testConnections(r.Context(), tt, ns, changedSections(r, pending))
+	sections := changedSections(r, pending)
+	res.Checks = s.testConnections(r.Context(), tt, ns, sections)
 	// A held-back section was never contacted; say what it is waiting for.
 	for _, p := range pending {
 		res.Checks[p] = web.ConnCheck{
@@ -125,9 +124,8 @@ func isHTMX(r *http.Request) bool { return r.Header.Get("HX-Request") == "true" 
 
 // Sections of the settings form that own a connection.
 const (
-	sectionJellyfin = "jellyfin"
-	sectionTMDB     = "tmdb"
-	sectionAI       = "ai"
+	sectionTMDB = "tmdb"
+	sectionAI   = "ai"
 )
 
 // changedSections decides which connections are worth probing. HTMX names the
@@ -141,83 +139,14 @@ func changedSections(r *http.Request, pending []string) map[string]bool {
 	}
 	if !isHTMX(r) {
 		// A plain form post carries no trigger, so check everything.
-		out[sectionJellyfin], out[sectionTMDB], out[sectionAI] = true, true, true
+		out[sectionTMDB], out[sectionAI] = true, true
 		return out
 	}
 	switch field := r.Header.Get("HX-Trigger-Name"); {
-	case strings.HasPrefix(field, "jellyfin_"):
-		out[sectionJellyfin] = true
 	case strings.HasPrefix(field, "tmdb_"):
 		out[sectionTMDB] = true
 	case strings.HasPrefix(field, "ai_"):
 		out[sectionAI] = true
-	}
-	return out
-}
-
-func (s *Server) handleRefreshLibraries(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	t := s.translator(r)
-	ns, pending := s.parseSettingsForm(r)
-
-	if len(pending) > 0 {
-		s.settingsResponse(w, r, t, settingsResult{Settings: ns, Pending: pending, Checks: pendingChecks(t, pending)})
-		return
-	}
-	if ns.Jellyfin.URL == "" || ns.Jellyfin.APIKey == "" {
-		s.settingsResponse(w, r, t, settingsResult{Err: errJellyfinIncomplete})
-		return
-	}
-
-	client := jellyfin.New(ns.Jellyfin.URL, ns.Jellyfin.APIKey)
-	libs, err := client.Libraries(r.Context())
-	if err != nil {
-		s.settingsResponse(w, r, t, settingsResult{Err: err})
-		return
-	}
-
-	// Preserve enabled state by library ID.
-	enabled := map[string]bool{}
-	for _, l := range ns.Libraries {
-		enabled[l.ID] = l.Enabled
-	}
-	merged := make([]config.Library, 0, len(libs))
-	for _, l := range libs {
-		merged = append(merged, config.Library{
-			ID:      l.ID,
-			Name:    l.Name,
-			Type:    l.CollectionType,
-			Enabled: enabled[l.ID],
-		})
-	}
-	ns.Libraries = merged
-
-	if err := s.cfg.Save(ns); err != nil {
-		s.settingsResponse(w, r, t, settingsResult{Err: err})
-		return
-	}
-	s.applyLogLevel(ns.LogLevel)
-	if !isHTMX(r) {
-		s.renderSettings(w, r, t.T("settings.saveSuccess"), false)
-		return
-	}
-	// Swap the list itself and update the indicator out of band.
-	s.render(w, r, web.LibraryListWithFeedback(t, merged, web.SettingsFeedback{
-		SaveState:   web.SaveOK,
-		SaveMessage: t.T("settings.savedAt", time.Now().Format("15:04")),
-	}))
-}
-
-var errJellyfinIncomplete = errors.New("jellyfin url and api key are required")
-
-// pendingChecks turns held-back sections into chips asking for the key.
-func pendingChecks(t *i18n.Translator, pending []string) map[string]web.ConnCheck {
-	out := map[string]web.ConnCheck{}
-	for _, p := range pending {
-		out[p] = web.ConnCheck{Checked: true, State: web.ConnNeedsKey, Message: t.T("settings.connNeedsKey")}
 	}
 	return out
 }
@@ -238,16 +167,6 @@ func (s *Server) parseSettingsForm(r *http.Request) (config.Settings, []string) 
 
 	ns.Locale = config.NormalizeLocale(r.FormValue("locale"))
 	ns.LogLevel = config.NormalizeLogLevel(r.FormValue("log_level"))
-	ns.Jellyfin.URL = strings.TrimSpace(r.FormValue("jellyfin_url"))
-	ns.Jellyfin.UserID = strings.TrimSpace(r.FormValue("jellyfin_user_id"))
-	if k := strings.TrimSpace(r.FormValue("jellyfin_api_key")); k != "" {
-		ns.Jellyfin.APIKey = k
-	} else if ns.Jellyfin.APIKey != "" && !sameEndpointHost(cur.Jellyfin.URL, ns.Jellyfin.URL) {
-		// Keep the stored address and key together until a key for the new
-		// address arrives; the form still shows what was typed.
-		ns.Jellyfin.URL = cur.Jellyfin.URL
-		rebound = append(rebound, sectionJellyfin)
-	}
 
 	ns.TMDB.Language = strings.TrimSpace(r.FormValue("tmdb_language"))
 	ns.TMDB.Region = strings.TrimSpace(r.FormValue("tmdb_region"))
@@ -277,13 +196,6 @@ func (s *Server) parseSettingsForm(r *http.Request) (config.Settings, []string) 
 	ns.Cache.CleanupEnabled = r.FormValue("cache_cleanup_enabled") != ""
 	ns.Cache.CleanupMaxAgeDays = atoiDefault(r.FormValue("cache_cleanup_max_age"), cur.Cache.CleanupMaxAgeDays)
 
-	selected := map[string]bool{}
-	for _, id := range r.Form["library"] {
-		selected[id] = true
-	}
-	for i := range ns.Libraries {
-		ns.Libraries[i].Enabled = selected[ns.Libraries[i].ID]
-	}
 	return ns, rebound
 }
 
@@ -335,7 +247,7 @@ func (s *Server) applyLogLevel(level string) {
 	}
 }
 
-// testConnections verifies the Jellyfin and TMDB credentials in ns and returns
+// testConnections verifies the global TMDB and AI credentials and returns
 // localised, display-ready results. A credential that is not configured yields
 // an unchecked (hidden) result.
 // testConnections probes the endpoints of the given sections and returns one
@@ -348,24 +260,6 @@ func (s *Server) testConnections(ctx context.Context, t *i18n.Translator, ns con
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-
-	if want[sectionJellyfin] {
-		var c web.ConnCheck
-		switch {
-		case ns.Jellyfin.URL == "" || ns.Jellyfin.APIKey == "":
-			c = web.ConnCheck{Checked: true, State: web.ConnIncomplete, Message: t.T("settings.connIncomplete")}
-		default:
-			c.Checked = true
-			if info, err := jellyfin.New(ns.Jellyfin.URL, ns.Jellyfin.APIKey).SystemInfo(ctx); err != nil {
-				c.State = web.ConnError
-				c.Message = t.T("settings.connJellyfinFail", err.Error())
-			} else {
-				c.OK, c.State = true, web.ConnOK
-				c.Message = t.T("settings.connJellyfinOk", strings.TrimSpace(info.ServerName+" "+info.Version))
-			}
-		}
-		out[sectionJellyfin] = c
-	}
 
 	if want[sectionTMDB] {
 		var c web.ConnCheck

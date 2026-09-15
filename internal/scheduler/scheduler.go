@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/daknoblo/waim/internal/config"
-	"github.com/daknoblo/waim/internal/jellyfin"
 	"github.com/daknoblo/waim/internal/scanner"
+	"github.com/daknoblo/waim/internal/source"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
 	"github.com/daknoblo/waim/internal/tmdbcache"
@@ -41,11 +41,13 @@ type Scheduler struct {
 	store *store.Store
 	log   *slog.Logger
 
-	mu        sync.RWMutex
-	status    Status
-	triggerCh chan struct{}
-	running   atomic.Bool
-	progress  *progressState
+	mu          sync.RWMutex
+	status      Status
+	triggerCh   chan struct{}
+	recomputeCh chan struct{}
+	running     atomic.Bool
+	progress    *progressState
+	tmdbFactory func(config.Settings) scanner.TMDBAPI
 }
 
 // New creates a Scheduler.
@@ -54,12 +56,13 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Scheduler {
 		log = slog.Default()
 	}
 	return &Scheduler{
-		cfg:       cfg,
-		store:     st,
-		log:       log,
-		status:    Status{State: StateIdle},
-		triggerCh: make(chan struct{}, 1),
-		progress:  &progressState{},
+		cfg:         cfg,
+		store:       st,
+		log:         log,
+		status:      Status{State: StateIdle},
+		triggerCh:   make(chan struct{}, 1),
+		recomputeCh: make(chan struct{}, 1),
+		progress:    &progressState{},
 	}
 }
 
@@ -151,6 +154,14 @@ func (s *Scheduler) Trigger() {
 	}
 }
 
+// Recompute coalesces edits without contacting a media server.
+func (s *Scheduler) Recompute() {
+	select {
+	case s.recomputeCh <- struct{}{}:
+	default:
+	}
+}
+
 // Run starts the scheduler loop and blocks until ctx is cancelled.
 func (s *Scheduler) Run(ctx context.Context) {
 	s.restoreStatus(ctx)
@@ -166,11 +177,13 @@ func (s *Scheduler) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-s.triggerCh:
-			s.runScan(ctx)
+			s.runScan(ctx, true)
 			s.resetTimer(timer)
+		case <-s.recomputeCh:
+			s.runScan(ctx, false)
 		case <-timer.C:
 			if s.cfg.Get().Scan.IntervalMinutes > 0 {
-				s.runScan(ctx)
+				s.runScan(ctx, true)
 			}
 			s.resetTimer(timer)
 		}
@@ -207,7 +220,7 @@ func (s *Scheduler) updateNextRun() {
 }
 
 // runScan executes a single scan, ignoring overlapping invocations.
-func (s *Scheduler) runScan(ctx context.Context) {
+func (s *Scheduler) runScan(ctx context.Context, refresh bool) {
 	if !s.running.CompareAndSwap(false, true) {
 		return
 	}
@@ -226,6 +239,7 @@ func (s *Scheduler) runScan(ctx context.Context) {
 	started := time.Now()
 	runID, err := s.store.StartScanRun(ctx)
 	if err != nil {
+		s.setStatus(func(st *Status) { st.State = StateIdle; st.LastError = err.Error() })
 		s.log.Error("failed to start scan run", "err", err)
 		return
 	}
@@ -238,18 +252,44 @@ func (s *Scheduler) runScan(ctx context.Context) {
 	s.log.Info("scan started", "runId", runID)
 
 	s.progress.reset(started)
-	jf := jellyfin.New(settings.Jellyfin.URL, settings.Jellyfin.APIKey)
-	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
+	catalog, scanErr := source.Catalog(ctx, s.store, settings, refresh, nil)
+	var td scanner.TMDBAPI = tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
 		WithCache(tmdbcache.New(s.store))
-	sc := scanner.New(jf, td, settings, s.log)
+	if s.tmdbFactory != nil {
+		td = s.tmdbFactory(settings)
+	}
+	if scanErr == nil {
+		catalog, scanErr = source.ResolveSavedCatalog(ctx, s.store, settings, catalog, td)
+	}
+	sc := scanner.New(catalog, td, settings, s.log)
 	sc.SetReporter(s.progress)
 
-	result, scanErr := sc.Run(ctx)
+	var result scanner.Result
+	if scanErr == nil {
+		result, scanErr = sc.Run(ctx)
+	}
+	mode := "recompute"
+	if refresh {
+		mode = "refresh"
+	}
+	if scanErr == nil {
+		scanErr = s.cfg.WithSourcesToken(settings.SourcesToken(), func() error {
+			return s.store.PublishScan(ctx, runID, result.Findings, result.Libraries, result.Media, result.Upcoming, store.RunMetadata{SourcesToken: settings.SourcesToken(), Basis: "owned-v1", Mode: mode, Revision: catalog.Revision, Warnings: result.Warnings})
+		})
+	}
+	if errors.Is(scanErr, store.ErrCatalogChanged) || errors.Is(scanErr, config.ErrSourcesChanged) {
+		s.Recompute()
+	}
 	finished := time.Now()
 
 	if scanErr != nil {
-		_ = s.store.FinishScanRun(ctx, runID, store.StatusError, scanErr.Error(),
+		finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		finishErr := s.store.FinishScanRun(finishCtx, runID, store.StatusError, scanErr.Error(),
 			result.LibrariesScanned, result.ItemsScanned, 0, result.Libraries, result.Media, result.Upcoming)
+		cancel()
+		if finishErr != nil {
+			s.log.Error("failed to persist scan failure", "runId", runID, "err", finishErr)
+		}
 		s.setStatus(func(st *Status) {
 			st.State = StateIdle
 			st.LastFinished = &finished
@@ -259,14 +299,9 @@ func (s *Scheduler) runScan(ctx context.Context) {
 		return
 	}
 
-	if err := s.store.AddFindings(ctx, runID, result.Findings); err != nil {
-		s.log.Error("failed to persist findings", "runId", runID, "err", err)
+	if err := s.store.PruneRuns(ctx, 20); err != nil {
+		s.log.Error("failed to prune scan history", "err", err)
 	}
-	if err := s.store.FinishScanRun(ctx, runID, store.StatusSuccess, "",
-		result.LibrariesScanned, result.ItemsScanned, len(result.Findings), result.Libraries, result.Media, result.Upcoming); err != nil {
-		s.log.Error("failed to finish scan run", "runId", runID, "err", err)
-	}
-	_ = s.store.PruneRuns(ctx, 20)
 
 	s.setStatus(func(st *Status) {
 		st.State = StateIdle
@@ -304,14 +339,8 @@ func (s *Scheduler) restoreStatus(ctx context.Context) {
 }
 
 func validateRunnable(s config.Settings) error {
-	if s.Jellyfin.URL == "" || s.Jellyfin.APIKey == "" {
-		return errors.New("jellyfin is not configured")
-	}
 	if s.TMDB.APIKey == "" {
 		return errors.New("tmdb api key is not configured")
-	}
-	if len(s.EnabledLibraryIDs()) == 0 {
-		return errors.New("no libraries selected for scanning")
 	}
 	return nil
 }

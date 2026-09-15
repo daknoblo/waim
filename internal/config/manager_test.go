@@ -26,8 +26,7 @@ func TestLoadGeneratesKeyAndRoundTripsSecrets(t *testing.T) {
 	}
 
 	s := m.Get()
-	s.Jellyfin.URL = "http://jellyfin.local:8096"
-	s.Jellyfin.APIKey = "jf-secret"
+	s.Sources = append(s.Sources, Source{ID: "test", Name: "Test", Type: "jellyfin", Enabled: true, Jellyfin: JellyfinSettings{URL: "http://jellyfin.local:8096", APIKey: "jf-secret"}})
 	s.TMDB.APIKey = "tmdb-secret"
 	if err := m.Save(s); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -52,7 +51,8 @@ func TestLoadGeneratesKeyAndRoundTripsSecrets(t *testing.T) {
 		t.Fatal("reload should decrypt the stored keys")
 	}
 	got := reloaded.Get()
-	if got.Jellyfin.APIKey != "jf-secret" || got.TMDB.APIKey != "tmdb-secret" {
+	source, _ := got.Source("test")
+	if source.Jellyfin.APIKey != "jf-secret" || got.TMDB.APIKey != "tmdb-secret" {
 		t.Fatalf("api keys did not survive a reload: %+v", got.Redacted())
 	}
 }

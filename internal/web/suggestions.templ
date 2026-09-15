@@ -1,5 +1,7 @@
 package web
 
+import "net/url"
+
 import "github.com/daknoblo/waim/internal/i18n"
 import "github.com/daknoblo/waim/internal/suggest"
 
@@ -63,6 +65,7 @@ templ suggestionSection(title string, items []suggest.Item, empty string) {
 		} else {
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
 				for _, it := range items {
+					<div>
 					<a href={ templ.SafeURL(it.TMDBLink) } target="_blank" rel="noreferrer noopener" class="group flex gap-3 rounded-lg bg-slate-900/60 p-2 transition hover:bg-slate-800/60">
 						if it.PosterURL != "" {
 							<img src={ it.PosterURL } alt="" loading="lazy" class="h-24 w-16 shrink-0 rounded object-cover"/>
@@ -87,6 +90,10 @@ templ suggestionSection(title string, items []suggest.Item, empty string) {
 							}
 						</div>
 					</a>
+					if t := ActionTranslator(ctx); t != nil {
+						@MediaActions(t,it.TMDBLink)
+					}
+					</div>
 				}
 			</div>
 		}
@@ -106,6 +113,7 @@ templ upcomingSuggestionSection(t *i18n.Translator, title, hint string, items []
 		} else {
 			<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
 				for _, it := range items {
+					<div>
 					<a href={ templ.SafeURL(it.TMDBLink) } target="_blank" rel="noreferrer noopener" class="group min-w-0">
 						if it.PosterURL != "" {
 							<img src={ it.PosterURL } alt="" loading="lazy" class="aspect-[2/3] w-full rounded object-cover"/>
@@ -115,6 +123,8 @@ templ upcomingSuggestionSection(t *i18n.Translator, title, hint string, items []
 						<div class="mt-1 truncate text-xs font-medium text-slate-200 group-hover:underline">{ it.Title }</div>
 						<div class="truncate text-[11px] text-indigo-300">{ orDash(suggestionDate(t, it.ReleaseDate)) }</div>
 					</a>
+					@MediaActions(t,it.TMDBLink)
+					</div>
 				}
 			</div>
 		}
@@ -138,6 +148,7 @@ templ aiSection(d SuggestionsData, items []suggest.AIItem) {
 								}
 							</span>
 						</div>
+						<a href={ templ.SafeURL("/collection?q="+url.QueryEscape(it.Title)) } class="btn-ghost">{ d.Layout.T.T("sources.search") }</a>
 						if it.Reason != "" {
 							<p class="mt-1 text-xs text-slate-400">{ it.Reason }</p>
 						}

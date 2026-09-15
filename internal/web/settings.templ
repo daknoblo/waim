@@ -28,31 +28,7 @@ templ settingsBody(d SettingsData) {
 			</div>
 		}
 
-		<div class="card grid gap-3">
-			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.jellyfin") }</h2>
-			@textField(d.Layout.T.T("settings.jellyfinUrl"), "jellyfin_url", "url", d.Settings.Jellyfin.URL, "https://jellyfin.example.com")
-			@secretField(d.Layout.T, "jellyfin_api_key", d.Layout.T.T("settings.jellyfinApiKey"), d.HasJellyfinKey)
-			@textField(d.Layout.T.T("settings.jellyfinUserId"), "jellyfin_user_id", "text", d.Settings.Jellyfin.UserID, "")
-			@connStatusBlock("conn-jellyfin", d.Check("jellyfin"))
-		</div>
-
-		<div class="card grid gap-3">
-			<div class="flex flex-wrap items-center justify-between gap-2">
-				<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.libraries") }</h2>
-				<button
-					type="button"
-					class="btn-ghost w-full sm:w-auto"
-					hx-post="/settings/refresh-libraries"
-					hx-target="#library-list"
-					hx-swap="outerHTML"
-					hx-include="closest form"
-				>
-					{ d.Layout.T.T("settings.refreshLibraries") }
-				</button>
-			</div>
-			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.librariesHint") }</p>
-			@LibraryList(d.Layout.T, d.Libraries)
-		</div>
+		<div class="card"><a href="/sources" class="btn-ghost">{ d.Layout.T.T("sources.title") }</a></div>
 
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdb") }</h2>

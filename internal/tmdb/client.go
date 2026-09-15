@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -19,6 +20,20 @@ import (
 )
 
 const baseURL = "https://api.themoviedb.org/3"
+
+var budget = struct {
+	sync.Mutex
+	limiter *rate.Limiter
+}{limiter: rate.NewLimiter(1, 1)}
+
+// Search, scans, suggestions and refreshes share one process-wide rate budget.
+func sharedLimiter(rps float64, burst int) *rate.Limiter {
+	budget.Lock()
+	defer budget.Unlock()
+	budget.limiter.SetLimit(rate.Limit(rps))
+	budget.limiter.SetBurst(burst)
+	return budget.limiter
+}
 
 // Client talks to the TMDB API with a client-side rate limiter.
 type Client struct {
@@ -58,7 +73,7 @@ func New(apiKey, language, region string, rps float64) *Client {
 		language: language,
 		region:   region,
 		http:     httpx.NewClient(20 * time.Second),
-		limiter:  rate.NewLimiter(rate.Limit(rps), burst),
+		limiter:  sharedLimiter(rps, burst),
 	}
 }
 
@@ -221,6 +236,22 @@ func (c *Client) Season(ctx context.Context, tvID int64, seasonNumber int) (Seas
 }
 
 // SearchMovie searches movies by title and optional year (0 to ignore).
+// SearchTitles is deliberately bounded to TMDB's first page (at most 20).
+func (c *Client) SearchTitles(ctx context.Context, kind, query string) ([]MediaResult, error) {
+	path := "/search/movie"
+	if kind == "Series" {
+		path = "/search/tv"
+	}
+	var response struct {
+		Results []MediaResult `json:"results"`
+	}
+	err := c.get(ctx, path, url.Values{"query": {query}, "page": {"1"}, "include_adult": {"false"}}, &response)
+	if len(response.Results) > 20 {
+		response.Results = response.Results[:20]
+	}
+	return response.Results, err
+}
+
 func (c *Client) SearchMovie(ctx context.Context, title string, year int) ([]MovieSearchResult, error) {
 	q := url.Values{}
 	q.Set("query", title)

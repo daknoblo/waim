@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	_ "time/tzdata" // embed the timezone database so TZ works on any base image
@@ -102,13 +103,17 @@ func run() error {
 
 	sched := scheduler.New(cfg, st, logger)
 	suggestSvc := suggest.New(cfg, st, logger)
+	defer suggestSvc.Close()
 	ref := refresher.New(cfg, st, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go sched.Run(ctx)
-	go ref.Run(ctx)
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() { defer workers.Done(); sched.Run(ctx) }()
+	go func() { defer workers.Done(); ref.Run(ctx) }()
+	defer func() { stop(); workers.Wait() }()
 
 	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar)
 	httpServer := &http.Server{

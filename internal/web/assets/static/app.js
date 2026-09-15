@@ -12,7 +12,8 @@
     var rows = document.querySelectorAll("#findings tbody tr");
     for (var i = 0; i < rows.length; i++) {
       var textMatch = rows[i].textContent.toLowerCase().indexOf(q) !== -1;
-      var libMatch = !lib || rows[i].getAttribute("data-library") === lib;
+      var memberships = (rows[i].getAttribute("data-libraries") || "").split(" ");
+      var libMatch = !lib || rows[i].getAttribute("data-library") === lib || memberships.indexOf(lib) !== -1;
       rows[i].style.display = textMatch && libMatch ? "" : "none";
     }
   }

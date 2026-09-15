@@ -47,6 +47,7 @@ func run(out, locale string) error {
 
 	run := demoRun()
 	findings := demoFindings()
+	mediaCatalog, sources, entries := demoSources(run, findings)
 	pages := map[string]templ.Component{
 		"index.html":       web.Dashboard(demoDashboard(t, run, findings)),
 		"stats.html":       web.Stats(demoStats(t, run, findings)),
@@ -54,10 +55,13 @@ func run(out, locale string) error {
 		"logs.html":        web.Logs(demoLogs(t)),
 		"settings.html":    web.Settings(demoSettings(t)),
 		"about.html":       web.About(demoAbout(t)),
+		"sources.html":     web.Sources(web.SourcesData{Layout: demoLayout(t, "sources"), Sources: sources}),
+		"collection.html":  web.Collection(web.CollectionData{Layout: demoLayout(t, "collection"), Entries: entries, Configured: true}),
 	}
 	for name, comp := range pages {
 		var sb strings.Builder
-		if err := comp.Render(context.Background(), &sb); err != nil {
+		ctx := web.WithProvenance(web.WithActionTranslator(context.Background(), t), mediaCatalog, run)
+		if err := comp.Render(ctx, &sb); err != nil {
 			return fmt.Errorf("render %s: %w", name, err)
 		}
 		if err := os.WriteFile(filepath.Join(out, name), []byte(staticHTML(sb.String(), t)), 0o644); err != nil {
@@ -96,6 +100,8 @@ func staticHTML(html string, t *i18n.Translator) string {
 		`src="/static/`, `src="static/`,
 		`href="/"`, `href="index.html"`,
 		`href="/stats"`, `href="stats.html"`,
+		`href="/sources"`, `href="sources.html"`,
+		`href="/collection"`, `href="collection.html"`,
 		`href="/suggestions"`, `href="suggestions.html"`,
 		`href="/logs"`, `href="logs.html"`,
 		`href="/settings"`, `href="settings.html"`,

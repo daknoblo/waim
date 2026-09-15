@@ -1,0 +1,60 @@
+package web
+
+import "strconv"
+import "github.com/daknoblo/waim/internal/media"
+import "github.com/daknoblo/waim/internal/i18n"
+
+templ MediaActions(t *i18n.Translator, link string) {
+	if target := Target(ctx,link); target.ID > 0 || len(target.References)>0 {
+		<div class="mt-1 flex flex-wrap items-center gap-1 text-xs">
+			@SourceBadges(t,target.References)
+			if target.WatchOnly {
+				<span class="text-amber-200">{ t.T("sources.watchOnly") }</span>
+			}
+			if target.ID > 0 {
+				@WatchForm(t,target.Kind,target.ID,target.Watching)
+			}
+		</div>
+	}
+}
+
+templ SourceBadges(t *i18n.Translator,refs []media.Reference) {
+	<div class="flex flex-wrap items-center gap-1 text-xs">
+		for _, ref := range InstanceRefs(refs) {
+			<a href={ templ.SafeURL(ref.URL) } class="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:text-white" title={ sourceLabel(t,ref) } aria-label={ sourceLabel(t,ref) } target="_blank" rel="noreferrer noopener">
+				if ref.Type == media.Virtual {
+					<span aria-hidden="true">☆ </span>{ t.T("sources.collection") }
+				} else {
+					<span aria-hidden="true">▣ </span>{ ref.Name }
+				}
+				if ref.Stale {
+					<span class="text-amber-200"> · { t.T("sources.stale") }</span>
+				}
+			</a>
+		}
+	</div>
+}
+
+func sourceLabel(t *i18n.Translator,ref media.Reference) string {
+	if ref.Type==media.Virtual {return t.T("sources.collection")}
+	return ref.Name
+}
+
+templ WatchForm(t *i18n.Translator,kind string,id int64,remove bool) {
+	<form method="post" action={ watchAction(remove) }>
+		<input type="hidden" name="kind" value={ kind }/>
+		<input type="hidden" name="id" value={ strconv.FormatInt(id,10) }/>
+		<button class="btn-ghost text-xs" type="submit">
+			if remove {
+				{ t.T("sources.unwatch") }
+			} else {
+				{ t.T("sources.watch") }
+			}
+		</button>
+	</form>
+}
+
+func watchAction(remove bool) string {
+	if remove { return "/collection/remove" }
+	return "/collection/add"
+}

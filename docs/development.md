@@ -61,18 +61,44 @@ Locally, waim stores its data in `./appdata` (gitignored) in the working
 directory, including the generated `master.key`. Then open
 <http://localhost:8080>.
 
-Without a Jellyfin server the pages stay empty, which makes UI work on the
-statistics page awkward. `make seed` writes a database with a synthetic scan
-run — titles, gaps, ratings and announced releases — so every card has data:
+Without Jellyfin, the watch collection works with TMDB alone. For completely
+offline UI work, `make seed` writes two synthetic source snapshots, overlapping
+provenance, virtual entries, ratings and releases in a **fresh** data directory:
 
 ```bash
 make seed                      # into ./appdata
-make seed SEED_OUT=/tmp/waim   # somewhere else, e.g. to mount into a container
+make seed SEED_OUT=./appdata-demo # separate local fixture directory
 make seed SEED_FORCE=1         # overwrite an existing database
 ```
 
-It refuses to overwrite an existing database unless `SEED_FORCE=1`, and its
-random seed is fixed so screenshots stay comparable between runs.
+It never overwrites an existing config. It refuses an existing database unless
+`SEED_FORCE=1`. Automatic scans/cache refresh are disabled and no TMDB key is set;
+no real credentials or services are needed. Its random seed is fixed.
+
+For an entirely static, offline preview of all eight pages:
+
+```bash
+go run ./cmd/demo -out ./dist -locale en
+go run ./cmd/demo -out ./dist-de -locale de
+# Open dist/index.html in your browser. Forms are illustrative, not functional.
+```
+
+Feature tests use local HTTP fakes/cache fixtures:
+
+```bash
+go test -race ./internal/media ./internal/config ./internal/source ./internal/store ./internal/scanner ./internal/scheduler ./internal/server ./internal/web
+go test -race ./...
+go vet ./...
+CGO_ENABLED=0 go build ./...
+golangci-lint run
+go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+make css
+```
+
+Browser acceptance should cover both locales/mobile, two named instances,
+same-TMDB overlapping season ownership, watch add/remove during a scan, a
+standalone movie before/after release, per-instance badges/links and stale or
+unknown sources. Static demo checks do not replace live mutation acceptance.
 
 ## Editing the UI
 

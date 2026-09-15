@@ -10,13 +10,18 @@ templ Stats(d StatsData) {
 templ statsBody(d StatsData) {
 	<section class="grid gap-4">
 		<h1 class="text-lg font-semibold">{ d.Layout.T.T("stats.title") }</h1>
+		<p class="text-sm text-slate-400">{ d.Layout.T.T("sources.metrics") }</p>
 		if !d.HasData {
 			<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T(dataStateKey(d.DataState)) }</p>
 		} else {
 			<div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-3 lg:grid-cols-6">
 				@statCardCentered(d.Layout.T.T("stats.itemsScanned"), strconv.Itoa(d.ItemsScanned))
 				@statCardCentered(d.Layout.T.T("stats.libraries"), strconv.Itoa(d.LibrariesCount))
-				@statCardCentered(d.Layout.T.T("stats.completeness"), strconv.Itoa(d.Completeness)+"%")
+				if d.Unconfirmed {
+					@statCardCentered(d.Layout.T.T("stats.completeness"), "—")
+				} else {
+					@statCardCentered(d.Layout.T.T("stats.completeness"), strconv.Itoa(d.Completeness)+"%")
+				}
 				@statCardCentered(d.Layout.T.T("stats.totalGaps"), strconv.Itoa(d.TotalGaps))
 				@statCardCentered(d.Layout.T.T("stats.missingUnits"), strconv.Itoa(d.MissingUnits))
 				@statCardCentered(d.Layout.T.T("stats.lastScan"), d.LastScan)
@@ -74,11 +79,23 @@ templ statsBody(d StatsData) {
 			</div>
 
 			<div class="grid gap-4 lg:grid-cols-2">
-				@topList(d.Layout.T.T("stats.topSeries"), d.Layout.T.T("stats.missingEpisodes"), d.TopSeries, d.Layout.T.T("stats.noGaps"))
-				@topList(d.Layout.T.T("stats.topCollections"), d.Layout.T.T("stats.missingParts"), d.TopCollections, d.Layout.T.T("stats.noGaps"))
+				@topList(d.Layout.T.T("stats.topSeries"), d.Layout.T.T("stats.missingEpisodes"), d.TopSeries, emptyGaps(d.Layout.T,d.Unconfirmed))
+				@topList(d.Layout.T.T("stats.topCollections"), d.Layout.T.T("stats.missingParts"), d.TopCollections, emptyGaps(d.Layout.T,d.Unconfirmed))
 			</div>
 
 			@upcomingCard(d.Layout.T, d.Upcoming)
+			if len(d.Unresolved)>0 {
+				<section class="card">
+					<h2 class="mb-3 font-semibold">{ d.Layout.T.T("sources.unresolved") }</h2>
+					for _, m := range d.Unresolved {
+						<div class="mb-2">@titleLink(m.Title,m.Link)</div>
+					}
+				</section>
+			}
+			if len(d.TrackingRatings)>0 {
+				@ratedListLib(d.Layout.T.T("sources.trackingRatings"), LibraryColor("virtual"), d.Layout.T.T("sources.watchOnly"), d.TrackingRatings, d.Layout.T.T("stats.noMedia"), d.Layout.T.T("stats.showCount"))
+				<p>{ d.Layout.T.T("sources.tracked") }: { strconv.Itoa(d.TrackingTitles) } · { d.Layout.T.T("stats.missingUnits") }: { strconv.Itoa(d.TrackingMissing) }</p>
+			}
 
 			<h2 class="mt-2 border-b border-slate-800 pb-1 text-base font-semibold text-slate-300">{ d.Layout.T.T("stats.ratingsExisting") }</h2>
 			for _, lr := range d.LibraryRatings {
@@ -160,13 +177,16 @@ templ titleLink(title, link string) {
 	if link != "" {
 		<a
 			class="min-w-0 truncate font-medium text-slate-100 transition hover:text-indigo-300 hover:underline"
-			href={ templ.SafeURL(link) }
+			href={ templ.SafeURL(MediaHref(ctx,link)) }
 			target="_blank"
 			rel="noreferrer noopener"
 			title={ title }
 		>{ title }</a>
 	} else {
 		<span class="min-w-0 truncate font-medium text-slate-100">{ title }</span>
+	}
+	if t := ActionTranslator(ctx); t != nil {
+		@MediaActions(t,link)
 	}
 }
 
@@ -349,7 +369,11 @@ templ completionCard(t *i18n.Translator, rows []StatsCompletion, overall int) {
 							}
 						</span>
 						<span class="w-20 shrink-0 text-right text-xs text-slate-400 sm:w-24">{ strconv.Itoa(r.Owned) } / { strconv.Itoa(r.Total) }</span>
-						<span class="w-10 shrink-0 text-right text-xs text-slate-500">{ strconv.Itoa(r.Pct) }%</span>
+						if r.Pct < 0 {
+							<span class="w-10 shrink-0 text-right text-xs text-amber-200">—</span>
+						} else {
+							<span class="w-10 shrink-0 text-right text-xs text-slate-500">{ strconv.Itoa(r.Pct) }%</span>
+						}
 					</div>
 				}
 			</div>
@@ -462,6 +486,9 @@ templ seriesDetailCard(t *i18n.Translator, options []SeriesOption, detail Series
 }
 
 templ SeriesDetailCharts(t *i18n.Translator, d SeriesDetail) {
+	if d.Ratings.Title != "" {
+		<div class="mb-3">@titleLink(d.Ratings.Title,d.Ratings.Link)</div>
+	}
 	@seriesFlowChart(t, d.Flow)
 	if d.Ratings.Available {
 		<div class="mt-5 border-t border-slate-800 pt-4">
@@ -799,8 +826,9 @@ templ upcomingGroupBlock(g UpcomingGroup) {
 }
 
 templ upcomingTile(it UpcomingEntry) {
+	<div class="w-28 shrink-0">
 	<a
-		href={ templ.SafeURL(it.Link) }
+		href={ templ.SafeURL(MediaHref(ctx,it.Link)) }
 		target="_blank"
 		rel="noreferrer noopener"
 		title={ it.Hint }
@@ -815,6 +843,10 @@ templ upcomingTile(it UpcomingEntry) {
 		<div class="truncate text-[10px] text-slate-500">{ it.Sub }</div>
 		<div class="truncate text-[10px] text-indigo-300">{ it.DateLabel }</div>
 	</a>
+	if t := ActionTranslator(ctx); t != nil {
+		@MediaActions(t,it.Link)
+	}
+	</div>
 }
 
 templ statCardSub(label, value, sub string) {
@@ -828,10 +860,14 @@ templ statCardSub(label, value, sub string) {
 }
 
 templ completenessBar(pct int) {
+	if pct < 0 {
+		<span class="text-amber-200">—</span>
+	} else {
 	<div class="flex items-center gap-2">
 		@meterBar(pct, "fill-emerald-500", "h-2 w-24 shrink-0")
 		<span class="text-xs text-slate-400">{ strconv.Itoa(pct) }%</span>
 	</div>
+	}
 }
 
 templ topList(title, metric string, items []StatsTop, empty string) {

@@ -2,7 +2,7 @@
 
 > This project is "vibe-coded" (AI-assisted). Review before relying on it.
 
-All settings are managed in the web UI (**Settings** page) and persisted to
+Global settings are managed on **Settings**, and instances on **Media sources**, persisted to
 `config.json` inside the data directory. API keys are **always stored
 encrypted** and never written in plaintext. The encryption key is generated on
 first start and kept as `master.key` next to `config.json`.
@@ -11,14 +11,27 @@ first start and kept as `master.key` next to `config.json`.
 
 ```jsonc
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "locale": "en",              // default UI language: "en" or "de"
   "logLevel": "info",          // log verbosity: "info", "warn" or "debug"
-  "jellyfin": {
-    "url": "https://jellyfin.example.com",
-    "apiKeyEnc": "<base64>",   // AES-256-GCM ciphertext (never plaintext)
-    "userId": ""               // optional; auto-resolved if empty
-  },
+  "sources": [
+    {
+      "id": "stable-instance-id",
+      "type": "jellyfin",
+      "name": "Living room",
+      "enabled": true,
+      "revision": 1,
+      "jellyfin": {
+        "url": "https://jellyfin.example.com",
+        "apiKeyEnc": "<base64>",
+        "userId": ""
+      },
+      "libraries": [
+        { "id": "...", "name": "Movies", "type": "movies", "enabled": true }
+      ]
+    },
+    { "id": "virtual", "type": "virtual", "name": "Watch collection", "enabled": true, "revision": 0 }
+  ],
   "tmdb": {
     "apiKeyEnc": "<base64>",   // AES-256-GCM ciphertext (never plaintext)
     "language": "en-US",
@@ -43,10 +56,7 @@ first start and kept as `master.key` next to `config.json`.
     "refreshPercent": 1,           // percent of oldest entries refreshed per batch
     "cleanupEnabled": true,        // prune orphaned entries once a night
     "cleanupMaxAgeDays": 30        // remove entries unused for this many days
-  },
-  "libraries": [
-    { "id": "...", "name": "Movies", "type": "movies", "enabled": true }
-  ]
+  }
 }
 ```
 
@@ -54,16 +64,36 @@ first start and kept as `master.key` next to `config.json`.
 
 ![Settings page](images/settings.png)
 
-Changes are saved as soon as you leave a field, and switches and dropdowns take
+Global changes are saved as soon as you leave a field, and switches and dropdowns take
 effect right away — there is no save button. Whenever a connection setting
 changes, that section is tested immediately and the result appears underneath
 it.
 
-For safety the API key stays tied to the address it was entered for: if you
-point Jellyfin or the AI endpoint at a different host, the change is held back
-until you supply a key for the new address. The stored key is therefore never
-sent somewhere it was not meant for. Editing the port, the path or upgrading
-`http` to `https` on the same host is not affected.
+Each source has a separate explicit save form and revision. An outdated form is
+rejected instead of overwriting another edit. Changing a Jellyfin address
+(including its path) requires re-entering the key and clears its library choices.
+Blank keys otherwise retain the saved value. Test/refresh buttons use **saved**
+settings, not unsaved form fields. AI host changes also require a key.
+
+### Migration and snapshot identity
+
+Legacy schema 2 configuration migrates once to `jellyfin-default`, preserving
+user, library selection and encrypted key bytes. Legacy global Jellyfin settings
+are no longer a runtime configuration path. Losing `master.key` leaves unreadable
+ciphertexts intact through migration, export and unrelated saves; each source
+shows its warning until its key is replaced.
+
+Disabling or removing a source excludes its snapshot immediately. Changing the
+address, user, key or enabled libraries changes the snapshot identity; the old
+snapshot is never reused under the new identity. A failed same-identity refresh
+keeps the last good snapshot and marks it stale. Without any successful snapshot
+inventory is **unknown**, not empty, and gaps/completion are unconfirmed.
+
+The reserved virtual source is always enabled and cannot be deleted. Its entries
+live in SQLite, not the config export. Use the sync export for evaluated metadata.
+Collection search returns at most the first 20 TMDB matches; refine your query
+if a desired result is not on that page. Add/remove is idempotent and only edits
+watch membership. No media-server files are written.
 
 ### Jellyfin
 
@@ -98,7 +128,7 @@ turned off by default.
 | API key               | Stored encrypted, like the Jellyfin and TMDB keys.               |
 | Model                 | Model / deployment name to request.                              |
 
-### Scanning (Jellyfin)
+### Scanning (all active real sources)
 
 When and how waim reads your Jellyfin libraries.
 
@@ -128,8 +158,10 @@ scan or suggestion.
 
 ### Libraries
 
-Use **Refresh libraries from Jellyfin** to load your current libraries, then tick
-the ones you want included in scans. Only enabled libraries are scanned.
+On each source, use **Refresh libraries from Jellyfin**, select libraries and
+**Save source**. Only enabled instances/libraries are scanned. Namespaced library
+and source filters select title provenance; they do not recompute a different
+local missing inventory.
 
 ### Interface language
 

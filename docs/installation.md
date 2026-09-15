@@ -7,7 +7,8 @@ waim is distributed as a multi-arch container image (`linux/amd64`,
 
 ## Requirements
 
-- A running [Jellyfin](https://jellyfin.org/) server and an API key.
+- Optional: one or more [Jellyfin](https://jellyfin.org/) instances and API keys.
+  TMDB alone is sufficient for the watch collection.
 - A [TMDB](https://www.themoviedb.org/settings/api) API key (a v3 key or a v4
   read access token both work — the format is auto-detected).
 - Docker / Docker Compose (or any OCI runtime).
@@ -102,9 +103,10 @@ decrypt the stored API keys.
 1. Open <http://localhost:8080>.
 2. Go to **Settings**. Everything you enter is saved automatically, and each
    connection is tested as soon as its details are complete.
-3. Enter your Jellyfin server URL and API key.
+3. Optionally add named Jellyfin instances on **Media sources**.
 4. Enter your TMDB API key.
-5. Click **Refresh libraries from Jellyfin** and tick the libraries to scan.
+5. For each saved source, click **Refresh libraries from Jellyfin**, select
+   libraries and **Save source**. Or open **Watch collection** and add TMDB titles.
 6. Adjust the scan interval and rate limit if needed.
 7. Trigger a scan with **Scan now** or wait for the scheduled run.
 

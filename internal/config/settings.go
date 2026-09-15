@@ -14,7 +14,7 @@ import (
 //
 // Version 2 dropped the Argon2id salt: the encryption key is no longer derived
 // from a passphrase but generated once and stored in the data directory.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // Supported UI locales.
 const (
@@ -84,19 +84,21 @@ type CacheSettings struct {
 
 // Settings is the full in-memory configuration with decrypted API keys.
 type Settings struct {
+	Sources   []Source         `json:"sources"`
 	Locale    string           `json:"locale"`
 	LogLevel  string           `json:"logLevel"`
-	Jellyfin  JellyfinSettings `json:"jellyfin"`
+	Jellyfin  JellyfinSettings `json:"-"` // legacy fixture compatibility; not used at runtime
 	TMDB      TMDBSettings     `json:"tmdb"`
 	AI        AISettings       `json:"ai"`
 	Scan      ScanSettings     `json:"scan"`
 	Cache     CacheSettings    `json:"cache"`
-	Libraries []Library        `json:"libraries"`
+	Libraries []Library        `json:"-"` // legacy fixture compatibility
 }
 
 // Defaults returns a Settings value with sensible defaults.
 func Defaults() Settings {
 	return Settings{
+		Sources:  []Source{VirtualSource()},
 		Locale:   LocaleEN,
 		LogLevel: LogLevelInfo,
 		Jellyfin: JellyfinSettings{
@@ -126,6 +128,10 @@ func Defaults() Settings {
 // Clone returns a deep copy of the settings (the Libraries slice is copied).
 func (s Settings) Clone() Settings {
 	cp := s
+	cp.Sources = append([]Source(nil), s.Sources...)
+	for i := range cp.Sources {
+		cp.Sources[i].Libraries = append([]Library(nil), s.Sources[i].Libraries...)
+	}
 	cp.Libraries = append([]Library(nil), s.Libraries...)
 	return cp
 }
@@ -137,6 +143,9 @@ func (s Settings) Redacted() Settings {
 	cp.Jellyfin.APIKey = ""
 	cp.TMDB.APIKey = ""
 	cp.AI.APIKey = ""
+	for i := range cp.Sources {
+		cp.Sources[i].Jellyfin.APIKey = ""
+	}
 	return cp
 }
 
