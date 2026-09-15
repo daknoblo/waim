@@ -107,6 +107,12 @@ unknown sources. Static demo checks do not replace live mutation acceptance.
 3. If you add new Tailwind classes, run `make css` to rebuild the stylesheet.
 4. Rebuild and run.
 
+Use the pinned **standalone** Tailwind compiler for committed CSS. The npm CLI
+can produce different minifier ordering even at the same Tailwind version,
+which fails CI's byte-for-byte generated-asset check. If the native compiler
+cannot run, use the pinned Linux standalone binary in a local Linux container,
+matching CI rather than substituting the npm CLI.
+
 When changing user-facing strings, update **both** locale files
 (`internal/i18n/locales/en.json` and `internal/i18n/locales/de.json`) and use the
 `T(...)` helper in templates rather than hard-coding text.
