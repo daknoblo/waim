@@ -101,8 +101,8 @@ func (s *Server) suggestionsConfigured() bool {
 	return scanConfigured(s.cfg.Get())
 }
 
-// scanConfigured reports whether a scan could run at all: everything the
-// scanner needs has been entered and at least one library is selected.
+// scanConfigured reports whether TMDB metadata can be requested. Media servers
+// are optional because the virtual collection can be used independently.
 func scanConfigured(settings config.Settings) bool {
 	return settings.TMDB.APIKey != ""
 }
@@ -314,13 +314,17 @@ func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, d
 func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusView {
 	st := s.sched.Status()
 	sv := web.StatusView{
-		State:     st.State,
-		Running:   st.State == scheduler.StateRunning,
-		LastError: st.LastError,
-		LastScan:  web.FormatRelative(t, st.LastFinished),
-		NextScan:  web.FormatRelative(t, st.NextRun),
+		SetupRequired: !scanConfigured(s.cfg.Get()),
+		State:         st.State,
+		Running:       st.State == scheduler.StateRunning,
+		LastError:     st.LastError,
+		LastScan:      web.FormatRelative(t, st.LastFinished),
+		NextScan:      web.FormatRelative(t, st.NextRun),
 	}
-	if sv.Running {
+	if sv.SetupRequired {
+		sv.StateLabel = t.T("dashboard.state.setup")
+		sv.NextScan = web.FormatRelative(t, nil)
+	} else if sv.Running {
 		sv.StateLabel = t.T("dashboard.state.running")
 	} else {
 		sv.StateLabel = t.T("dashboard.state.idle")

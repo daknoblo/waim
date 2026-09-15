@@ -145,6 +145,10 @@ turned off by default.
 ### Scanning (all active real sources)
 
 When and how waim reads your Jellyfin libraries.
+Before a TMDB key is configured, the UI shows one central setup notice linking
+to Settings. Scanning waits for setup and the manual scan button is disabled;
+missing initial configuration is not recorded as a failed scan. Actual scan
+errors remain visible in the scan status.
 
 | Field                  | Description                                                              |
 | ---------------------- | ------------------------------------------------------------------------ |

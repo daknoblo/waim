@@ -28,6 +28,7 @@ type LangOption struct {
 
 // Layout carries data shared by every page (header, navigation, footer).
 type Layout struct {
+	SetupRequired  bool
 	CatalogWarning string
 	T              *i18n.Translator
 	Active         string
@@ -40,6 +41,7 @@ type Layout struct {
 
 // StatusView is the display model for the scan status card.
 type StatusView struct {
+	SetupRequired    bool
 	Warning          string
 	State            string
 	StateLabel       string

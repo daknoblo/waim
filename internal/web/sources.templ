@@ -79,12 +79,10 @@ templ Collection(d CollectionData) {
 templ collectionBody(d CollectionData) {
 	<h1 class="mb-4 text-2xl font-semibold">☆ { d.Layout.T.T("sources.collection") }</h1>
 	<p class="mb-4 text-slate-400">{ d.Layout.T.T("sources.watchHint") }</p>
-	if d.Updating {
+	if d.Updating && d.Configured {
 		<p role="status" class="mb-4 text-amber-200">{ d.Layout.T.T("sources.updating") }</p>
 	}
-	if !d.Configured {
-		<p class="card mb-4"><a href="/settings">{ d.Layout.T.T("sources.tmdbRequired") }</a></p>
-	} else {
+	if d.Configured {
 		<form method="get" action="/collection" class="card mb-4 flex flex-wrap gap-3">
 			<label class="grid flex-1 gap-1">{ d.Layout.T.T("sources.search") }<input class="input" type="search" name="q" maxlength="200" value={ d.Query } required/></label>
 			<label class="grid gap-1">{ d.Layout.T.T("sources.kind") }<select class="input" name="kind"><option value="Movie" selected?={ d.Kind == media.Movie }>{ d.Layout.T.T("sources.movie") }</option><option value="Series" selected?={ d.Kind == media.Series }>{ d.Layout.T.T("sources.series") }</option></select></label>

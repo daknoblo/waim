@@ -84,7 +84,13 @@ templ Page(l Layout, body templ.Component) {
 				}
 				<main class="flex-1 pb-10">
 					if l.CatalogWarning != "" {
-						<p role="status" class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">{ l.CatalogWarning }</p>
+						<p role="status" class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
+							if l.SetupRequired {
+								<a href="/settings">{ l.CatalogWarning }</a>
+							} else {
+								{ l.CatalogWarning }
+							}
+						</p>
 					}
 					@body
 				</main>

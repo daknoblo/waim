@@ -19,9 +19,6 @@ templ suggestionsBody(d SuggestionsData) {
 				</button>
 			</form>
 		</div>
-		if !d.Configured {
-			<p class="rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{ d.Layout.T.T("suggestions.notConfigured") }</p>
-		}
 		@SuggestionsContent(d)
 	</section>
 }
@@ -35,7 +32,9 @@ templ SuggestionsContent(d SuggestionsData) {
 	} else {
 		<div id="suggestions" class="grid gap-4">
 			if d.Result == nil {
-				<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("suggestions.empty") }</p>
+				if d.Configured {
+					<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("suggestions.empty") }</p>
+				}
 			} else {
 				if len(d.Result.Errors) > 0 {
 					<div class="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">

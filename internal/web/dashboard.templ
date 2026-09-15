@@ -48,7 +48,7 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				</div>
 			</div>
 			<form hx-post="/scan" hx-target="#status-card" hx-swap="outerHTML" class="w-full sm:w-auto">
-				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ s.Running }>
+				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ s.Running || s.SetupRequired }>
 					{ t.T("dashboard.scanNow") }
 				</button>
 			</form>
@@ -112,7 +112,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 		if len(rows) == 0 {
 			if state == DataReady {
 				<p class="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{ t.T("dashboard.noFindings") }</p>
-			} else {
+			} else if state != DataUnconfigured {
 				<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ t.T(dataStateKey(state)) }</p>
 			}
 		} else {

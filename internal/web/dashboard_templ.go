@@ -258,7 +258,7 @@ func StatusCard(t *i18n.Translator, s StatusView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if s.Running {
+		if s.Running || s.SetupRequired {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " disabled")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -671,7 +671,7 @@ func FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state st
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else {
+			} else if state != DataUnconfigured {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<p class=\"rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

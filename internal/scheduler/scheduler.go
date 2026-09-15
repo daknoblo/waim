@@ -182,7 +182,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 		case <-s.recomputeCh:
 			s.runScan(ctx, false)
 		case <-timer.C:
-			if s.cfg.Get().Scan.IntervalMinutes > 0 {
+			if settings := s.cfg.Get(); settings.Scan.IntervalMinutes > 0 && settings.TMDB.APIKey != "" {
 				s.runScan(ctx, true)
 			}
 			s.resetTimer(timer)
@@ -227,12 +227,12 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool) {
 	defer s.running.Store(false)
 
 	settings := s.cfg.Get()
-	if err := validateRunnable(settings); err != nil {
+	if settings.TMDB.APIKey == "" {
 		s.setStatus(func(st *Status) {
 			st.State = StateIdle
-			st.LastError = err.Error()
+			st.NextRun = nil
 		})
-		s.log.Warn("scan skipped", "reason", err)
+		s.log.Info("scan waiting for setup", "reason", "tmdb api key is not configured")
 		return
 	}
 
@@ -336,11 +336,4 @@ func (s *Scheduler) restoreStatus(ctx context.Context) {
 		}
 		st.LastMissing = run.MissingCount
 	})
-}
-
-func validateRunnable(s config.Settings) error {
-	if s.TMDB.APIKey == "" {
-		return errors.New("tmdb api key is not configured")
-	}
-	return nil
 }

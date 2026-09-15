@@ -139,6 +139,7 @@ func (s *Server) translator(r *http.Request) *i18n.Translator {
 func (s *Server) layout(r *http.Request, active string) web.Layout {
 	t := s.translator(r)
 	return web.Layout{
+		SetupRequired:  !scanConfigured(s.cfg.Get()),
 		CatalogWarning: s.catalogWarning(r),
 		T:              t,
 		Active:         active,
