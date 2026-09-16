@@ -8,9 +8,6 @@ templ MediaActions(t *i18n.Translator, link string) {
 	if target := Target(ctx,link); target.ID > 0 || len(target.References)>0 {
 		<div class="mt-1 flex flex-wrap items-center gap-1 text-xs">
 			@SourceBadges(t,target.References)
-			if target.WatchOnly {
-				<span class="text-amber-200">{ t.T("sources.watchOnly") }</span>
-			}
 			if target.ID > 0 {
 				@WatchForm(t,target.Kind,target.ID,target.Watching)
 			}

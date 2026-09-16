@@ -30,8 +30,8 @@ func FindingLibraryLabels(t *i18n.Translator, refs []media.Reference, fallbackID
 		name := ref.Name
 		switch ref.Type {
 		case media.Virtual:
-			parts = append(parts, t.T("sources.typeVirtual"), t.T("sources.collection"))
 			name = t.T("sources.collection")
+			parts = append(parts, name)
 		default:
 			switch ref.Type {
 			case media.Jellyfin:

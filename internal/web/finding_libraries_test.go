@@ -33,7 +33,7 @@ func TestFindingLibraryLabelsIncludeTypeServerAndEachLibrary(t *testing.T) {
 			"Jellyfin \u00b7 https://jf.example/jellyfin \u00b7 Series",
 			"Emby \u00b7 http://emby.example:8096 \u00b7 Cinema",
 			"Plex \u00b7 https://plex.example \u00b7 Movies",
-			tr.T("sources.typeVirtual") + " \u00b7 " + tr.T("sources.collection"),
+			tr.T("sources.collection"),
 		}
 		if len(labels) != len(want) {
 			t.Fatalf("lost or duplicated memberships: %+v", labels)
@@ -158,7 +158,7 @@ func TestGroupedSeriesAndVirtualFindingsKeepAllLibraryLabels(t *testing.T) {
 		if row.Title == "Show" && len(labels) != 2 {
 			t.Fatal("grouped seasons lost a source library")
 		}
-		if row.Title == "Watched" && (len(labels) != 1 || !strings.Contains(labels[0].Text, tr.T("sources.typeVirtual"))) {
+		if row.Title == "Watched" && (len(labels) != 1 || labels[0].Text != tr.T("sources.collection")) {
 			t.Fatal("virtual finding lost its source label")
 		}
 	}

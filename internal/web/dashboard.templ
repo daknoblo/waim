@@ -139,9 +139,6 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 								</div>
 								if target := Target(ctx,r.TMDBLink); target.ID > 0 {
 									<div class="mt-1 flex flex-wrap items-center gap-1 text-xs">
-										if target.WatchOnly {
-											<span class="text-amber-200">{ t.T("sources.watchOnly") }</span>
-										}
 										@WatchForm(t,target.Kind,target.ID,target.Watching)
 									</div>
 								}
