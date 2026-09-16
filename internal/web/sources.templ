@@ -7,16 +7,14 @@ import "github.com/daknoblo/waim/internal/store"
 import "github.com/daknoblo/waim/internal/config"
 
 templ Sources(d SourcesData) {
-	@Page(d.Layout, sourcesPage(d))
-}
-
-templ sourcesPage(d SourcesData) {
-	@sourcesBody(d)
-	@sourceAddButton(d.Layout.T)
+	@Page(d.Layout, sourcesBody(d))
 }
 
 templ sourcesBody(d SourcesData) {
-	<h2 class="mb-4 text-xl font-semibold">{ d.Layout.T.T("sources.title") }</h2>
+	<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+		<h2 class="text-xl font-semibold">{ d.Layout.T.T("sources.title") }</h2>
+		@sourceAddButton(d.Layout.T)
+	</div>
 	<p class="mb-4 text-sm text-slate-400">{ d.Layout.T.T("sources.hint") }</p>
 	if d.Message != "" && d.OpenID == "" && !d.AddOpen {
 		<p role="status" class={ "card mb-4", templ.KV("alert-error", d.Failed) }>{ d.Message }</p>
@@ -31,23 +29,17 @@ templ sourcesBody(d SourcesData) {
 					<a href="/collection" class="btn-ghost mt-auto">{ d.Layout.T.T("sources.open") }</a>
 				} else {
 					<div class="flex flex-wrap items-center justify-between gap-2">
-						<h2 class="min-w-0 break-words text-lg font-semibold">▣ { src.Name }</h2>
-						<span class="badge">Jellyfin</span>
+						<h2 class="min-w-0 break-words text-lg font-semibold">▣ <span data-source-name>{ src.Name }</span></h2>
+						<span class={ "badge",SourceProviderTone(src.Type) } data-provider={ src.Type }>{ SourceProviderName(src.Type) }</span>
 					</div>
-					<p class="break-all text-sm text-slate-400">{ src.Jellyfin.URL }</p>
-					<p class="text-sm text-slate-300">{ d.Layout.T.T("sources.librarySelection",SelectedLibraryCount(src),len(src.Libraries)) }</p>
-					<p class="text-xs text-slate-400">
-						if !src.Enabled {
-							{ d.Layout.T.T("sources.disabled") }
-						} else if src.ScanInterval(d.DefaultScanMinutes) == 0 {
-							{ d.Layout.T.T("sources.manualScan") }
-						} else {
-							{ d.Layout.T.T("sources.scanEvery",src.ScanInterval(d.DefaultScanMinutes)) }
+					<p class="break-all text-sm text-slate-400" data-source-url>{ src.Jellyfin.URL }</p>
+					<p class="text-sm text-slate-300" data-source-libraries>{ d.Layout.T.T("sources.librarySelection",SelectedLibraryCount(src),len(src.Libraries)) }</p>
+					<p class="text-xs text-slate-400" data-source-schedule>{ SourceScanSummary(d.Layout.T,src,d.DefaultScanMinutes) }</p>
+					<p class="text-xs text-slate-500" data-source-next hidden?={ d.NextRuns[src.ID] == "" }>
+						if next := d.NextRuns[src.ID]; next != "" {
+							{ d.Layout.T.T("dashboard.nextScan") }: { next }
 						}
 					</p>
-					if next := d.NextRuns[src.ID]; next != "" {
-						<p class="text-xs text-slate-500">{ d.Layout.T.T("dashboard.nextScan") }: { next }</p>
-					}
 					if src.KeyUnreadable {
 						<p class="text-amber-200">{ d.Layout.T.T("warning.keysUnreadable") }</p>
 					}
@@ -90,7 +82,7 @@ templ sourcesBody(d SourcesData) {
 }
 
 templ sourceAddButton(t *i18n.Translator) {
-	<a href={ templ.SafeURL(SourceSettingsURL("new")) } data-source-dialog="source-add-dialog" class="btn-primary mt-5 flex w-full items-center justify-center gap-2">
+	<a href={ templ.SafeURL(SourceSettingsURL("new")) } data-source-dialog="source-add-dialog" class="btn-primary inline-flex items-center justify-center gap-2">
 		<span aria-hidden="true">+</span> { t.T("sources.add") }
 	</a>
 }
@@ -106,7 +98,7 @@ templ sourceIntervalField(t *i18n.Translator,value string) {
 templ sourceDialog(d SourcesData,src config.Source) {
 	<dialog id={ "source-dialog-"+src.ID } class="source-dialog" aria-labelledby={ "source-heading-"+src.ID } open?={ d.OpenID == src.ID } data-source-auto-open={ strconv.FormatBool(d.OpenID == src.ID) }>
 		<div class="mb-4 flex items-center justify-between gap-3">
-			<h2 id={ "source-heading-"+src.ID } class="min-w-0 break-words text-xl font-semibold">{ src.Name } · Jellyfin</h2>
+			<h2 id={ "source-heading-"+src.ID } class="min-w-0 break-words text-xl font-semibold"><span data-source-heading-name>{ src.Name }</span> · { SourceProviderName(src.Type) }</h2>
 			<a href={ templ.SafeURL(SettingsURL("media")) } class="btn-ghost shrink-0" data-source-close="true">{ d.Layout.T.T("sources.close") }</a>
 		</div>
 		if d.OpenID == src.ID && d.Message != "" {
@@ -115,7 +107,11 @@ templ sourceDialog(d SourcesData,src config.Source) {
 		if src.KeyUnreadable {
 			<p class="mb-3 text-amber-200">{ d.Layout.T.T("warning.keysUnreadable") }</p>
 		}
-		<form method="post" action={ "/sources/" + src.ID } class="grid gap-3" data-source-edit="true" data-source-dirty={ strconv.FormatBool(d.EditDraftID == src.ID) } data-unsaved-prompt={ d.Layout.T.T("sources.unsavedPrompt") }>
+		<form method="post" action={ "/sources/" + src.ID } class="grid gap-3" data-source-edit="true"
+			data-source-autosave="true" data-source-id={ src.ID }
+			data-saving={ d.Layout.T.T("settings.saving") } data-saved={ d.Layout.T.T("settings.saveSuccess") }
+			data-failed={ d.Layout.T.T("settings.saveRetry") } data-no-libraries={ d.Layout.T.T("sources.noLibraries") }
+			data-source-dirty={ strconv.FormatBool(d.EditDraftID == src.ID) } data-unsaved-prompt={ d.Layout.T.T("sources.unsavedPrompt") }>
 			@MutationEpoch()
 			<input type="hidden" name="revision" value={ strconv.FormatInt(src.Revision,10) }/>
 			@textField(d.Layout.T.T("sources.name"), "name", "text", src.Name, "")
@@ -127,14 +123,20 @@ templ sourceDialog(d SourcesData,src config.Source) {
 			@checkboxField(d.Layout.T.T("sources.enabled"), "enabled", src.Enabled)
 			<fieldset class="grid gap-2">
 				<legend>{ d.Layout.T.T("settings.libraries") }</legend>
+				<div class="grid gap-2 sm:grid-cols-2" data-source-library-options>
 				for _, lib := range src.Libraries {
 					<label class="flex items-center gap-2"><input type="checkbox" name="library" value={ lib.ID } checked?={ lib.Enabled }/>{ lib.Name }</label>
 				}
 				if len(src.Libraries) == 0 {
 					<p class="text-sm text-slate-400">{ d.Layout.T.T("sources.noLibraries") }</p>
 				}
+				</div>
 			</fieldset>
-			<button class="btn-primary" type="submit">{ d.Layout.T.T("sources.save") }</button>
+			<div class="flex flex-wrap items-center gap-3">
+				<p class="text-sm text-slate-400" role="status" data-source-save-status>{ d.Layout.T.T("settings.autoSaveHint") }</p>
+				<button class="btn-ghost" type="button" data-source-retry hidden>{ d.Layout.T.T("sources.retrySave") }</button>
+			</div>
+			<noscript><button class="btn-primary" type="submit">{ d.Layout.T.T("sources.save") }</button></noscript>
 		</form>
 		<p class="my-3 text-xs text-slate-400">{ d.Layout.T.T("sources.savedActions") }</p>
 		<div class="source-actions flex flex-wrap items-start gap-2">

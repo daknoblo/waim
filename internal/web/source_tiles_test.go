@@ -50,8 +50,8 @@ func TestSourceTilesAreVirtualFirstWithIndependentDialogs(t *testing.T) {
 		if strings.Contains(html, `source-dialog-virtual`) || strings.Contains(html, `/sources/virtual/remove`) {
 			t.Fatal("virtual collection must not expose source editing/removal")
 		}
-		if strings.LastIndex(html, `data-source-dialog="source-add-dialog"`) < strings.LastIndex(html, "</dialog>") {
-			t.Fatal("add action must be below configured sources and dialogs")
+		if strings.Count(html, `data-source-dialog="source-add-dialog"`) != 1 || strings.Index(html, `data-source-dialog="source-add-dialog"`) > strings.Index(html, `data-source-tiles="true"`) {
+			t.Fatal("add action must appear once next to the Media sources heading, above tiles")
 		}
 	}
 }

@@ -49,7 +49,7 @@
     @apply min-w-0 rounded-xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20;
   }
   .source-dialog {
-    @apply m-auto w-[calc(100%-2rem)] max-w-2xl rounded-xl border border-slate-700 bg-slate-950 p-5 text-slate-100 shadow-xl;
+    @apply m-auto w-[calc(100%-2rem)] max-w-6xl rounded-xl border border-slate-700 bg-slate-950 p-5 text-slate-100 shadow-xl;
     max-height: calc(100dvh - 2rem);
     overflow-y: auto;
   }
@@ -121,6 +121,15 @@
 
   .badge {
     @apply inline-block rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-300;
+  }
+  .provider-jellyfin {
+    @apply bg-violet-500/20 text-violet-300 ring-1 ring-inset ring-violet-400/40;
+  }
+  .provider-emby {
+    @apply bg-emerald-500/20 text-emerald-300 ring-1 ring-inset ring-emerald-400/40;
+  }
+  .provider-plex {
+    @apply bg-amber-500/20 text-amber-300 ring-1 ring-inset ring-amber-400/40;
   }
 
   .alert-ok {

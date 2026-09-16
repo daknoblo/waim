@@ -155,12 +155,10 @@ templ settingsBody(d SettingsData) {
 		}
 		<div class="sticky-actions flex flex-wrap items-center justify-end gap-3">
 			<div id="save-indicator" role="status" class="text-sm text-slate-400">{ d.Layout.T.T("settings.autoSaveHint") }</div>
-			<button class="btn-primary" type="submit">{ d.Layout.T.T("settings.save") }</button>
+			<button id="settings-retry" class="btn-ghost" type="button" hidden>{ d.Layout.T.T("sources.retrySave") }</button>
+			<noscript><button class="btn-primary" type="submit">{ d.Layout.T.T("settings.save") }</button></noscript>
 		</div>
 	</form>
-	if d.Tab == "media" {
-		@sourceAddButton(d.Layout.T)
-	}
 	if d.Tab == "other" {
 		@dangerZone(d.Layout.T, d.Demo)
 	}

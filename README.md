@@ -91,8 +91,9 @@ Huntarr or Missingarr.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
   rest** (AES-256-GCM with a key generated on first start). The settings page
   groups settings into **Media management**, **Metadata**, **Interface** and
-  **Other**. Global fields autosave within their own tab; source-specific forms
-  use explicit saves, revision checks, connection tests and library refreshes.
+  **Other**. Global fields and existing sources autosave; creation and removal
+  remain explicit actions. Source edits retain revision checks, connection
+  tests and library refreshes.
 - A guarded **Danger Zone** can reset metadata, imported inventories or all user
   state. Resets reject active work instead of cancelling it, never delete media
   on your servers, and keep the persistent encryption key and database file.
@@ -234,10 +235,17 @@ Use **Virtual collection** immediately, or add Jellyfin instances on **Settings 
 Media management**. Sources appear in a two-column tile grid (one column on
 phones), with the permanent virtual collection first. Open a real source's
 dialog to edit its connection, libraries and scan interval, run a source-only
-scan, refresh libraries, test access or remove it. The add button below the
-settings opens a provider-selection dialog: Jellyfin is available; Emby and Plex
+scan, refresh libraries, test access or remove it. The add button beside the
+**Media sources** heading opens a provider-selection dialog: Jellyfin is available; Emby and Plex
 are marked as not yet available. Adding a source automatically loads its
 libraries and opens its dialog so you can select the ones to scan.
+Existing sources save changes automatically after a field change. Closing with
+the close button, Escape or a backdrop click waits for pending saves, as do
+scan/test/refresh actions. Failed saves keep the dialog and edits open with a
+retry option; new-source creation and confirmed removal remain explicit.
+Provider badges use Jellyfin purple, Emby green and Plex gold. Source dialogs
+are wider on desktop so their actions can sit side by side, and remain scrollable
+on smaller screens. Manual Save buttons are only shown without JavaScript.
 **Scan now** refreshes all active real sources; watch edits only recalculate
 using saved snapshots.
 

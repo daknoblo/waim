@@ -83,8 +83,9 @@ the key file allows the stored credentials to be decrypted.
 Old `/sources` bookmarks redirect to the media tab; source POST endpoints remain
 available. The virtual collection remains a separate main-navigation page.
 
-Global changes are saved as soon as you leave a field; **Save changes** also
-works without JavaScript. Only the active section is submitted. Other tabs'
+Global changes are saved as soon as you leave a field. **Save changes** is shown
+only as a no-JavaScript fallback; failed automatic saves offer a retry button.
+Only the active section is submitted. Other tabs'
 fields, including checkboxes and credentials, are preserved atomically.
 Tab navigation waits for pending autosave to finish, and remains on the draft
 if saving fails or a replacement key is required. Validation errors retain
@@ -92,11 +93,11 @@ non-secret input; password fields are deliberately never echoed back.
 Connection edits still probe only the relevant provider. Language changes and
 source feedback preserve the active settings tab.
 
-Each source has a separate explicit save form and revision. An outdated form is
+Each existing source has an independent autosave form and revision. An outdated form is
 rejected instead of overwriting another edit. Changing a Jellyfin address
 (including its path) requires re-entering the key and clears its library choices.
 Blank keys otherwise retain the saved value. Test/refresh buttons use **saved**
-settings, not unsaved form fields. AI host changes also require a key.
+settings, after waiting for pending saves. AI host changes also require a key.
 
 The source overview displays two large tiles per row on wider screens and one
 per row on phones. The virtual collection is always first; it opens the existing
@@ -104,16 +105,21 @@ collection page and has no media-server scan timer. Real-source tiles open an
 accessible dialog containing connection settings, library selection, the
 source's scan interval, a source-only scan button, library refresh, connection
 test and confirmed removal. Dialog links also work without JavaScript.
-The **Add source** button below the media settings opens a dialog with a provider
+The **Add source** button alongside the Media sources heading opens a dialog with a provider
 dropdown. Jellyfin is selectable; Emby and Plex are disabled as not yet available.
+Provider badges are purple for Jellyfin, green for Emby and gold for Plex.
+Desktop dialogs are wide enough for the scan/refresh/test/remove actions to fit
+next to each other; on mobile the actions wrap and the dialog scrolls.
 
-Unsaved source edits are never automatically submitted when switching tabs.
-A localized discard confirmation protects tab navigation, and the browser's
-native leave-page warning protects other navigation. **Save source** submits
-that source explicitly; validation drafts remain protected after a failed save.
-Closing a dirty dialog (including Escape), or invoking a saved-settings action,
-requires confirming that unsaved changes can be discarded. Passwords are never
-returned by the server when a validation failure reopens a dialog.
+Existing source edits save after field changes, with overlapping edits queued
+against the last acknowledged revision. Closing the dialog (button, Escape or
+backdrop click), navigating away or invoking an action waits for saving to finish.
+A failure keeps the source dialog and its draft open; errors are explicit and
+can be retried. New sources are still created only through **Add source** and
+closing an unfinished creation asks before discarding it. Removal still requires
+explicit confirmation. Passwords are never returned by save responses, and
+acknowledged password inputs are cleared without losing newer edits.
+Manual Save buttons remain available only when JavaScript is disabled.
 
 Adding a Jellyfin source immediately fetches its available libraries. They start
 unselected so you can choose what to scan. If discovery fails, the saved source

@@ -267,12 +267,154 @@
     });
   }
 
-  // Source forms are explicit saves: never submit one just to change tabs.
+  function sourceAutosave(form) {
+    var dialog = form.closest("dialog");
+    var status = form.querySelector("[data-source-save-status]");
+    var retry = form.querySelector("[data-source-retry]");
+    var baseline, pending = null, committed = false, flushing = false, composing = false;
+    var failed = form.dataset.sourceDirty === "true", draft = failed;
+    var compositionWaiters = [];
+    function entries() {
+      return Array.from(new FormData(form).entries()).filter(function (entry) { return entry[0] !== "revision"; });
+    }
+    baseline = JSON.stringify(entries());
+    function dirty() { return draft || JSON.stringify(entries()) !== baseline; }
+    function indicate(message, error) {
+      if (status) status.textContent = message;
+      if (retry) retry.hidden = !error;
+    }
+    function changed() {
+      form.dataset.sourceDirty = String(dirty() || failed || !!pending);
+    }
+    function text(root, selector, value) {
+      var el = root.querySelector(selector);
+      if (el) el.textContent = value;
+    }
+    function applySaved(saved, sent) {
+      dialog.querySelectorAll('input[name="revision"]').forEach(function (input) { input.value = String(saved.revision); });
+      // Acknowledged secrets must not be sent again, nor erase a newer replacement.
+      var key = form.querySelector('[name="key"]');
+      var sentKey = sent.find(function (entry) { return entry[0] === "key"; });
+      if (key && sentKey && key.value === sentKey[1]) key.value = "";
+      sent = sent.map(function (entry) { return entry[0] === "key" ? ["key", ""] : entry; });
+      if (saved.librariesChanged) {
+        var options = form.querySelector("[data-source-library-options]");
+        if (options) options.textContent = form.dataset.noLibraries;
+        sent = sent.filter(function (entry) { return entry[0] !== "library"; });
+      }
+      baseline = JSON.stringify(sent);
+      draft = false;
+      text(dialog, "[data-source-heading-name]", saved.name);
+      document.querySelectorAll("[data-source-tile]").forEach(function (tile) {
+        if (tile.dataset.sourceTile !== form.dataset.sourceId) return;
+        text(tile, "[data-source-name]", saved.name);
+        text(tile, "[data-source-url]", saved.url);
+        text(tile, "[data-source-libraries]", saved.librarySummary);
+        text(tile, "[data-source-schedule]", saved.scanSummary);
+        text(tile, "[data-source-next]", "");
+      });
+      dialog.querySelectorAll('form[action$="/scan"] button[type="submit"]').forEach(function (button) {
+        button.disabled = !saved.enabled;
+      });
+    }
+    function save() {
+      if (pending) return pending;
+      if (composing) return Promise.resolve(false);
+      if (!dirty()) {
+        committed = false;
+        if (failed) indicate(form.dataset.saved, false);
+        failed = false;
+        changed();
+        return Promise.resolve(true);
+      }
+      if (!form.reportValidity()) {
+        failed = true;
+        indicate(form.dataset.failed, true);
+        changed();
+        return Promise.resolve(false);
+      }
+      committed = false;
+      var sent = entries();
+      var body = new URLSearchParams(new FormData(form));
+      indicate(form.dataset.saving, false);
+      pending = Promise.resolve().then(function () {
+        return fetch(form.action, {
+          method: "POST", credentials: "same-origin", body: body,
+          headers: { "X-Waim-Source-Autosave": "true", "Content-Type": "application/x-www-form-urlencoded" }
+        });
+      }).then(function (response) {
+        return response.json().catch(function () { return null; }).then(function (saved) {
+          if (response.status !== 200 || !saved || !Number.isInteger(saved.revision)) {
+            throw { sourceSaveError: saved && typeof saved.error === "string" ? saved.error : form.dataset.failed };
+          }
+          applySaved(saved, sent);
+          failed = false;
+          indicate(form.dataset.saved, false);
+          return true;
+        });
+      }).catch(function (error) {
+        failed = true;
+        // Network/middleware errors have no localized JSON message.
+        indicate(error && error.sourceSaveError || form.dataset.failed, true);
+        return false;
+      }).then(function (ok) {
+        pending = null;
+        changed();
+        if (ok && dirty() && (committed || flushing) && !composing) return save();
+        return ok;
+      });
+      changed();
+      return pending;
+    }
+    function commit() {
+      changed();
+      committed = true;
+      if (!composing) save();
+    }
+    form.addEventListener("input", function () {
+      committed = false;
+      changed();
+    });
+    form.addEventListener("change", commit);
+    form.addEventListener("focusout", function (e) {
+      if (e.target.name && e.target.type !== "hidden") commit();
+    });
+    form.addEventListener("compositionstart", function () { composing = true; committed = false; });
+    form.addEventListener("compositionend", function () {
+      composing = false;
+      compositionWaiters.splice(0).forEach(function (resolve) { resolve(); });
+      if (committed) save();
+    });
+    form.addEventListener("submit", function (e) { e.preventDefault(); commit(); });
+    if (retry) retry.addEventListener("click", commit);
+    if (failed) indicate(form.dataset.failed, true);
+    return {
+      form: form,
+      unsettled: function () { return dirty() || failed || !!pending; },
+      flush: function () {
+        flushing = true;
+        var ready = composing ? new Promise(function (resolve) { compositionWaiters.push(resolve); }) : Promise.resolve();
+        return ready.then(save).then(function (ok) {
+          flushing = false;
+          return ok && !dirty() && !failed;
+        });
+      }
+    };
+  }
+
+  // Existing sources save before leaving; only new-source drafts may be discarded.
   function sourceNavigationGuard() {
     var forms = document.querySelectorAll("form[data-source-edit]");
     var dirtySources = new Set();
     var allowed = false;
+    var autosaves = [];
+    var navigate = function (href) { window.location.assign(href); };
+    var navigationPending = false;
     forms.forEach(function (sourceForm) {
+      if (sourceForm.dataset.sourceAutosave === "true") {
+        autosaves.push(sourceAutosave(sourceForm));
+        return;
+      }
       var draft = sourceForm.dataset.sourceDirty === "true";
       var baseline = JSON.stringify(Array.from(new FormData(sourceForm).entries()));
       if (draft) dirtySources.add(sourceForm);
@@ -303,22 +445,46 @@
       return allowed;
     }
     document.addEventListener("click", function (e) {
-      var link = e.target.closest ? e.target.closest("a[data-settings-tab]") : null;
+      var link = e.target.closest ? e.target.closest("a[href]") || e.target.closest("a[data-settings-tab]") : null;
       if (!link || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button > 0) return;
+      if (link.closest("a[data-source-close]") || link.closest("a[data-source-dialog]")) return;
+      if (autosaves.some(function (state) { return state.unsettled(); })) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!navigationPending) {
+          navigationPending = true;
+          guard.run(function () { navigate(link.href); }).then(function () { navigationPending = false; });
+        }
+        return;
+      }
       if (!confirmNavigation()) {
         e.preventDefault();
         e.stopImmediatePropagation();
       }
     }, true);
     window.addEventListener("beforeunload", function (e) {
-      if (dirtySources.size && !allowed) {
+      if ((dirtySources.size && !allowed) || autosaves.some(function (state) { return state.unsettled(); })) {
         e.preventDefault();
         e.returnValue = "";
       }
     });
-    return {
+    var guard = {
       confirmNavigation: confirmNavigation,
       cancelNavigation: function () { allowed = false; },
+      setNavigator: function (fn) { navigate = fn; },
+      run: function (action, dialog) {
+        var states = autosaves.filter(function (state) { return !dialog || dialog.contains(state.form); });
+        function finish() {
+          if (dialog ? guard.discardDialog(dialog) : confirmNavigation()) action();
+        }
+        if (!states.some(function (state) { return state.unsettled(); })) {
+          finish();
+          return Promise.resolve();
+        }
+        return Promise.all(states.map(function (state) { return state.flush(); })).then(function (results) {
+          if (results.every(Boolean)) finish();
+        });
+      },
       discardDialog: function (dialog) {
         var dirty = Array.from(dirtySources).filter(function (form) { return dialog.contains(form); });
         if (!dirty.length) return true;
@@ -327,32 +493,61 @@
         return true;
       }
     };
+    return guard;
   }
 
   function sourceDialogs(guard) {
     var dialogs = document.querySelectorAll("dialog.source-dialog");
     if (!dialogs.length) return;
     dialogs.forEach(function (dialog) {
+      var closing = false, actionPending = false, replay = null, backdropStarted = false;
+      function close() {
+        if (closing || actionPending) return;
+        closing = true;
+        var failedDraft = dialog.querySelector('form[data-source-dirty="true"]:not([data-source-autosave="true"])');
+        guard.run(function () {
+          var link = dialog.querySelector("a[data-source-close]");
+          if (failedDraft && link) window.location.assign(link.href);
+          else dialog.close();
+        }, dialog).then(function () { closing = false; });
+      }
+      dialog.sourceClose = close;
       if (dialog.dataset.sourceAutoOpen === "true" && dialog.showModal) {
         dialog.removeAttribute("open");
         dialog.showModal();
       }
       dialog.addEventListener("cancel", function (e) {
-        var failedDraft = dialog.querySelector('form[data-source-dirty="true"]');
-        if (!guard.discardDialog(dialog)) {
-          e.preventDefault();
-        } else if (failedDraft) {
-          var close = dialog.querySelector("a[data-source-close]");
-          if (close) window.location.assign(close.href);
-        }
+        e.preventDefault();
+        close();
       });
       dialog.addEventListener("submit", function (e) {
         if (e.target.matches("form[data-source-edit]")) return;
-        if (!guard.discardDialog(dialog)) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-        }
+        if (replay === e.target) { replay = null; return; }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (actionPending || closing) return;
+        actionPending = true;
+        var form = e.target, submitter = e.submitter, submitted = false;
+        guard.run(function () {
+          replay = form;
+          try {
+            form.requestSubmit(submitter || undefined);
+            submitted = replay === null;
+          }
+          finally { replay = null; }
+        }, dialog).then(function () { if (!submitted) actionPending = false; });
       }, true);
+      function outside(e) {
+        var rect = dialog.getBoundingClientRect();
+        return e.target === dialog && (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom);
+      }
+      dialog.addEventListener("pointerdown", function (e) { backdropStarted = e.button === 0 && outside(e); });
+      dialog.addEventListener("pointercancel", function () { backdropStarted = false; });
+      dialog.addEventListener("click", function (e) {
+        var hit = backdropStarted && outside(e);
+        backdropStarted = false;
+        if (hit) close();
+      });
     });
     document.addEventListener("click", function (e) {
       var open = e.target.closest ? e.target.closest("a[data-source-dialog]") : null;
@@ -368,11 +563,7 @@
         var owner = close.closest("dialog");
         if (owner && owner.close) {
           e.preventDefault();
-          var failedDraft = owner.querySelector('form[data-source-dirty="true"]');
-          if (guard.discardDialog(owner)) {
-            if (failedDraft) window.location.assign(close.href);
-            else owner.close();
-          }
+          owner.sourceClose();
         }
       }
     });
@@ -386,6 +577,7 @@
     var form = document.getElementById("settings-form");
     if (!form || !window.htmx) return;
     var dirty = false, busy = false, destination = "", field = "";
+    var retry = document.getElementById("settings-retry");
     function indicator(message) {
       var el = document.getElementById("save-indicator");
       if (el) el.textContent = message;
@@ -404,6 +596,7 @@
     form.addEventListener("htmx:beforeRequest", function () {
       busy = true;
       dirty = false;
+      if (retry) retry.hidden = true;
       indicator(form.dataset.saving);
     });
     form.addEventListener("htmx:afterRequest", function (e) {
@@ -413,33 +606,45 @@
         dirty = true;
         destination = "";
         sourceGuard.cancelNavigation();
-        if (!e.detail.xhr || e.detail.xhr.status >= 400) indicator(form.dataset.failed);
+        if (retry) retry.hidden = false;
+        if (!e.detail.xhr || !e.detail.xhr.status || e.detail.xhr.status >= 400) indicator(form.dataset.failed);
         return;
       }
+      if (retry) retry.hidden = true;
       if (!destination) destination = e.detail.xhr.getResponseHeader("X-Waim-Redirect") || "";
       if (destination) {
         if (dirty) window.htmx.trigger(form, "settings-save");
         else {
           var next = destination;
           destination = "";
-          if (sourceGuard.confirmNavigation()) window.location.assign(next);
+          sourceGuard.run(function () { window.location.assign(next); });
         }
       }
     });
-    document.addEventListener("click", function (e) {
-      var link = e.target.closest ? e.target.closest("a[data-settings-tab]") : null;
-      if (e.defaultPrevented || !link || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || (!dirty && !busy)) return;
-      e.preventDefault();
-      destination = link.href;
+    function navigate(href) {
+      if (!dirty && !busy) {
+        sourceGuard.run(function () { window.location.assign(href); });
+        return;
+      }
+      destination = href;
       if (!busy) {
         if (!form.reportValidity()) { destination = ""; sourceGuard.cancelNavigation(); return; }
         window.htmx.trigger(form, "settings-save");
       }
-    });
-    form.addEventListener("submit", function (e) {
+    }
+    sourceGuard.setNavigator(navigate);
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest ? e.target.closest("a[href]") || e.target.closest("a[data-settings-tab]") : null;
+      if (e.defaultPrevented || !link || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || (!dirty && !busy)) return;
+      if (link.closest("a[data-source-close]") || link.closest("a[data-source-dialog]")) return;
       e.preventDefault();
-      if (form.reportValidity()) window.htmx.trigger(form, "settings-save");
+      navigate(link.href);
     });
+    function submit() {
+      if (!busy && form.reportValidity()) window.htmx.trigger(form, "settings-save");
+    }
+    if (retry) retry.addEventListener("click", submit);
+    form.addEventListener("submit", function (e) { e.preventDefault(); submit(); });
     window.addEventListener("beforeunload", function (e) {
       if (dirty || busy) {
         e.preventDefault();

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -145,28 +146,38 @@ func sourceRevision(r *http.Request) (int64, error) {
 }
 
 func (s *Server) handleUpdateSource(w http.ResponseWriter, r *http.Request) {
+	autosave := r.Header.Get("X-Waim-Source-Autosave") == "true"
 	rev, err := sourceRevision(r)
 	if err != nil {
+		if autosave {
+			s.sourceSaveError(w, r, http.StatusBadRequest, "sources.autosaveFailed")
+			return
+		}
 		http.Error(w, "invalid revision", 400)
 		return
 	}
 	defaultInterval := s.cfg.Get().Scan.IntervalMinutes
 	invalidInterval := s.translator(r).T("sources.invalidInterval")
+	errInterval := errors.New(invalidInterval)
+	errNewKey := errors.New(s.translator(r).T("sources.addressNeedsKey"))
+	var saved config.Source
+	var librariesChanged bool
 	err = s.cfg.UpdateSourceWithKey(r.PathValue("id"), rev, strings.TrimSpace(r.FormValue("key")), func(src *config.Source) error {
 		minutes, err := parseSourceInterval(r, src.ScanInterval(defaultInterval))
 		if err != nil {
-			return errors.New(invalidInterval)
+			return errInterval
 		}
 		address := strings.TrimRight(strings.TrimSpace(r.FormValue("url")), "/")
 		key := strings.TrimSpace(r.FormValue("key"))
 		if address != src.Jellyfin.URL && key == "" {
-			return errors.New("enter the API key for the new server address")
+			return errNewKey
 		}
 		src.Name = strings.TrimSpace(r.FormValue("name"))
 		src.ScanIntervalMinutes = &minutes
 		src.Enabled = r.FormValue("enabled") == "on"
 		if address != src.Jellyfin.URL {
 			src.Libraries = nil
+			librariesChanged = true
 		}
 		src.Jellyfin.URL, src.Jellyfin.UserID = address, strings.TrimSpace(r.FormValue("user"))
 		if key != "" {
@@ -179,9 +190,28 @@ func (s *Server) handleUpdateSource(w http.ResponseWriter, r *http.Request) {
 		for i := range src.Libraries {
 			src.Libraries[i].Enabled = selected[src.Libraries[i].ID]
 		}
+		saved = *src
+		saved.Revision = rev + 1
 		return nil
 	})
 	if err != nil {
+		if autosave {
+			s.log.Warn("source autosave failed", "sourceId", r.PathValue("id"), "err", err)
+			code, key := http.StatusBadRequest, "sources.autosaveFailed"
+			switch {
+			case errors.Is(err, errInterval):
+				key = "sources.invalidInterval"
+			case errors.Is(err, errNewKey):
+				key = "sources.addressNeedsKey"
+			default:
+				current, found := s.cfg.Get().Source(r.PathValue("id"))
+				if !found || current.Revision != rev {
+					code, key = http.StatusConflict, "sources.sourceConflict"
+				}
+			}
+			s.sourceSaveError(w, r, code, key)
+			return
+		}
 		draft, _ := s.cfg.Get().Source(r.PathValue("id"))
 		draft.Name, draft.Revision, draft.Enabled = r.FormValue("name"), rev, r.FormValue("enabled") == "on"
 		draft.Jellyfin = config.JellyfinSettings{URL: r.FormValue("url"), UserID: r.FormValue("user")}
@@ -196,7 +226,44 @@ func (s *Server) handleUpdateSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.changedCatalog()
+	if autosave {
+		t := s.translator(r)
+		response := sourceSaveResult{
+			Revision: saved.Revision, Name: saved.Name, URL: saved.Jellyfin.URL,
+			Enabled: saved.Enabled, ScanInterval: saved.ScanInterval(defaultInterval),
+			LibrarySummary: t.T("sources.librarySelection", web.SelectedLibraryCount(saved), len(saved.Libraries)),
+			ScanSummary:    web.SourceScanSummary(t, saved, defaultInterval), LibrariesChanged: librariesChanged,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Waim-Save", web.SaveOK)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			s.log.Error("source autosave response failed", "err", err)
+		}
+		return
+	}
 	http.Redirect(w, r, web.SourceSettingsURL(r.PathValue("id")), http.StatusSeeOther)
+}
+
+type sourceSaveResult struct {
+	Revision         int64  `json:"revision"`
+	Name             string `json:"name"`
+	URL              string `json:"url"`
+	Enabled          bool   `json:"enabled"`
+	ScanInterval     int    `json:"scanInterval"`
+	LibrarySummary   string `json:"librarySummary"`
+	ScanSummary      string `json:"scanSummary"`
+	LibrariesChanged bool   `json:"librariesChanged"`
+}
+
+func (s *Server) sourceSaveError(w http.ResponseWriter, r *http.Request, status int, key string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Waim-Save", web.SaveFailed)
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": s.translator(r).T(key)}); err != nil {
+		s.log.Error("source autosave error response failed", "err", err)
+	}
 }
 
 func (s *Server) handleRemoveSource(w http.ResponseWriter, r *http.Request) {

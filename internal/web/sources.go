@@ -50,6 +50,42 @@ func SourceSettingsURL(id string) string {
 	return SettingsURL("media") + "&source=" + url.QueryEscape(id)
 }
 
+func SourceProviderName(kind string) string {
+	switch kind {
+	case media.Jellyfin:
+		return "Jellyfin"
+	case "emby":
+		return "Emby"
+	case "plex":
+		return "Plex"
+	default:
+		return kind
+	}
+}
+
+func SourceProviderTone(kind string) string {
+	switch kind {
+	case media.Jellyfin:
+		return "provider-jellyfin"
+	case "emby":
+		return "provider-emby"
+	case "plex":
+		return "provider-plex"
+	default:
+		return ""
+	}
+}
+
+func SourceScanSummary(t *i18n.Translator, src config.Source, defaultMinutes int) string {
+	if !src.Enabled {
+		return t.T("sources.disabled")
+	}
+	if minutes := src.ScanInterval(defaultMinutes); minutes > 0 {
+		return t.T("sources.scanEvery", minutes)
+	}
+	return t.T("sources.manualScan")
+}
+
 func SelectedLibraryCount(src config.Source) int {
 	count := 0
 	for _, library := range src.Libraries {
