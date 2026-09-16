@@ -122,7 +122,7 @@ func TestSuggestionsReportTitleAndPendingAIAndJoinOnClose(t *testing.T) {
 			}
 			result, _ := s.Result()
 			if mode == "error" {
-				if state.Status != activity.Partial || state.Warnings == 0 || result == nil || len(result.AI) != 0 {
+				if state.Status != activity.Partial || state.Warnings == 0 || result != nil {
 					t.Fatalf("failed AI job not partial: %+v", state)
 				}
 				if len(state.Diagnostics) != 1 || state.Diagnostics[0].Reason != activity.AIUnavailable || state.Diagnostics[0].Query != "" {

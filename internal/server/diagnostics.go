@@ -225,6 +225,13 @@ func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.D
 	for _, d := range persisted.Items {
 		add(d)
 	}
+	if s.suggest != nil {
+		saved := s.suggest.SavedDiagnostics()
+		out.Truncated = out.Truncated || saved.DiagnosticsTruncated
+		for _, d := range saved.Diagnostics {
+			add(web.DiagnosticView{Diagnostic: d, Job: activity.Suggestions, Persisted: true})
+		}
+	}
 	unfinishedRetry := basis.Latest.Status == store.StatusRunning && basis.Unfinished.ID > basis.Finished.ID
 	if basis.Latest.Status == store.StatusRunning && (!scanRunning || unfinishedRetry) {
 		add(web.DiagnosticView{Diagnostic: activity.Diagnostic{Reason: activity.UnfinishedScan, Severity: activity.Warning}, Job: activity.Scan, Persisted: true})

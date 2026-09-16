@@ -93,6 +93,10 @@ func (s *Server) handleGenerateSuggestions(w http.ResponseWriter, r *http.Reques
 	if s.suggestionsConfigured() {
 		s.suggest.Generate()
 	}
+	if r.Header.Get("HX-Request") != "true" {
+		http.Redirect(w, r, "/suggestions", http.StatusSeeOther)
+		return
+	}
 	s.render(w, r, web.SuggestionsContent(s.suggestionsData(r)))
 }
 

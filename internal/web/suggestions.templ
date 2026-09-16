@@ -10,30 +10,36 @@ templ Suggestions(d SuggestionsData) {
 }
 
 templ suggestionsBody(d SuggestionsData) {
-	<section class="grid gap-4">
+	@SuggestionsContent(d)
+}
+
+templ SuggestionsContent(d SuggestionsData) {
+	<section id="suggestions" class="grid gap-4" aria-busy={ boolAttr(d.Running) }>
 		<div class="flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-lg font-semibold">{ d.Layout.T.T("nav.suggestions") }</h1>
-			<form hx-post="/suggestions/generate" hx-target="#suggestions" hx-swap="outerHTML" class="w-full sm:w-auto">
+			<form method="post" action="/suggestions/generate" hx-post="/suggestions/generate" hx-target="#suggestions" hx-swap="outerHTML" class="w-full sm:w-auto">
 				@MutationEpoch()
-				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ d.Running || !d.Configured }>
+				<button id="suggestion-refresh" type="submit" class="btn-primary inline-flex w-full items-center justify-center gap-2 sm:w-auto" disabled?={ d.Running || !d.Configured }>
+					<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path d="M20 7v5h-5M4 17v-5h5" stroke-linecap="round" stroke-linejoin="round"></path>
+						<path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1" stroke-linecap="round"></path>
+					</svg>
 					{ d.Layout.T.T("suggestions.generate") }
 				</button>
 			</form>
 		</div>
-		@SuggestionsContent(d)
-	</section>
-}
-
-templ SuggestionsContent(d SuggestionsData) {
-	if d.Running {
-		<div id="suggestions" hx-get="/partials/suggestions" hx-trigger="every 3s" hx-swap="outerHTML" class="card flex items-center gap-3 text-sm text-slate-300">
-			<span class="status-dot status-dot-running"></span>
-			{ d.Layout.T.T("suggestions.generating") }
-		</div>
-	} else {
-		<div id="suggestions" class="grid gap-4">
+		if d.Running {
+			<div hx-get="/partials/suggestions" hx-trigger="every 3s" hx-target="#suggestions" hx-swap="outerHTML" role="status" class="flex items-center gap-3 text-sm text-slate-300">
+				<span class="status-dot status-dot-running"></span>
+				if d.Result != nil {
+					{ d.Layout.T.T("suggestions.refreshingCached") }
+				} else {
+					{ d.Layout.T.T("suggestions.generating") }
+				}
+			</div>
+		}
 			if d.Result == nil {
-				if d.Configured {
+				if d.Configured && !d.Running {
 					<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("suggestions.empty") }</p>
 				}
 			} else {
@@ -45,12 +51,13 @@ templ SuggestionsContent(d SuggestionsData) {
 					@aiSection(d, d.Result.AI)
 				}
 				<p class="text-xs text-slate-500">{ d.Layout.T.T("suggestions.generatedAt") }: { FormatTimeValue(d.Result.GeneratedAt) }</p>
+				<p class="text-xs text-slate-500">{ d.Layout.T.T("suggestions.cacheHint") }</p>
 			}
-		</div>
-	}
+	</section>
 }
 
 templ suggestionSection(title string, items []suggest.Item, empty string) {
+	{{ items = unownedSuggestions(ctx, items) }}
 	<div class="card">
 		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
 		if len(items) == 0 {
@@ -96,6 +103,7 @@ templ suggestionSection(title string, items []suggest.Item, empty string) {
 // upcomingSuggestionSection shows announced titles with their release date
 // instead of the release year.
 templ upcomingSuggestionSection(t *i18n.Translator, title, hint string, items []suggest.Item, empty string) {
+	{{ items = unownedSuggestions(ctx, items) }}
 	<div class="card">
 		<div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
 			<h2 class="text-lg font-semibold">{ title }</h2>

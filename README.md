@@ -161,6 +161,30 @@ that job's issues, and later successful scans replace saved scan warnings/errors
 Old ring-buffer log entries alone do not latch the indicator. Full reset also
 clears the diagnostic cache and retained activity details.
 
+## Suggestions cache
+
+Suggestions are saved in SQLite and restored after restarts and image updates.
+Opening the page shows the existing results immediately. Normal scans and
+virtual-collection edits no longer discard them; titles newly present in real
+media sources are filtered from cached TMDB recommendations using the live
+catalog, without new upstream requests.
+
+A background worker refreshes suggestions every 12 hours, even with no browser
+open. It checks once per minute, and the interval starts at the latest attempt.
+The **Refresh** button at the top right starts an additional update; repeated
+clicks cannot create overlapping jobs. Actual refreshes fetch current TMDB
+recommendation data instead of reusing indefinitely cached API responses.
+
+Saved results remain visible while an update is running. Failed refreshes keep
+the previous results; diagnostics remain in Logs and the header indicator,
+including after restart. Failures do not trigger retries on every page visit:
+retry manually or wait for the next scheduled attempt. The timestamp below the
+cards shows when the displayed results were generated.
+
+Changes to TMDB/AI configuration invalidate incompatible cached text and start
+a fresh generation on the next visit or background check. Metadata, media and
+factory resets clear both the in-memory and persisted suggestion cache.
+
 ## Screenshots
 
 Prefer clicking around? The **[live demo](https://daknoblo.github.io/waim/)**

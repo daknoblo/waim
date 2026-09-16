@@ -79,16 +79,19 @@ type Service struct {
 	cfg   *config.Manager
 	store *store.Store
 	log   *slog.Logger
-	ttl   time.Duration
+	now   func() time.Time
 
-	mu         sync.RWMutex
-	result     *Result
-	running    atomic.Bool
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	epoch      uint64
-	activities *activity.Tracker
+	mu               sync.RWMutex
+	result           *Result
+	cacheKey         string
+	lastAttempt      time.Time
+	savedDiagnostics activity.State
+	running          atomic.Bool
+	ctx              context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	epoch            uint64
+	activities       *activity.Tracker
 }
 
 // New creates a suggestion service.
@@ -97,60 +100,80 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*
 		log = slog.Default()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Service{cfg: cfg, store: st, log: log, ttl: 6 * time.Hour, ctx: ctx, cancel: cancel}
-	if len(activities) > 0 {
+	s := &Service{cfg: cfg, store: st, log: log, now: time.Now, ctx: ctx, cancel: cancel, activities: activity.New()}
+	if len(activities) > 0 && activities[0] != nil {
 		s.activities = activities[0]
 	}
+	s.loadCache()
 	return s
 }
 
 // Close cooperatively cancels and joins background work before the store closes.
-func (s *Service) Close()      { s.mu.Lock(); s.cancel(); s.mu.Unlock(); s.wg.Wait() }
-func (s *Service) Invalidate() { s.mu.Lock(); s.result = nil; s.epoch++; s.mu.Unlock() }
+func (s *Service) Close() { s.mu.Lock(); s.cancel(); s.mu.Unlock(); s.wg.Wait() }
+
+// Catalog edits invalidate in-flight work, not the displayed recommendations.
+// Incompatible metadata/AI settings discard the old presentation instead.
+func (s *Service) Invalidate() {
+	key := s.settingsKey()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.epoch++
+	if s.cacheKey != key {
+		s.result = nil
+		s.savedDiagnostics = activity.State{}
+		s.cacheKey = key
+	}
+	if s.result == nil {
+		s.lastAttempt = time.Time{}
+	}
+}
+
+// Clear is called under exclusive reset admission, after SQLite KV is cleared.
+func (s *Service) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.epoch++
+	s.result = nil
+	s.lastAttempt = time.Time{}
+	s.savedDiagnostics = activity.State{}
+	s.cacheKey = ""
+}
 
 // Running reports whether a generation is in progress.
 func (s *Service) Running() bool { return s.running.Load() }
 
 // Result returns the cached result (may be nil) and whether it is still fresh.
 func (s *Service) Result() (*Result, bool) {
+	key := s.settingsKey()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.result == nil {
+	if s.result == nil || s.cacheKey != key {
 		return nil, false
 	}
-	return s.result, time.Since(s.result.GeneratedAt) < s.ttl
+	return s.result, s.now().Sub(s.result.GeneratedAt) < RefreshInterval
 }
 
-// NeedsRefresh reports whether suggestions should be (re)generated: when there
-// is no cached result yet, or a newer successful scan exists than the one the
-// cached suggestions were based on.
-func (s *Service) NeedsRefresh(ctx context.Context) bool {
+// NeedsRefresh uses the last attempt, so failures do not retry on every visit.
+// New scans and virtual-collection edits do not expire this independent cache.
+func (s *Service) NeedsRefresh(_ context.Context) bool {
+	key := s.settingsKey()
 	s.mu.RLock()
-	res := s.result
-	s.mu.RUnlock()
-	if res == nil {
-		return true
-	}
-	_, revision, err := s.store.VirtualEntries(ctx)
-	if err != nil || res.Revision != revision || res.SourcesToken != s.cfg.Get().SourcesToken() {
-		return true
-	}
-	var latest int64
-	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
-		latest = run.ID
-	}
-	return res.BasedOnRunID != latest
+	defer s.mu.RUnlock()
+	return s.cacheKey != key || s.lastAttempt.IsZero() || !s.now().Before(s.lastAttempt.Add(RefreshInterval))
 }
 
 // Generate rebuilds suggestions in the background, ignoring overlapping calls.
-func (s *Service) Generate() {
-	release, err := s.cfg.Gate().Enter()
+func (s *Service) Generate() { s.generate(time.Time{}, false) }
+
+func (s *Service) generate(due time.Time, scheduled bool) {
+	release, err := s.cfg.Gate().EnterScheduled(due)
 	if err != nil {
 		s.log.Warn("suggestions skipped during maintenance")
 		return
 	}
 	s.mu.Lock()
-	if s.ctx.Err() != nil {
+	key := s.settingsKey()
+	if s.ctx.Err() != nil || (scheduled && s.cacheKey == key && !s.lastAttempt.IsZero() && s.now().Before(s.lastAttempt.Add(RefreshInterval))) {
 		s.mu.Unlock()
 		release()
 		return
@@ -162,6 +185,12 @@ func (s *Service) Generate() {
 	}
 	s.wg.Add(1)
 	epoch := s.epoch
+	if s.cacheKey != key {
+		s.result = nil
+		s.savedDiagnostics = activity.State{}
+	}
+	s.lastAttempt = s.now()
+	s.cacheKey = key
 	run := s.activities.Start(activity.Suggestions)
 	s.mu.Unlock()
 	go func() {
@@ -173,14 +202,7 @@ func (s *Service) Generate() {
 		ctx = activity.WithRun(ctx, run)
 		res := s.build(ctx)
 		run.Phase(activity.Persistence, -1)
-		outcome := activity.Completed
-		s.mu.Lock()
-		if epoch == s.epoch && ctx.Err() == nil {
-			s.result = res
-		} else {
-			outcome = activity.Cancelled
-		}
-		s.mu.Unlock()
+		outcome := s.publish(ctx, res, epoch, key, run)
 		if s.cfg.Get().TMDB.APIKey == "" {
 			outcome = activity.Waiting
 		}
@@ -197,7 +219,7 @@ func (s *Service) Generate() {
 func (s *Service) build(ctx context.Context) *Result {
 	run := activity.FromContext(ctx)
 	run.Phase(activity.Inventory, -1)
-	res := &Result{GeneratedAt: time.Now()}
+	res := &Result{GeneratedAt: s.now()}
 	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
 		res.BasedOnRunID = run.ID
 	}
@@ -272,6 +294,9 @@ func (s *Service) build(ctx context.Context) *Result {
 		}
 	}
 
+	// The result cache controls refresh frequency. Recommendation endpoints
+	// must be fetched afresh when a refresh actually runs.
+	td.WithCache(nil)
 	run.Phase(activity.Trending, 2)
 	res.Trending = s.buildTrending(ctx, td, ownedTV, ownedMovie, res)
 	run.Phase(activity.Similar, len(sampleTV)+len(sampleMovie))

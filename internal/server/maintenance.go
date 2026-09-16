@@ -59,7 +59,7 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := reset.New(s.cfg, s.store).Apply(r.Context(), scope, r.FormValue("_epoch"), func() {
-		s.suggest.Invalidate()
+		s.suggest.Clear()
 		s.sched.ResetState()
 		s.activities.Clear()
 		s.diagnosticCache.mu.Lock()

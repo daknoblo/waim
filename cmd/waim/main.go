@@ -117,9 +117,10 @@ func run() error {
 	defer stop()
 
 	var workers sync.WaitGroup
-	workers.Add(2)
+	workers.Add(3)
 	go func() { defer workers.Done(); sched.Run(ctx) }()
 	go func() { defer workers.Done(); ref.Run(ctx) }()
+	go func() { defer workers.Done(); suggestSvc.Run(ctx) }()
 	defer func() { stop(); workers.Wait() }()
 
 	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar, activities)
