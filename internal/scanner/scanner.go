@@ -1,4 +1,4 @@
-// Package scanner compares a Jellyfin library against TMDB to discover missing
+// Package scanner compares a normalized media catalog against TMDB to discover missing
 // seasons, missing episodes and missing entries of movie collections.
 package scanner
 
@@ -6,23 +6,18 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
-	"github.com/daknoblo/waim/internal/jellyfin"
+	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
 )
-
-// JellyfinAPI is the subset of the Jellyfin client used by the scanner.
-type JellyfinAPI interface {
-	ResolveUserID(ctx context.Context, configured string) (string, error)
-	ItemsInLibrary(ctx context.Context, userID, libraryID string) ([]jellyfin.Item, error)
-	Episodes(ctx context.Context, userID, seriesID string) ([]jellyfin.Item, error)
-}
 
 // TMDBAPI is the subset of the TMDB client used by the scanner.
 type TMDBAPI interface {
@@ -36,6 +31,7 @@ type TMDBAPI interface {
 
 // Result summarises a scan.
 type Result struct {
+	Warnings         []string
 	Findings         []store.Finding
 	LibrariesScanned int
 	ItemsScanned     int
@@ -62,7 +58,7 @@ func (nopReporter) ItemDone(string, int)             {}
 
 // Scanner runs a single comparison pass.
 type Scanner struct {
-	jf       JellyfinAPI
+	catalog  media.Catalog
 	td       TMDBAPI
 	settings config.Settings
 	log      *slog.Logger
@@ -71,11 +67,11 @@ type Scanner struct {
 }
 
 // New creates a Scanner. The logger may be nil.
-func New(jf JellyfinAPI, td TMDBAPI, settings config.Settings, log *slog.Logger) *Scanner {
+func New(catalog media.Catalog, td TMDBAPI, settings config.Settings, log *slog.Logger) *Scanner {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Scanner{jf: jf, td: td, settings: settings, log: log, now: time.Now, reporter: nopReporter{}}
+	return &Scanner{catalog: catalog, td: td, settings: settings, log: log, now: time.Now, reporter: nopReporter{}}
 }
 
 // SetReporter installs a progress reporter (nil restores the no-op reporter).
@@ -116,52 +112,71 @@ type missingCollectionDetail struct {
 	MissingParts   []missingPart `json:"missingParts"`
 }
 
-// Run performs the scan over all enabled libraries.
+// Run evaluates the normalized catalog. The source layer resolves and persists
+// occurrence identities before this boundary so live views reuse the same union.
 func (s *Scanner) Run(ctx context.Context) (Result, error) {
 	var res Result
 
-	userID, err := s.jf.ResolveUserID(ctx, s.settings.Jellyfin.UserID)
-	if err != nil {
-		return res, err
-	}
-
+	res.Warnings = append(res.Warnings, s.catalog.Warnings...)
 	libNames := map[string]string{}
-	for _, l := range s.settings.Libraries {
+	for _, l := range s.catalog.Libraries {
 		libNames[l.ID] = l.Name
 	}
 
 	// Gather all items across enabled libraries.
 	type libItem struct {
 		libID string
-		item  jellyfin.Item
+		item  media.Item
 	}
 	var movies, series []libItem
 	summaries := map[string]*store.LibrarySummary{}
 	var order []string
 
-	for _, libID := range s.settings.EnabledLibraryIDs() {
-		if err := ctx.Err(); err != nil {
-			return res, err
-		}
-		items, err := s.jf.ItemsInLibrary(ctx, userID, libID)
-		if err != nil {
-			return res, err
-		}
+	for _, lib := range s.catalog.Libraries {
+		libID := lib.ID
 		res.LibrariesScanned++
 		sum := &store.LibrarySummary{ID: libID, Name: libNames[libID]}
-		for _, it := range items {
-			switch it.Type {
-			case "Movie":
-				movies = append(movies, libItem{libID, it})
-				sum.Total++
-			case "Series":
-				series = append(series, libItem{libID, it})
+		summaries[libID] = sum
+		order = append(order, libID)
+	}
+	for _, it := range media.Merge(s.catalog.Items) {
+		libID := media.VirtualID
+		if len(it.References) > 0 {
+			libID = it.References[0].LibraryID
+		}
+		if it.TMDBID() == 0 {
+			warning := "Unresolved title: " + it.Name
+			if !slices.Contains(s.catalog.Warnings, warning) {
+				res.Warnings = append(res.Warnings, warning)
+			}
+			res.Media = append(res.Media, s.basicStat(it, libID, libNames[libID]))
+		}
+		if it.Type == media.Movie {
+			movies = append(movies, libItem{libID, it})
+		}
+		if it.Type == media.Series {
+			series = append(series, libItem{libID, it})
+		}
+		for _, id := range itemLibraries(it, libID) {
+			if sum := summaries[id]; sum != nil {
 				sum.Total++
 			}
 		}
-		summaries[libID] = sum
-		order = append(order, libID)
+	}
+	for _, libID := range order {
+		sum := summaries[libID]
 		s.reporter.LibraryStart(libID, sum.Name, sum.Total)
+	}
+	run := activity.FromContext(ctx)
+	run.Phase(activity.Metadata, len(movies)+len(series))
+	itemDone := func(item media.Item, fallback string, missing int) {
+		for _, id := range itemLibraries(item, fallback) {
+			if sum := summaries[id]; sum != nil {
+				sum.Scanned++
+				sum.Missing += missing
+				s.reporter.ItemDone(id, missing)
+			}
+		}
 	}
 
 	// --- Movies: build owned-TMDB set, then evaluate collections. ---
@@ -172,9 +187,11 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			return res, err
 		}
 		s.reporter.SetCurrent(m.item.Name)
-		id := s.resolveMovieID(ctx, m.item)
+		id := m.item.TMDBID()
 		if id != 0 {
-			ownedMovie[id] = true
+			if !m.item.WatchOnly {
+				ownedMovie[id] = true
+			}
 			movieTMDB[m.item.ID] = id
 		}
 	}
@@ -185,25 +202,29 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			return res, err
 		}
 		res.ItemsScanned++
-		if sum := summaries[m.libID]; sum != nil {
-			sum.Scanned++
-		}
 		s.reporter.SetCurrent(m.item.Name)
 
+		run.Current(m.item.Name)
+		beforeWarnings := len(res.Warnings)
 		missingCount := 0
 		if id := movieTMDB[m.item.ID]; id != 0 {
 			movie, err := s.td.Movie(ctx, id)
 			if err != nil {
+				res.Warnings = append(res.Warnings, "Movie metadata unavailable: "+m.item.Name)
+				res.Media = append(res.Media, s.basicStat(m.item, m.libID, libNames[m.libID]))
 				s.log.Warn("tmdb movie lookup failed", "title", m.item.Name, "tmdbId", id, "err", err)
 			} else {
-				res.Media = append(res.Media, movieStat(movie, m.item, m.libID, libNames[m.libID]))
+				stat := movieStat(movie, m.item, m.libID, libNames[m.libID])
+				stat.Provenance = provenance(m.item)
+				res.Media = append(res.Media, stat)
 				missingCount = s.evalCollection(ctx, m.libID, libNames[m.libID], m.item, movie, ownedMovie, processedCollections, &res)
+				if m.item.WatchOnly {
+					s.watchMovie(movie, m.item, m.libID, libNames[m.libID], &res)
+				}
 			}
 		}
-		if sum := summaries[m.libID]; sum != nil {
-			sum.Missing += missingCount
-		}
-		s.reporter.ItemDone(m.libID, missingCount)
+		itemDone(m.item, m.libID, missingCount)
+		run.Advance(len(res.Warnings) > beforeWarnings, m.item.TMDBID() == 0)
 	}
 
 	// --- Series: evaluate seasons and episodes. ---
@@ -212,21 +233,28 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			return res, err
 		}
 		res.ItemsScanned++
-		if sum := summaries[sv.libID]; sum != nil {
-			sum.Scanned++
-		}
 		s.reporter.SetCurrent(sv.item.Name)
-		missing := s.scanSeries(ctx, userID, sv.libID, libNames[sv.libID], sv.item, &res)
-		if sum := summaries[sv.libID]; sum != nil {
-			sum.Missing += missing
-		}
-		s.reporter.ItemDone(sv.libID, missing)
+		run.Current(sv.item.Name)
+		beforeWarnings := len(res.Warnings)
+		missing := s.scanSeries(ctx, sv.libID, libNames[sv.libID], sv.item, &res)
+		itemDone(sv.item, sv.libID, missing)
+		run.Advance(len(res.Warnings) > beforeWarnings, sv.item.TMDBID() == 0)
 	}
 
 	for _, libID := range order {
 		res.Libraries = append(res.Libraries, *summaries[libID])
 	}
 	sortUpcoming(res.Upcoming)
+	dedupeMovies(&res)
+	for i := range res.Findings {
+		res.Findings[i].Unconfirmed = len(res.Warnings) > 0
+	}
+	for i := range res.Media {
+		res.Media[i].Unconfirmed = len(res.Warnings) > 0
+	}
+	for i := range res.Upcoming {
+		res.Upcoming[i].Unconfirmed = len(res.Warnings) > 0
+	}
 
 	return res, nil
 }
@@ -236,7 +264,7 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 // evalCollection evaluates an already-fetched movie's TMDB collection and
 // appends a finding for any missing, released parts. It returns the number of
 // missing parts.
-func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, item jellyfin.Item, movie tmdb.Movie, ownedMovie, processed map[int64]bool, res *Result) int {
+func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, item media.Item, movie tmdb.Movie, ownedMovie, processed map[int64]bool, res *Result) int {
 	if movie.BelongsToCollection == nil {
 		return 0
 	}
@@ -248,6 +276,7 @@ func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, ite
 
 	col, err := s.td.Collection(ctx, cid)
 	if err != nil {
+		res.Warnings = append(res.Warnings, "Collection metadata unavailable: "+movie.BelongsToCollection.Name)
 		s.log.Warn("tmdb collection lookup failed", "collection", movie.BelongsToCollection.Name, "err", err)
 		return 0
 	}
@@ -262,6 +291,7 @@ func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, ite
 				poster = col.PosterPath
 			}
 			res.Upcoming = append(res.Upcoming, store.UpcomingItem{
+				Provenance:   store.Provenance{ContextReferences: item.References, WatchOnly: item.WatchOnly},
 				Kind:         store.UpcomingCollectionPart,
 				MediaType:    store.MediaMovie,
 				Title:        p.Title,
@@ -300,30 +330,33 @@ func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, ite
 		MissingParts:   missing,
 	})
 	res.Findings = append(res.Findings, store.Finding{
+		Provenance:  store.Provenance{WatchOnly: item.WatchOnly, ContextReferences: item.References},
 		Kind:        store.KindMissingCollection,
 		MediaType:   store.MediaMovie,
 		LibraryID:   libID,
 		LibraryName: libName,
 		Title:       col.Name,
 		TMDBID:      col.ID,
-		JellyfinID:  item.ID,
 		Summary:     summaryCollection(col.Name, len(missing)),
 		Details:     string(detail),
 	})
 	return len(missing)
 }
 
-func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string, item jellyfin.Item, res *Result) int {
-	id := s.resolveSeriesID(ctx, item)
+func (s *Scanner) scanSeries(ctx context.Context, libID, libName string, item media.Item, res *Result) int {
+	id := item.TMDBID()
 	if id == 0 {
 		return 0
 	}
 	tv, err := s.td.TV(ctx, id)
 	if err != nil {
+		res.Warnings = append(res.Warnings, "Series metadata unavailable: "+item.Name)
+		res.Media = append(res.Media, s.basicStat(item, libID, libName))
 		s.log.Warn("tmdb tv lookup failed", "title", item.Name, "tmdbId", id, "err", err)
 		return 0
 	}
 	stat := store.MediaStat{
+		Provenance:  provenance(item),
 		Type:        store.MediaSeries,
 		Title:       item.Name,
 		Year:        yearInt(tv.FirstAirDate),
@@ -333,17 +366,11 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		LibraryID:   libID,
 		LibraryName: libName,
 		TMDBID:      id,
-		JellyfinID:  item.ID,
 		Language:    tv.OriginalLanguage,
 		Country:     firstString(tv.OriginCountry),
 	}
 	imdbID, _ := item.ProviderID("Imdb")
-	eps, err := s.jf.Episodes(ctx, userID, item.ID)
-	if err != nil {
-		s.log.Warn("jellyfin episodes failed", "title", item.Name, "err", err)
-		res.Media = append(res.Media, stat)
-		return 0
-	}
+	eps := item.Episodes
 	present := map[int]map[int]bool{}
 	for _, ep := range eps {
 		if ep.ParentIndexNumber == nil || ep.IndexNumber == nil {
@@ -392,23 +419,19 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 			})
 			sn := season.SeasonNumber
 			res.Findings = append(res.Findings, store.Finding{
+				Provenance:   provenance(item),
 				Kind:         store.KindMissingSeason,
 				MediaType:    store.MediaSeries,
 				LibraryID:    libID,
 				LibraryName:  libName,
 				Title:        item.Name,
 				TMDBID:       id,
-				JellyfinID:   item.ID,
 				SeasonNumber: &sn,
 				Summary:      summarySeason(item.Name, season.SeasonNumber, len(aired)),
 				Details:      string(detail),
 			})
 			missingTotal += len(aired)
 			continue
-		}
-
-		if len(presentEps) >= season.EpisodeCount {
-			continue // assume complete
 		}
 
 		airedEps := seasons.aired(ctx, season.SeasonNumber)
@@ -432,13 +455,13 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		})
 		sn := season.SeasonNumber
 		res.Findings = append(res.Findings, store.Finding{
+			Provenance:   provenance(item),
 			Kind:         store.KindMissingEpisodes,
 			MediaType:    store.MediaSeries,
 			LibraryID:    libID,
 			LibraryName:  libName,
 			Title:        item.Name,
 			TMDBID:       id,
-			JellyfinID:   item.ID,
 			SeasonNumber: &sn,
 			Summary:      summaryEpisodes(item.Name, season.SeasonNumber, len(missing)),
 			Details:      string(detail),
@@ -446,6 +469,9 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 		missingTotal += len(missing)
 	}
 	s.collectUpcomingEpisodes(tv, item, libID, libName, seasons, res)
+	if seasons.failed {
+		res.Warnings = append(res.Warnings, "Season metadata unavailable: "+item.Name)
+	}
 	return missingTotal
 }
 
@@ -453,7 +479,7 @@ func (s *Scanner) scanSeries(ctx context.Context, userID, libID, libName string,
 // The season details were already fetched for the gap detection, so this costs
 // no additional TMDB requests; next_episode_to_air covers announced seasons
 // that TMDB does not list episodes for yet.
-func (s *Scanner) collectUpcomingEpisodes(tv tmdb.TVShow, item jellyfin.Item, libID, libName string, seasons *seasonCache, res *Result) {
+func (s *Scanner) collectUpcomingEpisodes(tv tmdb.TVShow, item media.Item, libID, libName string, seasons *seasonCache, res *Result) {
 	seen := map[[2]int]bool{}
 	add := func(ep tmdb.Episode) {
 		key := [2]int{ep.SeasonNumber, ep.EpisodeNumber}
@@ -462,6 +488,7 @@ func (s *Scanner) collectUpcomingEpisodes(tv tmdb.TVShow, item jellyfin.Item, li
 		}
 		seen[key] = true
 		res.Upcoming = append(res.Upcoming, store.UpcomingItem{
+			Provenance:    provenance(item),
 			Kind:          store.UpcomingEpisode,
 			MediaType:     store.MediaSeries,
 			Title:         ep.Name,
@@ -475,7 +502,6 @@ func (s *Scanner) collectUpcomingEpisodes(tv tmdb.TVShow, item jellyfin.Item, li
 			Rating:        tv.VoteAverage,
 			LibraryID:     libID,
 			LibraryName:   libName,
-			JellyfinID:    item.ID,
 		})
 	}
 	for _, ep := range seasons.upcoming() {
@@ -512,6 +538,7 @@ func sortUpcoming(items []store.UpcomingItem) {
 // gap detection, the episode ratings and the upcoming releases share the same
 // TMDB responses.
 type seasonCache struct {
+	failed       bool
 	s            *Scanner
 	tvID         int64
 	loaded       map[int]bool
@@ -537,6 +564,7 @@ func (c *seasonCache) load(ctx context.Context, seasonNumber int) {
 	c.loaded[seasonNumber] = true
 	sd, err := c.s.td.Season(ctx, c.tvID, seasonNumber)
 	if err != nil {
+		c.failed = true
 		c.s.log.Warn("tmdb season lookup failed", "tvId", c.tvID, "season", seasonNumber, "err", err)
 		return
 	}
@@ -613,40 +641,6 @@ func airDatesOf(eps []tmdb.Episode, wanted []int) map[string]string {
 	return out
 }
 
-func (s *Scanner) resolveMovieID(ctx context.Context, item jellyfin.Item) int64 {
-	if v, ok := item.ProviderID("Tmdb"); ok {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return id
-		}
-	}
-	results, err := s.td.SearchMovie(ctx, item.Name, item.ProductionYear)
-	if err != nil {
-		s.log.Warn("tmdb movie search failed", "title", item.Name, "err", err)
-		return 0
-	}
-	if len(results) > 0 {
-		return results[0].ID
-	}
-	return 0
-}
-
-func (s *Scanner) resolveSeriesID(ctx context.Context, item jellyfin.Item) int64 {
-	if v, ok := item.ProviderID("Tmdb"); ok {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return id
-		}
-	}
-	results, err := s.td.SearchTV(ctx, item.Name, item.ProductionYear)
-	if err != nil {
-		s.log.Warn("tmdb tv search failed", "title", item.Name, "err", err)
-		return 0
-	}
-	if len(results) > 0 {
-		return results[0].ID
-	}
-	return 0
-}
-
 // released reports whether a TMDB date (YYYY-MM-DD) is non-empty and not in the
 // future relative to the scanner's clock.
 func (s *Scanner) released(date string) bool {
@@ -669,8 +663,9 @@ func yearOf(date string) string {
 	return ""
 }
 
-func movieStat(m tmdb.Movie, item jellyfin.Item, libID, libName string) store.MediaStat {
+func movieStat(m tmdb.Movie, item media.Item, libID, libName string) store.MediaStat {
 	st := store.MediaStat{
+		Provenance:  provenance(item),
 		Type:        store.MediaMovie,
 		Title:       m.Title,
 		Year:        yearInt(m.ReleaseDate),
@@ -680,7 +675,6 @@ func movieStat(m tmdb.Movie, item jellyfin.Item, libID, libName string) store.Me
 		LibraryID:   libID,
 		LibraryName: libName,
 		TMDBID:      m.ID,
-		JellyfinID:  item.ID,
 		Language:    m.OriginalLanguage,
 	}
 	if len(m.ProductionCountries) > 0 {
@@ -734,7 +728,7 @@ func firstString(xs []string) string {
 	return ""
 }
 
-// ownedSeasons pairs the episodes present in Jellyfin with every season TMDB
+// ownedSeasons pairs the real-owned episode union with every season TMDB
 // knows about, so seasons that are entirely missing still show up in the
 // statistics. With ratings enabled every season is fetched from TMDB to record
 // the per-episode votes and runtimes. Seasons unknown to TMDB are appended.

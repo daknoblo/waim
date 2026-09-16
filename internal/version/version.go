@@ -11,7 +11,7 @@ import (
 //
 //	-X github.com/daknoblo/waim/internal/version.Version=1.2.3
 var (
-	// Version is the build version, formatted as vYYYYMMDD-HHMM at build time.
+	// Version is a stable semver or a channel-prefixed build timestamp.
 	Version = "dev"
 	// Commit is the git commit hash.
 	Commit = "unknown"
@@ -49,14 +49,13 @@ func (i Info) String() string {
 var semver = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 // IsRelease reports whether the build came from a release tag: those carry
-// plain semver, every other build carries a date stamp or "dev".
+// plain semver, every other build carries a date stamp, channel stamp or "dev".
 func (i Info) IsRelease() bool {
 	return semver.MatchString(i.Version)
 }
 
-// IsFeatureRelease reports whether a GitHub Release page exists for this build.
-// The release workflow only opens one for X.Y.0; patch tags publish an image
-// and nothing else.
-func (i Info) IsFeatureRelease() bool {
-	return i.IsRelease() && strings.HasSuffix(i.Version, ".0")
+// IsDevelopment identifies the explicit dev channel and local unversioned builds.
+// Stable timestamps, version tags and static demos must not acquire a dev label.
+func (i Info) IsDevelopment() bool {
+	return i.Version == "dev" || strings.HasPrefix(i.Version, "dev-")
 }

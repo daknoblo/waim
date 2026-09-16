@@ -2,7 +2,7 @@
 
 # ---- Build stage ----------------------------------------------------------
 ARG GO_VERSION=1.25
-FROM golang:${GO_VERSION}-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
 # git is needed for module metadata; ca-certificates for HTTPS module fetches.
 RUN apk add --no-cache ca-certificates git
@@ -19,11 +19,14 @@ COPY . .
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
-# Build a fully static, CGO-free binary (modernc.org/sqlite is pure Go).
+# Cross-compile on the builder's native platform; no target emulation is needed
+# for this fully static, CGO-free binary (modernc.org/sqlite is pure Go).
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
     -trimpath \
     -ldflags="-s -w \
       -X github.com/daknoblo/waim/internal/version.Version=${VERSION} \
@@ -33,7 +36,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Pre-create the data directory so a freshly mounted named volume inherits the
 # correct (non-root) ownership.
-RUN mkdir -p /out/appdata
+RUN mkdir -p /out/data
 
 # ---- Runtime stage --------------------------------------------------------
 # distroless/static: no shell, no package manager, minimal attack surface.
@@ -41,12 +44,13 @@ FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
 COPY --from=builder /out/waim /app/waim
-COPY --from=builder --chown=65532:65532 /out/appdata /appdata
+COPY --from=builder --chown=65532:65532 /out/data /data
 
-ENV WAIM_ADDR=:8080
+ENV WAIM_ADDR=:8080 \
+    WAIM_DATA_DIR=/data
 
 EXPOSE 8080
-VOLUME ["/appdata"]
+VOLUME ["/data"]
 
 # Run as the built-in non-root user provided by the distroless image.
 USER nonroot:nonroot

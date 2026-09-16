@@ -16,6 +16,7 @@ templ navLinks(l Layout) {
 	@navLink(l.T, "/", NavDashboard, l.Active, l.T.T("nav.dashboard"))
 	@navLink(l.T, "/suggestions", NavSuggestions, l.Active, l.T.T("nav.suggestions"))
 	@navLink(l.T, "/stats", NavStats, l.Active, l.T.T("nav.stats"))
+	@navLink(l.T, "/collection", "collection", l.Active, l.T.T("sources.collection"))
 	@navLink(l.T, "/logs", NavLogs, l.Active, l.T.T("nav.logs"))
 	@navLink(l.T, "/settings", NavSettings, l.Active, l.T.T("nav.settings"))
 	@navLink(l.T, "/about", NavAbout, l.Active, l.T.T("nav.about"))
@@ -40,7 +41,8 @@ templ Page(l Layout, body templ.Component) {
 			<meta name="color-scheme" content="dark"/>
 			<!-- Keep htmx from injecting an inline <style> element (blocked by the CSP). -->
 			<meta name="htmx-config" content="{&#34;includeIndicatorStyles&#34;:false}"/>
-			<title>{ l.T.T("app.title") } — { l.T.T("app.tagline") }</title>
+			<title>{ l.TabTitle() }</title>
+			<link rel="icon" type="image/svg+xml" sizes="any" href={ "/static/waim-icon.svg?v=" + l.AssetVersion }/>
 			<link rel="stylesheet" href={ "/static/app.css?v=" + l.AssetVersion }/>
 			<script src={ "/static/htmx.min.js?v=" + l.AssetVersion } defer></script>
 			<script src={ "/static/app.js?v=" + l.AssetVersion } defer></script>
@@ -50,7 +52,10 @@ templ Page(l Layout, body templ.Component) {
 				<header class="sticky top-0 z-30 -mx-4 border-b border-slate-800/80 bg-slate-950/95 px-4 backdrop-blur sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:backdrop-blur-none lg:-mx-4 lg:px-4">
 					<div class="flex items-center justify-between gap-4 py-4 md:flex-wrap md:py-5">
 						<div class="flex items-baseline gap-3">
-							<a href="/" class="text-2xl font-bold tracking-tight text-indigo-400 transition hover:text-indigo-300">{ l.T.T("app.title") }</a>
+							<a href="/" class="inline-flex items-center gap-2 text-2xl font-bold tracking-tight text-indigo-400 transition hover:text-indigo-300">
+								<img src={ "/static/waim-icon.svg?v=" + l.AssetVersion } width="32" height="32" class="h-8 w-8 shrink-0" alt="" aria-hidden="true"/>
+								{ l.T.T("app.title") }
+							</a>
 							<span class="hidden text-sm text-slate-400 sm:inline">{ l.T.T("app.tagline") }</span>
 						</div>
 						<nav class="hidden items-center gap-1 text-sm md:flex">
@@ -81,6 +86,27 @@ templ Page(l Layout, body templ.Component) {
 					</div>
 				}
 				<main class="flex-1 pb-10">
+					if len(l.SetupNotices) > 0 {
+						<div class={ "mb-4 grid gap-3", templ.KV("sm:grid-cols-2", len(l.SetupNotices) > 1) }>
+							for _, notice := range l.SetupNotices {
+								<section role="status" data-setup-category={ notice.CategoryKey } class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+									<h2 class="font-semibold text-amber-200">{ l.T.T(notice.CategoryKey) }</h2>
+									<p class="mt-2 text-sm text-slate-300">{ l.T.T(notice.MessageKey) }</p>
+									<div class="mt-3 flex flex-wrap gap-2">
+										<a class="btn-ghost" href={ templ.SafeURL(notice.URL) }>{ l.T.T(notice.ActionKey) }</a>
+										if notice.VirtualAlternative {
+											<a class="btn-ghost" href="/collection">{ l.T.T("setup.virtualAction") }</a>
+										}
+									</div>
+								</section>
+							}
+						</div>
+					}
+					if l.CatalogWarning != "" {
+						<p role="status" class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
+							{ l.CatalogWarning }
+						</p>
+					}
 					@body
 				</main>
 				<footer class="border-t border-slate-800 py-4 text-xs text-slate-500">
@@ -96,6 +122,7 @@ templ Page(l Layout, body templ.Component) {
 
 templ languageSwitcher(l Layout, class string) {
 	<form method="post" action="/locale" class={ class }>
+		@MutationEpoch()
 		<select
 			name="locale"
 			aria-label={ l.T.T("settings.uiLanguage") }

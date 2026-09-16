@@ -19,7 +19,7 @@ import (
 )
 
 // newTestServer returns a Server wired to a throwaway config directory.
-// parseSettingsForm only touches s.cfg, so nothing else has to be built.
+// Form parsing only needs current settings, so nothing else has to be built.
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	mgr, err := config.Load(t.TempDir())
@@ -36,7 +36,7 @@ func parse(t *testing.T, s *Server, values url.Values) (config.Settings, []strin
 	if err := req.ParseForm(); err != nil {
 		t.Fatalf("ParseForm: %v", err)
 	}
-	return s.parseSettingsForm(req)
+	return parseSettingsFormFrom(req, s.cfg.Get())
 }
 
 // baseForm carries the numeric fields so validation-relevant values stay sane.
@@ -57,10 +57,9 @@ func TestStoredKeyIsNotSentToANewHost(t *testing.T) {
 	s := newTestServer(t)
 
 	initial := baseForm()
-	initial.Set("jellyfin_url", "http://jellyfin.local:8096")
-	initial.Set("jellyfin_api_key", "jf-secret")
 	initial.Set("ai_endpoint", "https://ai.example.com/v1/chat")
 	initial.Set("ai_api_key", "ai-secret")
+	initial.Set("tmdb_api_key", "td-secret")
 	ns, pending := parse(t, s, initial)
 	if len(pending) != 0 {
 		t.Fatalf("first configuration should not hold anything back, got %v", pending)
@@ -70,22 +69,21 @@ func TestStoredKeyIsNotSentToANewHost(t *testing.T) {
 	}
 
 	attack := baseForm()
-	attack.Set("jellyfin_url", "http://attacker.tld")
-	attack.Set("jellyfin_api_key", "") // blank on purpose: inherit the stored key
-	attack.Set("ai_endpoint", "https://ai.example.com/v1/chat")
+	attack.Set("ai_endpoint", "http://attacker.tld")
+	attack.Set("ai_api_key", "") // blank on purpose: inherit the stored key
 	got, pending := parse(t, s, attack)
 
-	if got.Jellyfin.URL == "http://attacker.tld" && got.Jellyfin.APIKey == "jf-secret" {
+	if got.AI.Endpoint == "http://attacker.tld" && got.AI.APIKey == "ai-secret" {
 		t.Fatal("stored key would be sent to the attacker-supplied host")
 	}
-	if got.Jellyfin.URL != "http://jellyfin.local:8096" {
-		t.Fatalf("endpoint should stay put until a key arrives, got %q", got.Jellyfin.URL)
+	if got.AI.Endpoint != "https://ai.example.com/v1/chat" {
+		t.Fatalf("endpoint should stay put until a key arrives, got %q", got.AI.Endpoint)
 	}
-	if len(pending) != 1 || pending[0] != sectionJellyfin {
-		t.Fatalf("expected the jellyfin section to be held back, got %v", pending)
+	if len(pending) != 1 || pending[0] != sectionAI {
+		t.Fatalf("expected the AI section to be held back, got %v", pending)
 	}
-	if got.AI.APIKey != "ai-secret" || got.AI.Endpoint != "https://ai.example.com/v1/chat" {
-		t.Fatal("unchanged AI endpoint should keep its stored key")
+	if got.TMDB.APIKey != "td-secret" {
+		t.Fatal("unchanged TMDB endpoint should keep its stored key")
 	}
 }
 
@@ -95,16 +93,16 @@ func TestHeldBackSectionDoesNotBlockOtherFields(t *testing.T) {
 	s := newTestServer(t)
 
 	initial := baseForm()
-	initial.Set("jellyfin_url", "http://jellyfin.local:8096")
-	initial.Set("jellyfin_api_key", "jf-secret")
+	initial.Set("ai_endpoint", "https://ai.example.com/v1")
+	initial.Set("ai_api_key", "ai-secret")
 	ns, _ := parse(t, s, initial)
 	if err := s.cfg.Save(ns); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
 	edit := baseForm()
-	edit.Set("jellyfin_url", "http://attacker.tld") // held back
-	edit.Set("scan_interval", "123")                // must still apply
+	edit.Set("ai_endpoint", "http://attacker.tld") // held back
+	edit.Set("scan_interval", "123")               // must still apply
 	edit.Set("log_level", "debug")
 	got, pending := parse(t, s, edit)
 
@@ -123,8 +121,8 @@ func TestStoredKeyIsKeptWhenHostIsUnchanged(t *testing.T) {
 	s := newTestServer(t)
 
 	initial := baseForm()
-	initial.Set("jellyfin_url", "http://jellyfin.local:8096")
-	initial.Set("jellyfin_api_key", "jf-secret")
+	initial.Set("ai_endpoint", "https://ai.example.com/v1")
+	initial.Set("ai_api_key", "ai-secret")
 	ns, _ := parse(t, s, initial)
 	if err := s.cfg.Save(ns); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -132,14 +130,14 @@ func TestStoredKeyIsKeptWhenHostIsUnchanged(t *testing.T) {
 
 	// Same host, only the path changes and the key field stays blank.
 	edit := baseForm()
-	edit.Set("jellyfin_url", "http://jellyfin.local:8096/jellyfin")
+	edit.Set("ai_endpoint", "https://ai.example.com/v2")
 	got, pending := parse(t, s, edit)
 
-	if got.Jellyfin.APIKey != "jf-secret" {
-		t.Fatalf("key was dropped although the host did not change: %q", got.Jellyfin.APIKey)
+	if got.AI.APIKey != "ai-secret" {
+		t.Fatalf("key was dropped although the host did not change: %q", got.AI.APIKey)
 	}
-	if got.Jellyfin.URL != "http://jellyfin.local:8096/jellyfin" {
-		t.Fatalf("same-host edit was not applied: %q", got.Jellyfin.URL)
+	if got.AI.Endpoint != "https://ai.example.com/v2" {
+		t.Fatalf("same-host edit was not applied: %q", got.AI.Endpoint)
 	}
 	if len(pending) != 0 {
 		t.Fatalf("unexpected hold-back: %v", pending)
@@ -151,23 +149,23 @@ func TestNewKeyIsAcceptedForANewHost(t *testing.T) {
 	s := newTestServer(t)
 
 	initial := baseForm()
-	initial.Set("jellyfin_url", "http://jellyfin.local:8096")
-	initial.Set("jellyfin_api_key", "jf-secret")
+	initial.Set("ai_endpoint", "https://ai.example.com/v1")
+	initial.Set("ai_api_key", "ai-secret")
 	ns, _ := parse(t, s, initial)
 	if err := s.cfg.Save(ns); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
 	moved := baseForm()
-	moved.Set("jellyfin_url", "http://newhost.local:8096")
-	moved.Set("jellyfin_api_key", "jf-new")
+	moved.Set("ai_endpoint", "https://newhost.local/v1")
+	moved.Set("ai_api_key", "ai-new")
 	got, pending := parse(t, s, moved)
 
-	if got.Jellyfin.APIKey != "jf-new" {
-		t.Fatalf("explicit key not applied: %q", got.Jellyfin.APIKey)
+	if got.AI.APIKey != "ai-new" {
+		t.Fatalf("explicit key not applied: %q", got.AI.APIKey)
 	}
-	if got.Jellyfin.URL != "http://newhost.local:8096" {
-		t.Fatalf("new endpoint not applied: %q", got.Jellyfin.URL)
+	if got.AI.Endpoint != "https://newhost.local/v1" {
+		t.Fatalf("new endpoint not applied: %q", got.AI.Endpoint)
 	}
 	if len(pending) != 0 {
 		t.Fatalf("unexpected hold-back: %v", pending)
@@ -221,11 +219,12 @@ func TestScanConfigured(t *testing.T) {
 	}
 
 	cases := map[string]func(*config.Settings){
-		"no jellyfin url":  func(s *config.Settings) { s.Jellyfin.URL = "" },
-		"no jellyfin key":  func(s *config.Settings) { s.Jellyfin.APIKey = "" },
-		"no tmdb key":      func(s *config.Settings) { s.TMDB.APIKey = "" },
-		"no libraries":     func(s *config.Settings) { s.Libraries = nil },
-		"library disabled": func(s *config.Settings) { s.Libraries[0].Enabled = false },
+		"no tmdb key": func(s *config.Settings) { s.TMDB.APIKey = "" },
+	}
+	virtual := config.Defaults()
+	virtual.TMDB.APIKey = "td"
+	if !scanConfigured(virtual) {
+		t.Fatal("TMDB-only virtual collections must be runnable")
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -301,7 +300,7 @@ func TestDataState(t *testing.T) {
 		}
 	})
 
-	t.Run("ready after a successful run", func(t *testing.T) {
+	t.Run("legacy successful runs require a new source scan", func(t *testing.T) {
 		s, mgr := newServer(t)
 		configure(t, mgr)
 		ctx := context.Background()
@@ -312,8 +311,8 @@ func TestDataState(t *testing.T) {
 		if err := s.store.FinishScanRun(ctx, id, store.StatusSuccess, "", 1, 10, 0, nil, nil, nil); err != nil {
 			t.Fatalf("FinishScanRun: %v", err)
 		}
-		if got := s.dataState(ctx); got != web.DataReady {
-			t.Fatalf("got %q, want %q", got, web.DataReady)
+		if got := s.dataState(ctx); got != web.DataLegacy {
+			t.Fatalf("got %q, want %q", got, web.DataLegacy)
 		}
 	})
 }
@@ -329,8 +328,8 @@ func TestChangedSections(t *testing.T) {
 	}
 
 	cases := map[string][]string{
-		"jellyfin_url":     {sectionJellyfin},
-		"jellyfin_api_key": {sectionJellyfin},
+		"jellyfin_url":     {},
+		"jellyfin_api_key": {},
 		"tmdb_api_key":     {sectionTMDB},
 		"tmdb_language":    {sectionTMDB},
 		"ai_endpoint":      {sectionAI},
@@ -363,7 +362,7 @@ func TestChangedSections(t *testing.T) {
 
 	t.Run("a plain form post checks everything", func(t *testing.T) {
 		got := changedSections(httptest.NewRequest("POST", "/settings", nil), nil)
-		for _, s := range []string{sectionJellyfin, sectionTMDB, sectionAI} {
+		for _, s := range []string{sectionTMDB, sectionAI} {
 			if !got[s] {
 				t.Fatalf("non-HTMX post should check %q", s)
 			}

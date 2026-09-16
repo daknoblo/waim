@@ -13,14 +13,17 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	_ "time/tzdata" // embed the timezone database so TZ works on any base image
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
 	"github.com/daknoblo/waim/internal/refresher"
+	"github.com/daknoblo/waim/internal/reset"
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/server"
 	"github.com/daknoblo/waim/internal/store"
@@ -94,23 +97,32 @@ func run() error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	if err := reset.New(cfg, st).Recover(context.Background()); err != nil {
+		return err
+	}
+	levelVar.Set(config.ParseLogLevel(cfg.Get().LogLevel))
 
 	catalog, err := i18n.Load()
 	if err != nil {
 		return err
 	}
 
-	sched := scheduler.New(cfg, st, logger)
-	suggestSvc := suggest.New(cfg, st, logger)
-	ref := refresher.New(cfg, st, logger)
+	activities := activity.New()
+	sched := scheduler.New(cfg, st, logger, activities)
+	suggestSvc := suggest.New(cfg, st, logger, activities)
+	defer suggestSvc.Close()
+	ref := refresher.New(cfg, st, logger, activities)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go sched.Run(ctx)
-	go ref.Run(ctx)
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() { defer workers.Done(); sched.Run(ctx) }()
+	go func() { defer workers.Done(); ref.Run(ctx) }()
+	defer func() { stop(); workers.Wait() }()
 
-	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar)
+	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar, activities)
 	httpServer := &http.Server{
 		Addr:              envDefault("WAIM_ADDR", ":8080"),
 		Handler:           srv.Handler(),

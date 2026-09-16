@@ -17,7 +17,7 @@
 > golangci-lint, CodeQL and Dependabot, but it is a personal side project — see
 > [Disclaimer](#disclaimer).
 
-**waim** connects to your [Jellyfin](https://jellyfin.org/) server, reads your
+**waim** connects to your named [Jellyfin](https://jellyfin.org/) instances, reads your
 movies and series, and compares them against
 [The Movie Database (TMDB)](https://www.themoviedb.org/) to tell you **what you
 are missing**:
@@ -38,9 +38,18 @@ Huntarr or Missingarr.
 
 ## Features
 
-- Read-only Jellyfin integration (your library is never modified).
+- Multiple independent, named, read-only Jellyfin instances (your libraries are never modified).
+- A permanent **Virtual collection** with TMDB movie/series search, add/remove and
+  watch actions throughout the UI. Works with TMDB alone; no Jellyfin server is required.
+- Global TMDB identity merging and union of real episode ownership across
+  instances. Source badges retain every instance and virtual membership.
+- Atomic source snapshots: failed refreshes retain the last successful inventory,
+  with explicit stale/unknown warnings. Collection edits update immediately and
+  queue a cache-backed recalculation, **not** a media-server rescan.
+- Watch-only ratings, gaps and releases are separate from real ownership,
+  runtime and growth. Plex and Emby adapters are not implemented.
 - TMDB matching that prefers Jellyfin's stored provider IDs and falls back to a
-  title/year search.
+  unique exact title/year search; ambiguous/unresolved titles remain source-local.
 - Detects missing seasons, missing episodes and missing collection entries.
 - Periodic scans (configurable interval), scan-on-startup and a manual
   **Scan now** button.
@@ -71,14 +80,48 @@ Huntarr or Missingarr.
   suggestions reuse data instead of re-loading everything from TMDB.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
   rest** (AES-256-GCM with a key generated on first start). The settings page
-  saves as you type and verifies each connection immediately.
+  groups settings into **Media management**, **Metadata**, **Interface** and
+  **Other**. Global fields autosave within their own tab; source-specific forms
+  use explicit saves, revision checks, connection tests and library refreshes.
+- A guarded **Danger Zone** can reset metadata, imported inventories or all user
+  state. Resets reject active work instead of cancelling it, never delete media
+  on your servers, and keep the persistent encryption key and database file.
 - Export of settings (keys stay encrypted, never plaintext) and of the current
   sync state.
 - Bilingual UI (English / German) with an in-app language switch.
 - **Responsive layout**: on phones the navigation collapses into a menu button
   and wide tables turn into stacked cards.
-- Activity log and live scan status in the dashboard.
+- **Live activity** above the log window, with separate cards for scan/recompute,
+  cache maintenance and suggestions. Source connection/discovery work appears
+  when used. The dashboard retains its existing live scan status.
 - Multi-arch images published to GitHub Container Registry.
+
+## Reading live activity
+
+The activity panel polls every two seconds, independently of the three-second
+log refresh. Unchanged partials return HTTP 204; progress never replaces the log
+window. No extra upstream requests are made to measure progress.
+
+The ring and remaining percentage apply **only to the current phase**, not the
+whole job or the other workers. Metadata evaluation counts unique catalog titles,
+not duplicated library memberships; identity resolution counts the current
+catalog before newly resolved identities are merged. Cache refresh counts the
+actual selected batch; trending counts feeds and recommendations count sampled
+owned titles. Inventory (including library/episode pages), persistence, upcoming
+discovery and the pending AI response are explicitly indeterminate.
+
+Processed counts include failed/skipped units; diagnostic counts span the run
+and can include the same title in different phases. Stale source fallback,
+unresolved titles and metadata failures finish **with warnings**, never as fully
+verified success. Cancellation and failure are separate outcomes. Initial missing
+TMDB configuration shows **Waiting for setup**; the global setup banner links to
+settings without repeating setup instructions in each activity card.
+
+Activity is process-local: one bounded running/latest entry per logical job,
+not a persisted history. Concurrent source connection requests show the latest
+request; old handles cannot overwrite a newer run. Logs and persisted scan
+history remain available. Titles/source names are bounded, while metadata paths
+are allowlisted and exclude every query string, credential and response body.
 
 ## Screenshots
 
@@ -101,27 +144,47 @@ serves these pages with sample data.
 curl -fsSL https://raw.githubusercontent.com/daknoblo/waim/main/deploy/docker-compose.example.yml -o docker-compose.yml
 
 # 2. Start it.
+# Docker creates the named data volume; no root user override is needed.
 docker compose up -d
 ```
 
-Then open <http://localhost:8080>, go to **Settings**, and enter your Jellyfin
-URL + API key and your TMDB API key. Everything is saved as you go and each
-connection is tested right away. Use **Refresh libraries from Jellyfin** to
-load your libraries and tick the ones to scan.
+Then open <http://localhost:8080> and enter your TMDB API key on **Settings → Metadata**.
+Use **Virtual collection** immediately, or add Jellyfin instances on **Settings →
+Media management**. Adding a source automatically loads its available libraries; select
+the ones to scan and save the source.
+**Scan now** refreshes all active real sources; watch edits only recalculate
+using saved snapshots.
 
-> **Upgrading from 1.3 or older?** `WAIM_MASTER_KEY` was removed and the
-> encryption key is now generated automatically, so the stored API keys have to
-> be entered once more. See
+Recalculations keep the scheduled source-scan deadline unchanged. Changing the
+scan interval rearms the timer and its displayed deadline together; nightly
+cache cleanup stays at 03:00 local time across daylight-saving changes.
+
+> **Upgrading from 1.3 or older?** The encryption key is now generated
+> automatically, so API keys stored by those older versions have to be
+> entered once more. See
 > [Upgrading](docs/installation.md#upgrading-from-13-or-older).
 
 ### Image tags
 
 | Tag                            | Source        | Purpose                       |
 | ------------------------------ | ------------- | ----------------------------- |
-| `ghcr.io/daknoblo/waim:latest` | `main`        | Current build of `main`       |
-| `ghcr.io/daknoblo/waim:X.Y.Z`  | git tag       | Pinned versions               |
-| `ghcr.io/daknoblo/waim:X.Y`    | git tag       | Latest patch of a minor line  |
-| `ghcr.io/daknoblo/waim:sha-…`  | every commit  | Exact commit, for rollbacks   |
+| `ghcr.io/daknoblo/waim:latest` | `main`        | Approved stable build         |
+| `ghcr.io/daknoblo/waim:dev`    | `develop`     | Development build for testing |
+| `ghcr.io/daknoblo/waim:X.Y.Z`  | tag on `main` | Pinned stable version         |
+| `ghcr.io/daknoblo/waim:X.Y`    | tag on `main` | Patch of a stable minor line  |
+| `ghcr.io/daknoblo/waim:sha-…`  | `main`        | Commit-specific stable build  |
+| `ghcr.io/daknoblo/waim:sha-dev-…` | `develop`  | Commit-specific dev build     |
+
+Development happens on `develop`. Only a maintainer-approved pull request
+merged into `main` updates `:latest` and the public demo; publishing waits for
+CI to pass. Every new version tag, including patches, creates a stable GitHub
+Release and must point to a commit already on `main`. Version tags do not move
+`:latest` backwards.
+
+Use `:latest` or a pinned version for normal use. Test `:dev` with a **separate
+data volume**: development versions may migrate the database or configuration
+in ways an older stable version cannot read. See [development](docs/development.md)
+for the promotion and release workflow.
 
 ## Configuration
 
@@ -131,10 +194,14 @@ in the data directory. Only a few environment variables are needed:
 | Variable          | Default        | Description                                           |
 | ----------------- | -------------- | ----------------------------------------------------- |
 | `WAIM_ADDR`       | `:8080`        | Listen address.                                       |
+| `WAIM_DATA_DIR`   | `/data` (image), `./appdata` (local) | Persistent data directory. |
 | `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
 
-The data directory is fixed at `/appdata` inside the container (mount a
-volume there to persist it). All other configuration lives in the web UI.
+The container uses `/data`; the Compose example mounts a Docker-managed named
+volume there and uses the image's non-root user (UID/GID 65532). A host bind
+mount `./appdata:/data` remains an optional alternative. Older images used `/appdata`
+inside the container; see the [migration instructions](docs/installation.md#upgrading-the-container-data-path)
+before updating an existing deployment. All other configuration lives in the web UI.
 
 See [docs/configuration.md](docs/configuration.md) for the full settings
 reference.
@@ -164,6 +231,12 @@ Bug reports, ideas and pull requests are welcome — see
 [Contributing](.github/CONTRIBUTING.md) for the development setup and the
 conventions this project follows. Participation is governed by the
 [Code of Conduct](.github/CODE_OF_CONDUCT.md).
+
+Run `make coverage` for cross-package Go statement coverage. Reports under
+`coverage/` include both the full codebase and handwritten code excluding
+generated `*_templ.go` files, so template boilerplate does not obscure the
+application's test coverage. These are coverage measurements, not a substitute
+for behavior tests or the JavaScript navigation tests in CI.
 
 Found a security problem? Please report it privately as described in the
 [Security Policy](.github/SECURITY.md) rather than in a public issue.
