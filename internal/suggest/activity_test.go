@@ -133,6 +133,9 @@ func TestSuggestionsReportTitleAndPendingAIAndJoinOnClose(t *testing.T) {
 			expected := activity.Completed
 			if mode == "unresolved" {
 				expected = activity.Partial
+				if state.Severity() != activity.Warning || len(state.Diagnostics) != 1 || state.Diagnostics[0].Reason != activity.Unresolved || state.Diagnostics[0].Current != "Unresolved title" {
+					t.Fatalf("unresolved suggestion title must remain a concrete activity warning: %+v", state)
+				}
 			}
 			if state.Status != expected || result == nil || len(result.AI) != 1 {
 				t.Fatalf("suggestion result not persisted: %+v, %+v", state, result)

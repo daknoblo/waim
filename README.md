@@ -149,6 +149,8 @@ skipped/incomplete work, and red takes precedence for failures or storage errors
 Operational inventory/legacy/pending notices now live in Logs, not repeated
 page-wide banners. Metadata/media-source setup cards and key-recovery guidance
 remain separate; statistics still mark unverified results as uncertain.
+Suggestion lookup and AI diagnostics also stay in Logs and the header indicator,
+without an additional raw-error banner above the available recommendations.
 
 The header reads only small persisted status/version rows on each poll, plus
 in-memory activity. Warning payloads are cached until the scan/source/config

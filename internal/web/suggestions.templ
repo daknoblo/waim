@@ -37,13 +37,6 @@ templ SuggestionsContent(d SuggestionsData) {
 					<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("suggestions.empty") }</p>
 				}
 			} else {
-				if len(d.Result.Errors) > 0 {
-					<div class="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-						for _, e := range d.Result.Errors {
-							<div>{ e }</div>
-						}
-					</div>
-				}
 				@suggestionSection(d.Layout.T.T("suggestions.similar"), d.Result.Similar, d.Layout.T.T("suggestions.none"))
 				@suggestionSection(d.Layout.T.T("suggestions.trending"), d.Result.Trending, d.Layout.T.T("suggestions.none"))
 				@upcomingSuggestionSection(d.Layout.T, d.Layout.T.T("suggestions.upcomingTaste"), d.Layout.T.T("suggestions.upcomingTasteHint"), d.Result.UpcomingTaste, d.Layout.T.T("suggestions.none"))
