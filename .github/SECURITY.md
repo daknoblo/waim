@@ -14,8 +14,9 @@ minor lines.
 | < 1.4   | ❌        |
 
 Released images are published to `ghcr.io/daknoblo/waim`. The `latest` tag
-follows the `main` branch and may contain changes that are not part of a
-tagged release yet.
+follows approved changes on the protected `main` branch and may contain fixes
+that are not part of a tagged release yet. The `dev` tag follows `develop`
+and is for testing, not stable deployments. Use separate data volumes.
 
 ## Reporting a vulnerability
 

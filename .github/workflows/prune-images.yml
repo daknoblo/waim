@@ -1,6 +1,6 @@
-# Every push to main publishes an immutable sha-<commit> image for rollbacks.
+# Pushes to main/develop publish sha-<commit>/sha-dev-<commit> images.
 # Those accumulate forever, so this prunes the superseded ones. Version tags
-# (1.2.3, 1.2) and :latest are never touched.
+# (1.2.3, 1.2), :latest and :dev are never touched.
 name: Prune Old Images (ghcr.io)
 
 on:

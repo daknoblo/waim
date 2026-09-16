@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - [templ](https://templ.guide/) CLI (code generation)
 - The Tailwind CSS standalone CLI (CSS generation) — no Node.js required
 
@@ -41,14 +41,15 @@ make run        # build and run
 make seed       # fill ./appdata with a synthetic scan run
 make demo       # render the static GitHub Pages demo into ./dist
 make docker     # build the Docker image locally
-make release VERSION=1.3.0   # pin the docs, commit and tag (push stays manual)
-make release BUMP=patch      # same, with the next patch number computed
+make release VERSION=1.5.0   # tag approved main (push stays manual)
+make release BUMP=patch      # compute and tag the next stable patch
 ```
 
 The demo site is the real UI rendered with sample data (`cmd/demo`): htmx
 attributes are stripped and routes are rewritten to file names, so it works from
 any static host. `.github/workflows/pages.yml` publishes it to GitHub Pages on
-every push to `main`.
+every approved push to `main`, after CI passes. Manual demo deployment is also
+restricted to `main`; running the workflow on `develop` skips deployment.
 
 Run locally:
 
@@ -60,25 +61,118 @@ Locally, waim stores its data in `./appdata` (gitignored) in the working
 directory, including the generated `master.key`. Then open
 <http://localhost:8080>.
 
-Without a Jellyfin server the pages stay empty, which makes UI work on the
-statistics page awkward. `make seed` writes a database with a synthetic scan
-run — titles, gaps, ratings and announced releases — so every card has data:
+Without Jellyfin, the virtual collection works with TMDB alone. For completely
+offline UI work, `make seed` writes two synthetic source snapshots, overlapping
+provenance, virtual entries, ratings and releases in a **fresh** data directory:
 
 ```bash
 make seed                      # into ./appdata
-make seed SEED_OUT=/tmp/waim   # somewhere else, e.g. to mount into a container
+make seed SEED_OUT=./appdata-demo # separate local fixture directory
 make seed SEED_FORCE=1         # overwrite an existing database
 ```
 
-It refuses to overwrite an existing database unless `SEED_FORCE=1`, and its
-random seed is fixed so screenshots stay comparable between runs.
+It never overwrites an existing config. It refuses an existing database unless
+`SEED_FORCE=1`. Automatic scans/cache refresh are disabled and no TMDB key is set;
+no real credentials or services are needed. Its random seed is fixed.
+
+For an entirely static, offline preview of all eight pages:
+
+```bash
+go run ./cmd/demo -out ./dist -locale en
+go run ./cmd/demo -out ./dist-de -locale de
+# Open dist/index.html in your browser. Forms are illustrative, not functional.
+```
+
+Feature tests use local HTTP fakes/cache fixtures:
+
+```bash
+go test -race ./internal/media ./internal/config ./internal/source ./internal/store ./internal/scanner ./internal/scheduler ./internal/server ./internal/web
+go test -race ./...
+go vet ./...
+CGO_ENABLED=0 go build ./...
+golangci-lint run
+go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+make css
+```
+
+Browser acceptance should cover both locales/mobile, two named instances,
+same-TMDB overlapping season ownership, watch add/remove during a scan, a
+standalone movie before/after release, per-instance badges/links and stale or
+unknown sources. Static demo checks do not replace live mutation acceptance.
+
+## Coverage and reachability
+
+```bash
+make coverage
+go tool cover -html=coverage/handwritten.out
+```
+
+The coverage target instruments all project packages, including calls made
+through integration tests in other packages. It writes full and handwritten
+profiles plus per-function reports under the gitignored `coverage/` directory;
+override the location with `COVERAGE_DIR=/path/to/output`. The handwritten view
+excludes generated `*_templ.go`, not application logic. Percentages measure Go
+statements, not JavaScript behavior or end-to-end completeness. The regular CI
+still runs its race-enabled suite; this optional measurement does not add a
+second coverage run to every image build.
+
+Go's `cover` tool merges repeated profile blocks from cross-package tests.
+Do not compute percentages by naively summing every raw profile line: one
+statement can appear in multiple test executables. For dead-code checks,
+include all three commands and tests and inspect template source before
+removing generated functions. Code reachable only from tests is not
+automatically obsolete; prefer testing the actual production API over keeping
+retired wrappers alive solely for their old tests.
+
+## Container builds
+
+The Docker builder runs on BuildKit's native `BUILDPLATFORM` and cross-compiles
+the static Go binary using `TARGETOS` and `TARGETARCH`. Release images target
+`linux/amd64` and `linux/arm64`; neither the Go build nor the runtime stage
+requires QEMU. The runtime remains distroless, running as `nonroot` with `/data`
+as its writable data volume.
+
+To validate both image architectures locally, including SBOM and provenance,
+use a Buildx builder with the `docker-container` driver:
+
+```bash
+docker buildx build --builder YOUR_BUILDER \
+  --platform linux/amd64,linux/arm64 \
+  --sbom=true --provenance=true \
+  --output type=oci,dest=/tmp/waim-multiarch.tar .
+```
+
+Module downloads and Go compilation use BuildKit cache mounts. Release jobs
+also retain channel-scoped GitHub Actions layer caches; cache mounts are local
+to a builder and are not restored by that layer-cache export. When measuring
+build changes, compare the same source, build arguments and output mode on
+isolated builders, distinguishing cold builds from warm rebuilds. Changing the
+build date forces relinking even when source code is unchanged. Local timings
+exclude registry pushes and are not a substitute for measurements on CI runners.
 
 ## Editing the UI
+
+The settings navigation has dependency-free JavaScript regression tests. With
+Node.js 22 or newer available, run `node --test scripts/settings-navigation.test.cjs`.
+CI runs these alongside the Go suite to guard pending saves and explicit source
+edits during tab navigation; Node.js is not required to build or run waim.
+
+The original film-reel/question-mark icon is shared by the header and the
+SVG favicon (`internal/web/assets/static/waim-icon.svg`). It is embedded and
+versioned with the other assets. Browser titles use `[DEV] waim — ...` for
+explicit `dev` / `dev-*` builds only; stable builds and the static demo keep
+`waim — ...` without a channel suffix.
 
 1. Edit the relevant `internal/web/*.templ` file.
 2. Run `make generate` to regenerate the Go code.
 3. If you add new Tailwind classes, run `make css` to rebuild the stylesheet.
 4. Rebuild and run.
+
+Use the pinned **standalone** Tailwind compiler for committed CSS. The npm CLI
+can produce different minifier ordering even at the same Tailwind version,
+which fails CI's byte-for-byte generated-asset check. If the native compiler
+cannot run, use the pinned Linux standalone binary in a local Linux container,
+matching CI rather than substituting the npm CLI.
 
 When changing user-facing strings, update **both** locale files
 (`internal/i18n/locales/en.json` and `internal/i18n/locales/de.json`) and use the
@@ -103,47 +197,94 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
 ## Continuous integration
 
 - `.github/workflows/ci.yml` — verifies generated templ code and CSS are up to
-  date, checks the docs pin the newest release tag, runs `go vet`,
-  golangci-lint, race-enabled tests and a build.
+  date, checks that documentation pins reference tags approved on `main`,
+  tests the release guards, runs `go vet`, golangci-lint, race-enabled tests
+  and a build. Runs on pushes/PRs to both branches and is reused as a
+  prerequisite by image and demo publishing.
 - `.github/workflows/release.yml` — builds and pushes multi-arch images to
-  `ghcr.io`. `main` → `:latest`, git tags → semver tags, every commit → a
-  `sha-…` tag. Images are scanned with Trivy.
+  `ghcr.io`. `main` → `:latest` and `sha-…`; `develop` → `:dev` and
+  `sha-dev-…`. Version tags on commits already in `main` publish `X.Y.Z` and
+  `X.Y` and create a GitHub Release, including patches. Tag builds do not
+  update `:latest` or commit-specific branch images. Images are scanned with
+  Trivy. Branch builds display `stable-YYYYMMDD-HHMM` or `dev-YYYYMMDD-HHMM`
+  on the About page; tagged builds display the release version.
+- `.github/workflows/codeql.yml` — analyses both branches and their PRs.
+- `.github/dependabot.yml` — sends dependency updates to `develop`, not stable.
 - `.github/workflows/prune-images.yml` — weekly retention for the `sha-…`
-  images, keeping the newest 20. Version tags and `:latest` are never touched,
-  and untagged versions are left alone because they are the per-architecture
+  images (including `sha-dev-…`), keeping the newest 20 combined.
+  Version tags, `:latest` and `:dev` are never touched, and untagged versions
+  are left alone because they are the per-architecture
   children of the multi-arch manifests. Run it manually with `dry-run` first if
   you change the retention.
 
 ## Branching & releases
 
-- `main` is the only long-lived branch; every merge publishes the `:latest`
-  image plus an immutable `sha-…` tag for rollbacks.
-- Use short-lived feature branches and pull requests against `main`; CI runs on
-  every PR.
-- **Patch tags are test builds, minor tags are releases.** `1.2.1` publishes an
-  image you can pin in Compose but creates no GitHub Release and does not touch
-  the docs; only `X.Y.0` does both (see the `release` job in `release.yml`). To
-  try a build without any tag at all, pin the `sha-…` image of the commit.
+### Development and promotion
 
-- Cut either kind with `make release`, which regenerates the assets, pins the
-  docs for feature releases, commits that and creates the annotated tag:
+- `main` is stable and remains the default branch. `develop` is the long-lived
+  integration branch. Create feature/fix branches from `develop` and send PRs
+  back to `develop`.
+- Test the automatically published `:dev` image (or a specific `sha-dev-…`)
+  with a **separate data volume**, container name and host port. Do not share
+  the host data directory between stable and dev; migrations may make downgrades unsafe.
+- When ready, open a promotion PR from `develop` to `main`. The maintainer
+  manually merges it after testing. No auto-merge: a green test alone is not
+  a release approval.
+- Use a merge commit for promotion, not squash/rebase, to preserve shared
+  ancestry. Keep `develop` after merging. Merge `main` back into `develop`
+  when it contains changes not already there, especially after a stable hotfix.
+- Protection on `main` requires a PR, the `Lint, Test & Build` check on an
+  up-to-date branch and resolved review conversations, including for admins.
+  Force pushes and branch deletion are disabled. This is a solo-maintainer
+  flow: no second-person approving review is required; the manual merge is
+  the maintainer's approval.
+- Merging promotion updates `:latest` and the public demo only after publishing
+  CI passes. Development publishing can never move either.
 
-  ```bash
-  make release BUMP=patch MESSAGE="test build"   # 1.2.1 -> 1.2.2
-  make release BUMP=minor                        # 1.2.1 -> 1.3.0, opens $EDITOR
-  make release VERSION=2.0.0                     # explicit version
-  make release BUMP=minor PUSH=1                 # push right away
-  ```
+### Tagging a stable version
 
-  Without `MESSAGE="..."` it opens `$EDITOR` for the tag annotation, which
-  becomes the body of the GitHub Release. It refuses to run on a dirty working
-  tree, because CI rejects stale `*_templ.go` or `app.css` files, and it
-  refuses to reuse an existing tag. Pushing stays manual unless `PUSH=1`.
+Every **new** `X.Y.Z` tag is stable and gets release notes, including patch
+versions. Historical patch tags created under the old test-build convention
+are not retroactively converted. Tests now use `:dev` rather than version tags.
 
-  Tags are plain semver without a `v` prefix, matching the published image tags
-  — `docker/metadata-action` strips a leading `v`, so `ghcr.io/...:v1.2.3` would
-  never exist. A `v`-prefixed tag still triggers a release and is normalised to
-  `1.2.3`, but the plain form is the convention.
+After promoting, switch to the approved commit:
+
+```bash
+git switch main
+git pull --ff-only origin main
+make release BUMP=patch MESSAGE="Fix missing release dates"
+# Or: make release BUMP=minor, which opens $EDITOR for notes.
+# Or: make release VERSION=2.0.0 NOTES=/path/to/release-notes.md
+```
+
+`make release` first requires clean local `main`, fetches `origin/main` and
+tags, and verifies local `HEAD` is exactly the approved remote commit. It
+creates only an annotated tag: no generated-file changes, documentation
+commits, or branch pushes. Generate/test changes before promotion instead.
+It refuses duplicate versions, including an existing `v`-prefixed equivalent.
+
+Push the tag printed by the command, or use `PUSH=1` to publish it immediately.
+The publishing workflow independently rejects tags outside `main` before it
+can push an image. Tagging an older approved commit does not roll `:latest`
+back; that channel follows approved `main` pushes only. The `X.Y` alias tracks
+the most recently published tag in that minor line, so publish patches in order.
+
+Tags use plain semver without a `v` prefix, matching the image tags.
+A `v`-prefixed tag is still accepted and normalised for the image version.
+
+Once the version is published, update pinned installation examples through
+a normal PR with `make docs-version VERSION=X.Y.Z`. Pins must refer to an
+existing version tag on `main`, but need not change with every release.
+This avoids creating an unreviewed docs commit on protected `main` or a
+release/CI dependency cycle.
+
+### Repository settings versus workflow changes
+
+Branch protection is a GitHub repository setting, not something YAML enables
+on its own. Keep `main` protection enabled, repository auto-merge disabled,
+and automatic head-branch deletion disabled to retain `develop`. The initial
+workflow setup PR must be merged before these new rules govern publishing on
+`main`; until then its existing release workflow still applies.
 
 ## Contributing
 

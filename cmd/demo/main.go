@@ -47,17 +47,31 @@ func run(out, locale string) error {
 
 	run := demoRun()
 	findings := demoFindings()
+	mediaCatalog, sources, entries := demoSources(run, findings)
 	pages := map[string]templ.Component{
 		"index.html":       web.Dashboard(demoDashboard(t, run, findings)),
 		"stats.html":       web.Stats(demoStats(t, run, findings)),
 		"suggestions.html": web.Suggestions(demoSuggestions(t)),
 		"logs.html":        web.Logs(demoLogs(t)),
-		"settings.html":    web.Settings(demoSettings(t)),
 		"about.html":       web.About(demoAbout(t)),
+		"collection.html":  web.Collection(web.CollectionData{Layout: demoLayout(t, "collection"), Entries: entries, Configured: true}),
+	}
+	for _, tab := range web.SettingsTabs {
+		d := demoSettings(t)
+		d.Tab, d.Demo = tab, true
+		d.Sources = web.SourcesData{Layout: d.Layout, Sources: sources}
+		d.DataDir, d.DBSize, d.ConfigSize = "/data", "18 MiB", "3 KiB"
+		comp := web.Settings(d)
+		pages["settings-"+tab+".html"] = comp
+		if tab == "media" {
+			pages["settings.html"] = comp
+			pages["sources.html"] = comp
+		}
 	}
 	for name, comp := range pages {
 		var sb strings.Builder
-		if err := comp.Render(context.Background(), &sb); err != nil {
+		ctx := web.WithProvenance(web.WithActionTranslator(context.Background(), t), mediaCatalog, run)
+		if err := comp.Render(ctx, &sb); err != nil {
 			return fmt.Errorf("render %s: %w", name, err)
 		}
 		if err := os.WriteFile(filepath.Join(out, name), []byte(staticHTML(sb.String(), t)), 0o644); err != nil {
@@ -91,11 +105,16 @@ var absHref = regexp.MustCompile(`href="/[^"]*"`)
 func staticHTML(html string, t *i18n.Translator) string {
 	html = hxAttr.ReplaceAllString(html, "")
 	html = scriptTag.ReplaceAllString(html, "")
+	for _, tab := range web.SettingsTabs {
+		html = strings.ReplaceAll(html, `href="/settings?tab=`+tab+`"`, `href="settings-`+tab+`.html"`)
+	}
 	html = strings.NewReplacer(
 		`href="/static/`, `href="static/`,
 		`src="/static/`, `src="static/`,
 		`href="/"`, `href="index.html"`,
 		`href="/stats"`, `href="stats.html"`,
+		`href="/sources"`, `href="sources.html"`,
+		`href="/collection"`, `href="collection.html"`,
 		`href="/suggestions"`, `href="suggestions.html"`,
 		`href="/logs"`, `href="logs.html"`,
 		`href="/settings"`, `href="settings.html"`,

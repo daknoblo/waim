@@ -1,5 +1,7 @@
 package web
 
+import "strings"
+
 import "github.com/daknoblo/waim/internal/i18n"
 import "strconv"
 
@@ -46,7 +48,8 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				</div>
 			</div>
 			<form hx-post="/scan" hx-target="#status-card" hx-swap="outerHTML" class="w-full sm:w-auto">
-				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ s.Running }>
+				@MutationEpoch()
+				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ s.Running || s.SetupRequired }>
 					{ t.T("dashboard.scanNow") }
 				</button>
 			</form>
@@ -92,6 +95,9 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				<span class="font-medium">{ t.T("dashboard.lastError") }:</span> { s.LastError }
 			</div>
 		}
+		if s.Warning != "" {
+			<p role="status" class="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">{ s.Warning }</p>
+		}
 	</div>
 }
 
@@ -107,7 +113,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 		if len(rows) == 0 {
 			if state == DataReady {
 				<p class="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{ t.T("dashboard.noFindings") }</p>
-			} else {
+			} else if state != DataUnconfigured {
 				<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ t.T(dataStateKey(state)) }</p>
 			}
 		} else {
@@ -124,7 +130,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 					</thead>
 					<tbody class="divide-y divide-slate-800 align-top">
 						for _, r := range rows {
-							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID }>
+							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID } data-libraries={ strings.Join(r.LibraryIDs," ") }>
 								<td class="px-3 py-2">
 								<div class="flex items-center gap-2">
 									if r.PosterURL != "" {
@@ -134,8 +140,27 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 									}
 									<span class="font-medium text-slate-100">{ r.Title }</span>
 								</div>
+								if target := Target(ctx,r.TMDBLink); target.ID > 0 {
+									<div class="mt-1 flex flex-wrap items-center gap-1 text-xs">
+										if target.WatchOnly {
+											<span class="text-amber-200">{ t.T("sources.watchOnly") }</span>
+										}
+										@WatchForm(t,target.Kind,target.ID,target.Watching)
+									</div>
+								}
 							</td>
-								<td class="px-3 py-2"><span class={ "badge", r.LibraryColor }>{ r.Library }</span></td>
+								<td class="px-3 py-2" data-label={ t.T("finding.col.library") }>
+									<div class="grid gap-1">
+										for _, label := range FindingLibraryLabels(t,r.LibraryReferences,r.LibraryID,r.Library) {
+											<span class={ "badge whitespace-normal break-words", label.Color } title={ label.Name }>
+												{ label.Text }
+												if label.Stale {
+													<span class="text-amber-200"> · { t.T("sources.stale") }</span>
+												}
+											</span>
+										}
+									</div>
+								</td>
 								<td class="px-3 py-2 text-slate-300" data-label={ t.T("finding.col.detail") }>
 									<div class="font-bold text-slate-100">{ r.Detail }</div>
 									if len(r.DetailItems) > 0 {
@@ -164,7 +189,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 											<a class="link-tmdb" href={ templ.SafeURL(r.TMDBLink) } target="_blank" rel="noreferrer noopener" title="TMDB">TMDB</a>
 										}
 										if r.JellyfinLink != "" {
-											<a class="link-jellyfin" href={ templ.SafeURL(r.JellyfinLink) } target="_blank" rel="noreferrer noopener" title="Jellyfin">Jellyfin</a>
+											<a class="link-jellyfin" href={ templ.SafeURL(MediaHref(ctx,r.JellyfinLink)) } target="_blank" rel="noreferrer noopener">{ t.T("sources.open") }</a>
 										}
 									</div>
 								</td>

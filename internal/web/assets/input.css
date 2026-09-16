@@ -17,8 +17,40 @@
 }
 
 @layer components {
+  .activity-card {
+    @apply min-w-0 rounded-xl border border-slate-800 bg-slate-900/70 p-4 shadow-lg shadow-black/10;
+  }
+  .activity-running {
+    @apply border-indigo-500/30 text-indigo-300;
+  }
+  .activity-warning {
+    @apply border-amber-500/30 text-amber-300;
+  }
+  .activity-error {
+    @apply border-rose-500/30 text-rose-300;
+  }
+  .activity-resting {
+    @apply text-slate-400;
+  }
+  .activity-status {
+    @apply shrink-0 rounded-full border border-current px-2 py-0.5 text-[10px] font-medium;
+  }
+  .activity-ring {
+    @apply relative h-20 w-20 shrink-0;
+  }
+  .activity-indeterminate {
+    transform-origin: 40px 40px;
+    animation: activity-turn 2s linear infinite;
+  }
   .card {
     @apply min-w-0 rounded-xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20;
+  }
+
+  @keyframes activity-turn {
+    to { transform: rotate(360deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .activity-indeterminate { animation: none; }
   }
 
   .nav-link {
@@ -49,6 +81,12 @@
   }
   .btn-ghost {
     @apply inline-flex min-h-[2.75rem] items-center justify-center rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white sm:min-h-0;
+  }
+  .btn-danger {
+    @apply inline-flex min-h-[2.75rem] items-center justify-center rounded-lg border border-red-600 bg-red-600 px-3 py-1.5 text-sm text-white transition hover:border-red-500 hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 sm:min-h-0;
+  }
+  summary.btn-danger::-webkit-details-marker {
+    display: none;
   }
 
   .input {
