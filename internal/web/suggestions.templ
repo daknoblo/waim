@@ -91,7 +91,7 @@ templ suggestionSection(title string, items []suggest.Item, empty string) {
 						</div>
 					</a>
 					if t := ActionTranslator(ctx); t != nil {
-						@MediaActions(t,it.TMDBLink)
+						@MediaSources(t,it.TMDBLink)
 					}
 					</div>
 				}
@@ -123,7 +123,7 @@ templ upcomingSuggestionSection(t *i18n.Translator, title, hint string, items []
 						<div class="mt-1 truncate text-xs font-medium text-slate-200 group-hover:underline">{ it.Title }</div>
 						<div class="truncate text-[11px] text-indigo-300">{ orDash(suggestionDate(t, it.ReleaseDate)) }</div>
 					</a>
-					@MediaActions(t,it.TMDBLink)
+					@MediaSources(t,it.TMDBLink)
 					</div>
 				}
 			</div>

@@ -188,7 +188,7 @@ templ titleLink(title, link string) {
 		<span class="min-w-0 truncate font-medium text-slate-100">{ title }</span>
 	}
 	if t := ActionTranslator(ctx); t != nil {
-		@MediaActions(t,link)
+		@MediaSources(t,link)
 	}
 }
 
@@ -846,7 +846,7 @@ templ upcomingTile(it UpcomingEntry) {
 		<div class="truncate text-[10px] text-indigo-300">{ it.DateLabel }</div>
 	</a>
 	if t := ActionTranslator(ctx); t != nil {
-		@MediaActions(t,it.Link)
+		@MediaSources(t,it.Link)
 	}
 	</div>
 }

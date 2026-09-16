@@ -48,7 +48,7 @@ func TestSourceRemovalSharesActionRowAndRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestActionsUseCurrentMembershipAndSafeLinks(t *testing.T) {
+func TestSourceBadgesUseCurrentMembershipAndSafeLinks(t *testing.T) {
 	cat, err := i18n.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -60,12 +60,15 @@ func TestActionsUseCurrentMembershipAndSafeLinks(t *testing.T) {
 	ctx := WithProvenance(context.Background(), media.Catalog{Items: media.Merge([]media.Item{real, v})}, nil)
 	for _, locale := range []string{"en", "de"} {
 		var b bytes.Buffer
-		if err := MediaActions(cat.For(locale), WatchURL(media.Movie, 1)).Render(ctx, &b); err != nil {
+		if err := MediaSources(cat.For(locale), WatchURL(media.Movie, 1)).Render(ctx, &b); err != nil {
 			t.Fatal(err)
 		}
 		html := b.String()
-		if !strings.Contains(html, `aria-label="Server one"`) || !strings.Contains(html, "/collection/remove") || !strings.Contains(html, "https://one.example") {
-			t.Fatalf("missing instance actions: %s", html)
+		if !strings.Contains(html, `aria-label="Server one"`) || !strings.Contains(html, cat.For(locale).T("sources.collection")) || !strings.Contains(html, "https://one.example") {
+			t.Fatalf("missing instance references: %s", html)
+		}
+		if strings.Contains(html, "/collection/add") || strings.Contains(html, "/collection/remove") {
+			t.Fatal("source references must not offer collection mutations")
 		}
 	}
 	run := &store.ScanRun{Media: []store.MediaStat{{Type: store.MediaMovie, TMDBID: 1, Provenance: store.Provenance{References: real.References}}}}

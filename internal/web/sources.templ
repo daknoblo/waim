@@ -131,7 +131,30 @@ templ collectionEntry(t *i18n.Translator, v store.VirtualEntry, remove bool) {
 					· { strconv.Itoa(v.Year) }
 				}
 			</p>
-			@MediaActions(t, WatchURL(v.Type,v.TMDBID))
+			@MediaSources(t, WatchURL(v.Type,v.TMDBID))
+			if v.TMDBID > 0 {
+				@collectionForm(t,v.Type,v.TMDBID,remove || Target(ctx,WatchURL(v.Type,v.TMDBID)).Watching)
+			}
 		</div>
 	</article>
+}
+
+templ collectionForm(t *i18n.Translator,kind string,id int64,remove bool) {
+	<form method="post" action={ watchAction(remove) }>
+		@MutationEpoch()
+		<input type="hidden" name="kind" value={ kind }/>
+		<input type="hidden" name="id" value={ strconv.FormatInt(id,10) }/>
+		<button class="btn-ghost text-xs" type="submit">
+			if remove {
+				{ t.T("sources.unwatch") }
+			} else {
+				{ t.T("sources.watch") }
+			}
+		</button>
+	</form>
+}
+
+func watchAction(remove bool) string {
+	if remove { return "/collection/remove" }
+	return "/collection/add"
 }

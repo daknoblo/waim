@@ -950,7 +950,7 @@ func titleLink(title, link string) templ.Component {
 			}
 		}
 		if t := ActionTranslator(ctx); t != nil {
-			templ_7745c5c3_Err = MediaActions(t, link).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = MediaSources(t, link).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -5073,7 +5073,7 @@ func upcomingTile(it UpcomingEntry) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if t := ActionTranslator(ctx); t != nil {
-			templ_7745c5c3_Err = MediaActions(t, it.Link).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = MediaSources(t, it.Link).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

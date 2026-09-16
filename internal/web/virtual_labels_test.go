@@ -26,7 +26,7 @@ func TestVirtualLabelsReplaceRedundantWatchOnlyHint(t *testing.T) {
 			row := FindingRow{Title: item.Name, TMDBLink: link, LibraryID: media.VirtualID, LibraryReferences: item.References}
 			for _, component := range []templ.Component{
 				FindingsTable(tr, []FindingRow{row}, SortTitle, DirAsc, DataReady),
-				MediaActions(tr, link),
+				MediaSources(tr, link),
 			} {
 				var b bytes.Buffer
 				if err := component.Render(ctx, &b); err != nil {
@@ -36,9 +36,12 @@ func TestVirtualLabelsReplaceRedundantWatchOnlyHint(t *testing.T) {
 				if strings.Contains(html, tr.T("sources.watchOnly")) {
 					t.Fatalf("%s %s repeats the watch-only hint next to the virtual label", locale, kind)
 				}
-				for _, keep := range []string{tr.T("sources.collection"), tr.T("sources.unwatch"), `action="/collection/remove"`, `name="id" value="42"`} {
-					if !strings.Contains(html, keep) {
-						t.Fatalf("%s %s lost label or remove action: %s", locale, kind, keep)
+				if !strings.Contains(html, tr.T("sources.collection")) {
+					t.Fatalf("%s %s lost virtual collection label", locale, kind)
+				}
+				for _, forbidden := range []string{"/collection/add", "/collection/remove", tr.T("sources.unwatch"), tr.T("sources.watch")} {
+					if strings.Contains(html, forbidden) {
+						t.Fatalf("%s %s offers a collection action outside the collection page: %s", locale, kind, forbidden)
 					}
 				}
 			}

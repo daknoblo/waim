@@ -511,7 +511,7 @@ func suggestionSection(title string, items []suggest.Item, empty string) templ.C
 					return templ_7745c5c3_Err
 				}
 				if t := ActionTranslator(ctx); t != nil {
-					templ_7745c5c3_Err = MediaActions(t, it.TMDBLink).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = MediaSources(t, it.TMDBLink).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -695,7 +695,7 @@ func upcomingSuggestionSection(t *i18n.Translator, title, hint string, items []s
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = MediaActions(t, it.TMDBLink).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = MediaSources(t, it.TMDBLink).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

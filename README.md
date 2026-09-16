@@ -39,8 +39,10 @@ Huntarr or Missingarr.
 ## Features
 
 - Multiple independent, named, read-only Jellyfin instances (your libraries are never modified).
-- A permanent **Virtual collection** with TMDB movie/series search, add/remove and
-  watch actions throughout the UI. Works with TMDB alone; no Jellyfin server is required.
+- A permanent **Virtual collection** with TMDB movie/series search. Add/remove
+  actions are available only on that page, reached via the main menu; other pages
+  show source references without watch buttons. Works with TMDB alone; no
+  Jellyfin server is required.
 - Global TMDB identity merging and union of real episode ownership across
   instances. Source badges retain every instance and virtual membership.
 - Atomic source snapshots: failed refreshes retain the last successful inventory,

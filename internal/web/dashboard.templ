@@ -137,11 +137,6 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 									}
 									<span class="font-medium text-slate-100">{ r.Title }</span>
 								</div>
-								if target := Target(ctx,r.TMDBLink); target.ID > 0 {
-									<div class="mt-1 flex flex-wrap items-center gap-1 text-xs">
-										@WatchForm(t,target.Kind,target.ID,target.Watching)
-									</div>
-								}
 							</td>
 								<td class="px-3 py-2" data-label={ t.T("finding.col.library") }>
 									<div class="grid justify-items-start gap-1 overflow-x-auto sm:overflow-visible">
