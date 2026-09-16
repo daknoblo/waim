@@ -2,23 +2,44 @@
 
 > This project is "vibe-coded" (AI-assisted). Review before relying on it.
 
-All settings are managed in the web UI (**Settings** page) and persisted to
+Global settings and media instances are managed in the four **Settings** tabs, persisted to
 `config.json` inside the data directory. API keys are **always stored
 encrypted** and never written in plaintext. The encryption key is generated on
 first start and kept as `master.key` next to `config.json`.
+
+No manually supplied encryption key is required. Later starts reuse the same
+key file, including after image updates when the same data volume is mounted.
+AES-256-GCM protects the stored Jellyfin, TMDB and AI API keys, including their
+configuration exports. Other settings and the SQLite sync database are not
+encrypted by this mechanism. Back up the complete data volume and protect it:
+the key file allows the stored credentials to be decrypted.
 
 ## `config.json` schema
 
 ```jsonc
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "locale": "en",              // default UI language: "en" or "de"
   "logLevel": "info",          // log verbosity: "info", "warn" or "debug"
-  "jellyfin": {
-    "url": "https://jellyfin.example.com",
-    "apiKeyEnc": "<base64>",   // AES-256-GCM ciphertext (never plaintext)
-    "userId": ""               // optional; auto-resolved if empty
-  },
+  "sources": [
+    {
+      "id": "stable-instance-id",
+      "type": "jellyfin",
+      "name": "Living room",
+      "enabled": true,
+      "revision": 1,
+      "credentialGeneration": "<manager-generated public token>",
+      "jellyfin": {
+        "url": "https://jellyfin.example.com",
+        "apiKeyEnc": "<base64>",
+        "userId": ""
+      },
+      "libraries": [
+        { "id": "...", "name": "Movies", "type": "movies", "enabled": true }
+      ]
+    },
+    { "id": "virtual", "type": "virtual", "name": "Virtual collection", "enabled": true, "revision": 0 }
+  ],
   "tmdb": {
     "apiKeyEnc": "<base64>",   // AES-256-GCM ciphertext (never plaintext)
     "language": "en-US",
@@ -43,10 +64,7 @@ first start and kept as `master.key` next to `config.json`.
     "refreshPercent": 1,           // percent of oldest entries refreshed per batch
     "cleanupEnabled": true,        // prune orphaned entries once a night
     "cleanupMaxAgeDays": 30        // remove entries unused for this many days
-  },
-  "libraries": [
-    { "id": "...", "name": "Movies", "type": "movies", "enabled": true }
-  ]
+  }
 }
 ```
 
@@ -54,16 +72,149 @@ first start and kept as `master.key` next to `config.json`.
 
 ![Settings page](images/settings.png)
 
-Changes are saved as soon as you leave a field, and switches and dropdowns take
-effect right away — there is no save button. Whenever a connection setting
-changes, that section is tested immediately and the result appears underneath
-it.
+| Tab | Contents |
+| --- | --- |
+| Media management (`/settings?tab=media`) | Full source management, library selection, scan interval/startup/specials. |
+| Metadata (`?tab=metadata`) | TMDB credentials, AI suggestions, shared rate limit, episode ratings and cache maintenance. The provider area currently implements TMDB only. |
+| Interface (`?tab=interface`) | UI language plus metadata language and region. |
+| Other (`?tab=other`) | Database size including WAL/SHM, configuration size, data directory, cache count, exports, log level and Danger Zone. |
 
-For safety the API key stays tied to the address it was entered for: if you
-point Jellyfin or the AI endpoint at a different host, the change is held back
-until you supply a key for the new address. The stored key is therefore never
-sent somewhere it was not meant for. Editing the port, the path or upgrading
-`http` to `https` on the same host is not affected.
+Old `/sources` bookmarks redirect to the media tab; source POST endpoints remain
+available. The virtual collection remains a separate main-navigation page.
+
+Global changes are saved as soon as you leave a field; **Save changes** also
+works without JavaScript. Only the active section is submitted. Other tabs'
+fields, including checkboxes and credentials, are preserved atomically.
+Tab navigation waits for pending autosave to finish, and remains on the draft
+if saving fails or a replacement key is required. Validation errors retain
+non-secret input; password fields are deliberately never echoed back.
+Connection edits still probe only the relevant provider. Language changes and
+source feedback preserve the active settings tab.
+
+Each source has a separate explicit save form and revision. An outdated form is
+rejected instead of overwriting another edit. Changing a Jellyfin address
+(including its path) requires re-entering the key and clears its library choices.
+Blank keys otherwise retain the saved value. Test/refresh buttons use **saved**
+settings, not unsaved form fields. AI host changes also require a key.
+
+Unsaved source edits are never automatically submitted when switching tabs.
+A localized discard confirmation protects tab navigation, and the browser's
+native leave-page warning protects other navigation. **Save source** submits
+that source explicitly; validation drafts remain protected after a failed save.
+
+Adding a Jellyfin source immediately fetches its available libraries. They start
+unselected so you can choose what to scan. If discovery fails, the saved source
+is retained with a visible retry message; do not add it again. A later manual
+refresh preserves existing library selections. Source removal is the red,
+right-aligned action alongside refresh/test and still requires confirmation.
+
+## Danger Zone
+
+All reset operations require a dedicated POST, a checked confirmation and the
+exact text `RESET`. Unknown scopes and stale forms are rejected. Resets are
+**not cancellation commands**: ongoing scans, cache refresh/cleanup, suggestions,
+source discovery/tests, saves and data-serving requests prevent admission.
+Busy responses return HTTP 409 and require a retry when idle. Workers arriving
+during maintenance are skipped, not held until reset finishes. Queued scans and
+timer ticks from before/during the reset are discarded; future scheduled work
+or explicit user actions can load data again.
+
+| Scope | Deleted | Retained |
+| --- | --- | --- |
+| Metadata | TMDB response cache; scan history, findings, evaluated media metadata and upcoming results; in-memory suggestions; derived TMDB aliases in source snapshots. | Sources, credentials, raw inventory and its native provider IDs/episode ownership; virtual membership and its saved display title/year/poster. |
+| Imported media | Imported source snapshots, scan history/results and in-memory suggestions. Sources become **unknown**, not empty. | Sources, credentials, virtual entries and TMDB response cache. |
+| Factory | All real-source configuration and credentials, virtual entries, snapshots, cache, scan results, UI preferences and retained activity/log entries. | Exactly one enabled empty **Virtual collection**, default settings, `master.key`, the database file, migration/reset counters and the persistent data directory. |
+
+Metadata reset clears `ResolvedTMDBID` and `ResolutionInput` aliases, including
+episode aliases, without altering raw names, provider IDs, references, inventory
+timestamps or source warnings. It does not silently claim the retained inventory
+has just been verified. None of the resets immediately queues a refetch.
+
+These are logical application resets, not secure disk erasure. Existing backups,
+external log sinks and recoverable free space on storage are not wiped. No files
+or media on Jellyfin servers are modified. Do not delete the mounted volume or
+`master.key` to perform a reset.
+
+### Factory reset recovery
+
+SQLite deletion and a small `reset_state.factory_pending` journal flag commit
+together, with full synchronous durability, **before** replacing `config.json`
+with defaults. The configuration file and its directory are flushed before the
+completion flag is cleared. A database transaction failure rolls back and does
+not overwrite configuration or keys.
+
+Marker completion itself uses a pinned `synchronous=FULL` transaction, including
+after reopening the database during startup recovery. This prevents an
+acknowledged completion from relying on the reopened connection's weaker normal
+write mode before new user settings can be saved.
+
+If the database commits but configuration persistence or completion fails, waim
+reports failure and blocks data access/work (HTTP 503). Correct the storage
+problem and retry the confirmed factory reset, or restart. Startup recovery
+finishes the pending configuration reset idempotently before starting workers
+or HTTP; it does not repeat database deletion. Failed recovery prevents startup.
+The encryption key is always reused. Factory-reset generations also invalidate
+old language cookies in other browsers.
+
+### Migration and snapshot identity
+
+Legacy schema 2 configuration migrates once to `jellyfin-default`, preserving
+user, library selection and encrypted key bytes. Legacy global Jellyfin settings
+are no longer a runtime configuration path. Losing `master.key` leaves unreadable
+ciphertexts intact through migration, export and unrelated saves; each source
+shows its warning until its key is replaced.
+
+Disabling or removing a source excludes its snapshot immediately. Changing the
+address, user, key or enabled libraries changes the snapshot identity; the old
+snapshot is never reused under the new identity. A failed same-identity refresh
+keeps the last good snapshot and marks it stale. Without any successful snapshot
+inventory is **unknown**, not empty, and gaps/completion are unconfirmed.
+
+Source fingerprints contain a non-secret `credentialGeneration`, never the API
+key or a hash of it. The manager generates and persists this token; submitted
+tokens are ignored on all save paths. Changing or explicitly replacing a key,
+including restoring an earlier key, creates a fresh generation. Renames and
+ordinary encryption-at-rest rewrites retain it. A persisted `keyUnreadable` flag
+records the last observed readability state so losing/restoring `master.key`
+also advances the generation once, without deleting unreadable ciphertext.
+
+Jellyfin inventory fingerprints also include an episode-normalization version.
+The first version explicitly requests `IsMissing=false`, rejects missing/virtual
+placeholders defensively, and expands combined episode files using
+`IndexNumberEnd` before the season/episode ownership union. A combined E01–E02
+file and another source's E02 therefore represent two owned episodes, not three.
+Ranges are limited to 1,000 episode numbers per physical item. An invalid,
+reversed or larger range retains only a valid starting episode and adds a warning;
+episodes without a valid season/start are omitted with an explicit warning.
+
+Old Jellyfin snapshots lack this normalization guarantee and are excluded once
+after this upgrade: inventories become **unknown** until a successful full scan
+(startup, scheduled, or **Scan now**). This is not a silent repair of old episode counts. The upgrade itself
+does not delete the previous snapshot; the next refresh attempt follows the
+normal fingerprint rules, so a failed attempt cannot reuse its incompatible
+payload. Configured sources, credentials and all virtual-collection entries are
+retained. Historical scans are not rewritten. Old derived scans remain pending or
+unconfirmed until their inputs have been refreshed/recomputed. Source-native
+provider IDs remain authoritative; incompatible old snapshot aliases are resolved
+again from the fresh inventory when needed.
+
+Existing configs acquire generation tokens automatically without rewriting
+encrypted keys. Snapshots created with the previous key-derived fingerprint need
+one successful real-source refresh after this upgrade; until then their inventory
+is reported as unknown. No credential-derived fingerprint fallback is used.
+
+The reserved virtual source is always enabled and cannot be deleted. Its entries
+live in SQLite, not the config export. Use the sync export for evaluated metadata.
+Collection search returns at most the first 20 TMDB matches; refine your query
+if a desired result is not on that page. Add/remove is idempotent and only edits
+watch membership. No media-server files are written.
+
+Dashboard findings show their source references in the Library column as
+`type / server URL / library`, with one label per source/library membership.
+Virtual entries use a localized virtual-collection label. Collection origins
+are represented by these labels rather than a separate context link below
+the title. Individual missing movie parts do not offer virtual-collection actions;
+use collection search when intentionally adding a title to the virtual collection.
 
 ### Jellyfin
 
@@ -98,9 +249,20 @@ turned off by default.
 | API key               | Stored encrypted, like the Jellyfin and TMDB keys.               |
 | Model                 | Model / deployment name to request.                              |
 
-### Scanning (Jellyfin)
+### Scanning (all active real sources)
 
 When and how waim reads your Jellyfin libraries.
+New installations show separate setup cards for **Metadata** and **Media
+sources**, each linking to its settings tab. The metadata card requests a
+missing TMDB key. The media card distinguishes an absent/incomplete server
+connection from an unselected library list, and offers the virtual collection
+as an alternative. A configured source with selected libraries, or existing
+virtual entries, satisfies the media-input requirement; a media server is not
+mandatory. Each card disappears independently as its requirement is fulfilled.
+These checks read saved configuration only and do not make connection probes.
+Without a TMDB key, scanning waits for setup and the manual scan button is
+disabled; missing initial configuration is not recorded as a failed scan.
+Actual scan errors remain visible in the scan status.
 
 | Field                  | Description                                                              |
 | ---------------------- | ------------------------------------------------------------------------ |
@@ -128,8 +290,10 @@ scan or suggestion.
 
 ### Libraries
 
-Use **Refresh libraries from Jellyfin** to load your current libraries, then tick
-the ones you want included in scans. Only enabled libraries are scanned.
+On each source, use **Refresh libraries from Jellyfin**, select libraries and
+**Save source**. Only enabled instances/libraries are scanned. Namespaced library
+and source filters select title provenance; they do not recompute a different
+local missing inventory.
 
 ### Interface language
 

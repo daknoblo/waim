@@ -6,11 +6,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
+	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/scheduler"
+	"github.com/daknoblo/waim/internal/source"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/web"
 )
@@ -21,8 +24,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	d := web.LogPageData{
-		Layout: s.layout(r, web.NavLogs),
-		Logs:   web.BuildLogViews(s.logs.Entries()),
+		Layout:     s.layout(r, web.NavLogs),
+		Logs:       web.BuildLogViews(s.logs.Entries()),
+		Activities: s.activityViews(),
 	}
 	s.render(w, r, web.Logs(d))
 }
@@ -34,14 +38,16 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) statsData(r *http.Request) web.StatsData {
 	t := s.translator(r)
 	ctx := r.Context()
-	run, _ := s.store.LatestSuccessfulRun(ctx)
+	run, _ := s.currentRun(ctx)
 	var findings []store.Finding
 	if run != nil {
-		findings, _ = s.store.FindingsForRun(ctx, run.ID)
+		findings, _ = s.currentFindings(ctx, run)
 	}
 	libTypes := map[string]string{}
-	for _, l := range s.cfg.Get().Libraries {
-		libTypes[l.ID] = l.Type
+	for _, src := range s.cfg.Get().Sources {
+		for _, l := range src.Libraries {
+			libTypes[media.Qualify(src.ID, l.ID)] = l.Type
+		}
 	}
 	history, _ := s.store.SuccessfulRunTotals(ctx, 12)
 	d := web.BuildStats(t, web.StatsInput{
@@ -49,10 +55,29 @@ func (s *Server) statsData(r *http.Request) web.StatsData {
 		Findings:    findings,
 		LibTypes:    libTypes,
 		History:     history,
-		JellyfinURL: s.cfg.Get().Jellyfin.URL,
+		JellyfinURL: "",
 	})
 	d.Layout = s.layout(r, web.NavStats)
 	d.DataState = s.dataState(ctx)
+	d.Unconfirmed = d.Unconfirmed || d.DataState != web.DataReady
+	if d.Unconfirmed {
+		d.EpisodePct = -1
+		for i := range d.Libraries {
+			d.Libraries[i].Completeness = -1
+		}
+		for i := range d.Completion {
+			d.Completion[i].Pct = -1
+			for j := range d.Completion[i].Cells {
+				d.Completion[i].Cells[j].Fill = "bg-slate-700"
+				d.Completion[i].Cells[j].Hint = t.T("sources.incomplete")
+			}
+		}
+		for i := range d.Facts {
+			if d.Facts[i].Label == t.T("stats.factEpisodeCompletion") {
+				d.Facts[i].Value = "—"
+			}
+		}
+	}
 	return d
 }
 
@@ -78,11 +103,10 @@ func (s *Server) suggestionsConfigured() bool {
 	return scanConfigured(s.cfg.Get())
 }
 
-// scanConfigured reports whether a scan could run at all: everything the
-// scanner needs has been entered and at least one library is selected.
+// scanConfigured reports whether TMDB metadata can be requested. Media servers
+// are optional because the virtual collection can be used independently.
 func scanConfigured(settings config.Settings) bool {
-	return settings.Jellyfin.URL != "" && settings.Jellyfin.APIKey != "" &&
-		settings.TMDB.APIKey != "" && len(settings.EnabledLibraryIDs()) > 0
+	return settings.TMDB.APIKey != ""
 }
 
 // dataState explains why a view might have nothing to show, so an empty list is
@@ -91,7 +115,23 @@ func (s *Server) dataState(ctx context.Context) string {
 	if !scanConfigured(s.cfg.Get()) {
 		return web.DataUnconfigured
 	}
-	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
+	if run, err := s.currentRun(ctx); err == nil && run != nil {
+		if run.Metadata.Basis == "" {
+			return web.DataLegacy
+		}
+		if run.Metadata.Pending {
+			return web.DataIncomplete
+		}
+		if run.Metadata.SourcesToken != s.cfg.Get().SourcesToken() {
+			return web.DataIncomplete
+		}
+		catalog, err := source.Catalog(ctx, s.store, s.cfg.Get(), false, nil)
+		if err != nil || len(catalog.Warnings) > 0 || len(run.Metadata.Warnings) > 0 || catalog.Revision != run.Metadata.Revision {
+			return web.DataIncomplete
+		}
+		if run.FinishedAt != nil && catalog.UpdatedAt.After(*run.FinishedAt) {
+			return web.DataIncomplete
+		}
 		return web.DataReady
 	}
 	if s.sched.Status().State == scheduler.StateRunning {
@@ -173,15 +213,15 @@ func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePartialSeriesDetail(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
-	run, _ := s.store.LatestSuccessfulRun(r.Context())
-	detail := web.BuildSeriesDetail(t, run, r.URL.Query().Get("series"), s.cfg.Get().Jellyfin.URL)
+	run, _ := s.currentRun(r.Context())
+	detail := web.BuildSeriesDetail(t, run, r.URL.Query().Get("series"), "")
 	s.render(w, r, web.SeriesDetailCharts(t, detail))
 }
 
 func (s *Server) handlePartialUpcoming(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
 	ctx := r.Context()
-	run, _ := s.store.LatestSuccessfulRun(ctx)
+	run, _ := s.currentRun(ctx)
 	q := web.NormalizeUpcomingQuery(
 		r.URL.Query().Get("direction"),
 		r.URL.Query().Get("range"),
@@ -191,7 +231,7 @@ func (s *Server) handlePartialUpcoming(w http.ResponseWriter, r *http.Request) {
 	// that direction is actually requested.
 	var findings []store.Finding
 	if q.IsPast() && run != nil {
-		findings, _ = s.store.FindingsForRun(ctx, run.ID)
+		findings, _ = s.currentFindings(ctx, run)
 	}
 	s.render(w, r, web.UpcomingContent(t, web.BuildUpcomingSection(t, run, findings, q)))
 }
@@ -203,7 +243,7 @@ func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 	}
 	loc := r.FormValue("locale")
 	if s.catalog.Has(loc) {
-		setLocaleCookie(w, r, loc)
+		setLocaleCookie(w, r, loc, s.cfg.Gate().FactoryEpoch())
 	}
 	redirectBack(w, r)
 }
@@ -211,7 +251,10 @@ func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
 // setLocaleCookie persists the selected UI language for a year. It is HttpOnly
 // (no script needs it), SameSite=Lax and Secure whenever the request arrived
 // over HTTPS.
-func setLocaleCookie(w http.ResponseWriter, r *http.Request, locale string) {
+func setLocaleCookie(w http.ResponseWriter, r *http.Request, locale string, generations ...int64) {
+	if len(generations) > 0 {
+		http.SetCookie(w, &http.Cookie{Name: localeGenerationCookie, Value: strconv.FormatInt(generations[0], 10), Path: "/", MaxAge: int((365 * 24 * time.Hour).Seconds()), HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteLaxMode})
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     localeCookie,
 		Value:    locale,
@@ -231,7 +274,7 @@ func (s *Server) dashboardData(r *http.Request) web.DashboardData {
 		Layout:    s.layout(r, web.NavDashboard),
 		Status:    s.statusView(r.Context(), t),
 		Findings:  s.findingRows(r.Context(), t, sortKey, dir),
-		Libraries: s.libraryFilters(),
+		Libraries: s.libraryFilters(t),
 		Logs:      web.BuildLogViews(s.logs.Entries()),
 		Sort:      sortKey,
 		Dir:       dir,
@@ -240,26 +283,35 @@ func (s *Server) dashboardData(r *http.Request) web.DashboardData {
 }
 
 // libraryFilters lists the enabled, configured libraries for the dashboard filter.
-func (s *Server) libraryFilters() []web.LibraryFilter {
+func (s *Server) libraryFilters(t *i18n.Translator) []web.LibraryFilter {
 	var out []web.LibraryFilter
-	for _, l := range s.cfg.Get().Libraries {
-		if l.Enabled {
-			out = append(out, web.LibraryFilter{ID: l.ID, Name: l.Name})
+	for _, src := range s.cfg.Get().Sources {
+		if !src.Enabled {
+			continue
+		}
+		if src.Type != media.Virtual {
+			out = append(out, web.LibraryFilter{ID: src.ID, Name: src.Name})
+		}
+		for _, l := range src.Libraries {
+			if l.Enabled {
+				out = append(out, web.LibraryFilter{ID: media.Qualify(src.ID, l.ID), Name: src.Name + " · " + l.Name})
+			}
 		}
 	}
+	out = append(out, web.LibraryFilter{ID: media.VirtualID, Name: t.T("sources.collection")})
 	return out
 }
 
 func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, dir string) []web.FindingRow {
-	run, err := s.store.LatestSuccessfulRun(ctx)
+	run, err := s.currentRun(ctx)
 	if err != nil || run == nil {
 		return nil
 	}
-	fs, err := s.store.FindingsForRun(ctx, run.ID)
+	fs, err := s.currentFindings(ctx, run)
 	if err != nil {
 		return nil
 	}
-	rows := web.BuildFindingRows(t, fs, s.cfg.Get().Jellyfin.URL)
+	rows := web.BuildFindingRows(t, fs, "")
 	web.SortFindingRows(rows, sortKey, dir)
 	return rows
 }
@@ -267,13 +319,17 @@ func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, d
 func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusView {
 	st := s.sched.Status()
 	sv := web.StatusView{
-		State:     st.State,
-		Running:   st.State == scheduler.StateRunning,
-		LastError: st.LastError,
-		LastScan:  web.FormatRelative(t, st.LastFinished),
-		NextScan:  web.FormatRelative(t, st.NextRun),
+		SetupRequired: !scanConfigured(s.cfg.Get()),
+		State:         st.State,
+		Running:       st.State == scheduler.StateRunning,
+		LastError:     st.LastError,
+		LastScan:      web.FormatRelative(t, st.LastFinished),
+		NextScan:      web.FormatRelative(t, st.NextRun),
 	}
-	if sv.Running {
+	if sv.SetupRequired {
+		sv.StateLabel = t.T("dashboard.state.setup")
+		sv.NextScan = web.FormatRelative(t, nil)
+	} else if sv.Running {
 		sv.StateLabel = t.T("dashboard.state.running")
 	} else {
 		sv.StateLabel = t.T("dashboard.state.idle")
@@ -290,21 +346,28 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 			sv.ItemsScanned += l.Scanned
 			sv.MissingTotal += l.Missing
 			sv.Libraries = append(sv.Libraries, web.LibraryStatusView{
-				Name: l.Name, Color: web.LibraryColor(l.ID),
+				Name: web.LibraryDisplayName(t, l.ID, l.Name), Color: web.LibraryColor(l.ID),
 				Scanned: l.Scanned, Total: l.Total, Missing: l.Missing,
 			})
 		}
 		return sv
 	}
 
-	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
+	if run, err := s.currentRun(ctx); err == nil && run != nil {
 		sv.ItemsScanned = run.ItemsScanned
+		if run.Metadata.Basis == "" {
+			sv.Warning = t.T("sources.legacy")
+		} else if len(run.Metadata.Warnings) > 0 {
+			sv.Warning = t.T("sources.incomplete")
+		} else if run.Metadata.Pending || s.dataState(ctx) == web.DataIncomplete {
+			sv.Warning = t.T("sources.updating")
+		}
 		sv.LibrariesScanned = run.LibrariesScanned
 		sv.MissingTotal = run.MissingCount
 		sv.Duration = web.FormatDuration(run.Duration())
 		for _, l := range run.Libraries {
 			sv.Libraries = append(sv.Libraries, web.LibraryStatusView{
-				Name: l.Name, Color: web.LibraryColor(l.ID),
+				Name: web.LibraryDisplayName(t, l.ID, l.Name), Color: web.LibraryColor(l.ID),
 				Scanned: l.Scanned, Total: l.Total, Missing: l.Missing,
 			})
 		}
@@ -329,6 +392,24 @@ func (s *Server) handleExportSync(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "export failed", http.StatusInternalServerError)
 		return
 	}
+	catalog, err := source.Catalog(r.Context(), s.store, s.cfg.Get(), false, nil)
+	if err != nil {
+		http.Error(w, "catalog export failed", 500)
+		return
+	}
+	state.Catalog = &catalog
+	state.Run, err = s.currentRun(r.Context())
+	if err != nil {
+		http.Error(w, "scan export failed", 500)
+		return
+	}
+	if state.Run != nil {
+		state.Findings, err = s.currentFindings(r.Context(), state.Run)
+		if err != nil {
+			http.Error(w, "findings export failed", 500)
+			return
+		}
+	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		http.Error(w, "export failed", http.StatusInternalServerError)
@@ -350,6 +431,8 @@ func redirectBack(w http.ResponseWriter, r *http.Request) {
 // knownRoutes are the top-level pages a locale change may return to. Mapping to
 // constant values keeps the redirect target free of request-derived data.
 var knownRoutes = map[string]string{
+	"/sources":     "/settings?tab=media",
+	"/collection":  "/collection",
 	"/":            "/",
 	"/suggestions": "/suggestions",
 	"/stats":       "/stats",
@@ -368,6 +451,9 @@ func safeReturnPath(r *http.Request) string {
 		return "/"
 	}
 	if dest, ok := knownRoutes[u.EscapedPath()]; ok {
+		if dest == "/settings" {
+			return web.SettingsURL(u.Query().Get("tab"))
+		}
 		return dest
 	}
 	return "/"

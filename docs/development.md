@@ -61,25 +61,118 @@ Locally, waim stores its data in `./appdata` (gitignored) in the working
 directory, including the generated `master.key`. Then open
 <http://localhost:8080>.
 
-Without a Jellyfin server the pages stay empty, which makes UI work on the
-statistics page awkward. `make seed` writes a database with a synthetic scan
-run — titles, gaps, ratings and announced releases — so every card has data:
+Without Jellyfin, the virtual collection works with TMDB alone. For completely
+offline UI work, `make seed` writes two synthetic source snapshots, overlapping
+provenance, virtual entries, ratings and releases in a **fresh** data directory:
 
 ```bash
 make seed                      # into ./appdata
-make seed SEED_OUT=/tmp/waim   # somewhere else, e.g. to mount into a container
+make seed SEED_OUT=./appdata-demo # separate local fixture directory
 make seed SEED_FORCE=1         # overwrite an existing database
 ```
 
-It refuses to overwrite an existing database unless `SEED_FORCE=1`, and its
-random seed is fixed so screenshots stay comparable between runs.
+It never overwrites an existing config. It refuses an existing database unless
+`SEED_FORCE=1`. Automatic scans/cache refresh are disabled and no TMDB key is set;
+no real credentials or services are needed. Its random seed is fixed.
+
+For an entirely static, offline preview of all eight pages:
+
+```bash
+go run ./cmd/demo -out ./dist -locale en
+go run ./cmd/demo -out ./dist-de -locale de
+# Open dist/index.html in your browser. Forms are illustrative, not functional.
+```
+
+Feature tests use local HTTP fakes/cache fixtures:
+
+```bash
+go test -race ./internal/media ./internal/config ./internal/source ./internal/store ./internal/scanner ./internal/scheduler ./internal/server ./internal/web
+go test -race ./...
+go vet ./...
+CGO_ENABLED=0 go build ./...
+golangci-lint run
+go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+make css
+```
+
+Browser acceptance should cover both locales/mobile, two named instances,
+same-TMDB overlapping season ownership, watch add/remove during a scan, a
+standalone movie before/after release, per-instance badges/links and stale or
+unknown sources. Static demo checks do not replace live mutation acceptance.
+
+## Coverage and reachability
+
+```bash
+make coverage
+go tool cover -html=coverage/handwritten.out
+```
+
+The coverage target instruments all project packages, including calls made
+through integration tests in other packages. It writes full and handwritten
+profiles plus per-function reports under the gitignored `coverage/` directory;
+override the location with `COVERAGE_DIR=/path/to/output`. The handwritten view
+excludes generated `*_templ.go`, not application logic. Percentages measure Go
+statements, not JavaScript behavior or end-to-end completeness. The regular CI
+still runs its race-enabled suite; this optional measurement does not add a
+second coverage run to every image build.
+
+Go's `cover` tool merges repeated profile blocks from cross-package tests.
+Do not compute percentages by naively summing every raw profile line: one
+statement can appear in multiple test executables. For dead-code checks,
+include all three commands and tests and inspect template source before
+removing generated functions. Code reachable only from tests is not
+automatically obsolete; prefer testing the actual production API over keeping
+retired wrappers alive solely for their old tests.
+
+## Container builds
+
+The Docker builder runs on BuildKit's native `BUILDPLATFORM` and cross-compiles
+the static Go binary using `TARGETOS` and `TARGETARCH`. Release images target
+`linux/amd64` and `linux/arm64`; neither the Go build nor the runtime stage
+requires QEMU. The runtime remains distroless, running as `nonroot` with `/data`
+as its writable data volume.
+
+To validate both image architectures locally, including SBOM and provenance,
+use a Buildx builder with the `docker-container` driver:
+
+```bash
+docker buildx build --builder YOUR_BUILDER \
+  --platform linux/amd64,linux/arm64 \
+  --sbom=true --provenance=true \
+  --output type=oci,dest=/tmp/waim-multiarch.tar .
+```
+
+Module downloads and Go compilation use BuildKit cache mounts. Release jobs
+also retain channel-scoped GitHub Actions layer caches; cache mounts are local
+to a builder and are not restored by that layer-cache export. When measuring
+build changes, compare the same source, build arguments and output mode on
+isolated builders, distinguishing cold builds from warm rebuilds. Changing the
+build date forces relinking even when source code is unchanged. Local timings
+exclude registry pushes and are not a substitute for measurements on CI runners.
 
 ## Editing the UI
+
+The settings navigation has dependency-free JavaScript regression tests. With
+Node.js 22 or newer available, run `node --test scripts/settings-navigation.test.cjs`.
+CI runs these alongside the Go suite to guard pending saves and explicit source
+edits during tab navigation; Node.js is not required to build or run waim.
+
+The original film-reel/question-mark icon is shared by the header and the
+SVG favicon (`internal/web/assets/static/waim-icon.svg`). It is embedded and
+versioned with the other assets. Browser titles use `[DEV] waim — ...` for
+explicit `dev` / `dev-*` builds only; stable builds and the static demo keep
+`waim — ...` without a channel suffix.
 
 1. Edit the relevant `internal/web/*.templ` file.
 2. Run `make generate` to regenerate the Go code.
 3. If you add new Tailwind classes, run `make css` to rebuild the stylesheet.
 4. Rebuild and run.
+
+Use the pinned **standalone** Tailwind compiler for committed CSS. The npm CLI
+can produce different minifier ordering even at the same Tailwind version,
+which fails CI's byte-for-byte generated-asset check. If the native compiler
+cannot run, use the pinned Linux standalone binary in a local Linux container,
+matching CI rather than substituting the npm CLI.
 
 When changing user-facing strings, update **both** locale files
 (`internal/i18n/locales/en.json` and `internal/i18n/locales/de.json`) and use the
@@ -133,7 +226,7 @@ The configuration lives in `.golangci.yml` (golangci-lint v2).
   back to `develop`.
 - Test the automatically published `:dev` image (or a specific `sha-dev-…`)
   with a **separate data volume**, container name and host port. Do not share
-  `/appdata` between stable and dev; migrations may make downgrades unsafe.
+  the host data directory between stable and dev; migrations may make downgrades unsafe.
 - When ready, open a promotion PR from `develop` to `main`. The maintainer
   manually merges it after testing. No auto-merge: a green test alone is not
   a release approval.

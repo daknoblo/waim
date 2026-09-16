@@ -28,6 +28,8 @@ type LangOption struct {
 
 // Layout carries data shared by every page (header, navigation, footer).
 type Layout struct {
+	SetupNotices   []SetupNotice
+	CatalogWarning string
 	T              *i18n.Translator
 	Active         string
 	Version        string
@@ -37,8 +39,18 @@ type Layout struct {
 	Languages      []LangOption
 }
 
+type SetupNotice struct {
+	CategoryKey        string
+	MessageKey         string
+	ActionKey          string
+	URL                string
+	VirtualAlternative bool
+}
+
 // StatusView is the display model for the scan status card.
 type StatusView struct {
+	SetupRequired    bool
+	Warning          string
 	State            string
 	StateLabel       string
 	Running          bool
@@ -122,16 +134,20 @@ type SettingsFeedback struct {
 
 // SettingsData is the full model for the settings page.
 type SettingsData struct {
-	Layout         Layout
-	Settings       config.Settings
-	Libraries      []config.Library
-	HasJellyfinKey bool
-	HasTMDBKey     bool
-	HasAIKey       bool
-	CacheEntries   int
-	Message        string
-	IsError        bool
-	Checks         map[string]ConnCheck
+	Tab          string
+	Demo         bool
+	Sources      SourcesData
+	DataDir      string
+	DBSize       string
+	ConfigSize   string
+	Layout       Layout
+	Settings     config.Settings
+	HasTMDBKey   bool
+	HasAIKey     bool
+	CacheEntries int
+	Message      string
+	IsError      bool
+	Checks       map[string]ConnCheck
 }
 
 // Check returns the connection result of a section, if one was produced.
@@ -161,8 +177,9 @@ type SuggestionsData struct {
 
 // LogPageData is the model for the dedicated activity-log page.
 type LogPageData struct {
-	Layout Layout
-	Logs   []LogEntryView
+	Layout     Layout
+	Logs       []LogEntryView
+	Activities []ActivityView
 }
 
 // LangChoice is a selectable metadata language for TMDB.

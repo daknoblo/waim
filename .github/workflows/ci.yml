@@ -56,6 +56,9 @@ jobs:
       - name: Test release channel guards
         run: bash scripts/test-release-channels.sh
 
+      - name: Test settings navigation and unsaved-source guards
+        run: node --test scripts/settings-navigation.test.cjs
+
       - name: "\U0001F9EA Static analysis (go vet)"
         run: go vet ./...
 
