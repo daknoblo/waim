@@ -288,6 +288,13 @@
         dirtySources.delete(sourceForm);
         allowed = false;
       });
+      sourceForm.addEventListener("source-discard", function () {
+        sourceForm.reset();
+        draft = false;
+        baseline = JSON.stringify(Array.from(new FormData(sourceForm).entries()));
+        dirtySources.delete(sourceForm);
+        allowed = false;
+      });
     });
     function confirmNavigation() {
       if (!dirtySources.size || allowed) return true;
@@ -311,14 +318,71 @@
     });
     return {
       confirmNavigation: confirmNavigation,
-      cancelNavigation: function () { allowed = false; }
+      cancelNavigation: function () { allowed = false; },
+      discardDialog: function (dialog) {
+        var dirty = Array.from(dirtySources).filter(function (form) { return dialog.contains(form); });
+        if (!dirty.length) return true;
+        if (!window.confirm(dirty[0].dataset.unsavedPrompt)) return false;
+        dirty.forEach(function (form) { form.dispatchEvent(new Event("source-discard")); });
+        return true;
+      }
     };
+  }
+
+  function sourceDialogs(guard) {
+    var dialogs = document.querySelectorAll("dialog.source-dialog");
+    if (!dialogs.length) return;
+    dialogs.forEach(function (dialog) {
+      if (dialog.dataset.sourceAutoOpen === "true" && dialog.showModal) {
+        dialog.removeAttribute("open");
+        dialog.showModal();
+      }
+      dialog.addEventListener("cancel", function (e) {
+        var failedDraft = dialog.querySelector('form[data-source-dirty="true"]');
+        if (!guard.discardDialog(dialog)) {
+          e.preventDefault();
+        } else if (failedDraft) {
+          var close = dialog.querySelector("a[data-source-close]");
+          if (close) window.location.assign(close.href);
+        }
+      });
+      dialog.addEventListener("submit", function (e) {
+        if (e.target.matches("form[data-source-edit]")) return;
+        if (!guard.discardDialog(dialog)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+    });
+    document.addEventListener("click", function (e) {
+      var open = e.target.closest ? e.target.closest("a[data-source-dialog]") : null;
+      if (open && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.button === 0) {
+        var dialog = document.getElementById(open.dataset.sourceDialog);
+        if (dialog && dialog.showModal) {
+          e.preventDefault();
+          dialog.showModal();
+        }
+      }
+      var close = e.target.closest ? e.target.closest("a[data-source-close]") : null;
+      if (close) {
+        var owner = close.closest("dialog");
+        if (owner && owner.close) {
+          e.preventDefault();
+          var failedDraft = owner.querySelector('form[data-source-dirty="true"]');
+          if (guard.discardDialog(owner)) {
+            if (failedDraft) window.location.assign(close.href);
+            else owner.close();
+          }
+        }
+      }
+    });
   }
 
   // A tab navigation waits for the active form's final save, never aborting it.
   // Failed saves keep the form and its draft in place instead of navigating.
   function settingsNavigation() {
     var sourceGuard = sourceNavigationGuard();
+    sourceDialogs(sourceGuard);
     var form = document.getElementById("settings-form");
     if (!form || !window.htmx) return;
     var dirty = false, busy = false, destination = "", field = "";

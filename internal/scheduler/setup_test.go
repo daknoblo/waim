@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/daknoblo/waim/internal/config"
+	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
 )
 
@@ -27,7 +28,7 @@ func TestMissingTMDBWaitsForSetupWithoutRecordingFailure(t *testing.T) {
 	schedule := scanSchedule{}
 	ctx := context.Background()
 	for _, refresh := range []bool{true, false} {
-		s.syncSchedule(timer, &schedule, time.Now(), false)
+		s.syncSchedule(timer, &schedule, time.Now(), nil)
 		s.runScan(ctx, refresh)
 		status := s.Status()
 		if status.LastError != "" || status.NextRun != nil || status.State != StateIdle || s.Running() {
@@ -45,10 +46,11 @@ func TestMissingTMDBWaitsForSetupWithoutRecordingFailure(t *testing.T) {
 
 	settings := cfg.Get()
 	settings.TMDB.APIKey = "fixture"
+	settings.Sources = append(settings.Sources, config.Source{ID: "real", Name: "Real", Type: media.Jellyfin, Enabled: true})
 	if err := cfg.Save(settings); err != nil {
 		t.Fatal(err)
 	}
-	s.syncSchedule(timer, &schedule, time.Now(), false)
+	s.syncSchedule(timer, &schedule, time.Now(), nil)
 	if s.Status().NextRun == nil {
 		t.Fatal("configured scheduler did not resume scheduling")
 	}

@@ -7,6 +7,8 @@ import "time"
 func (s *Scheduler) ResetState() {
 	s.mu.Lock()
 	s.status = Status{State: StateIdle}
+	clear(s.sourceSchedules)
+	clear(s.sourceRequests)
 	s.mu.Unlock()
 	s.progress.reset(time.Time{})
 	select {
@@ -15,6 +17,14 @@ func (s *Scheduler) ResetState() {
 	}
 	select {
 	case <-s.recomputeCh:
+	default:
+	}
+	select {
+	case <-s.sourceTriggerCh:
+	default:
+	}
+	select {
+	case <-s.scheduleCh:
 	default:
 	}
 	select {

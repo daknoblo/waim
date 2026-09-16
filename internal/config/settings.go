@@ -63,7 +63,7 @@ type AISettings struct {
 
 // ScanSettings controls scan scheduling and TMDB request behaviour.
 type ScanSettings struct {
-	IntervalMinutes  int     `json:"intervalMinutes"`  // 0 disables periodic scans
+	IntervalMinutes  int     `json:"intervalMinutes"`  // legacy default inherited by new sources
 	RunOnStart       bool    `json:"runOnStart"`       // scan once at startup
 	TMDBRateLimitRPS float64 `json:"tmdbRateLimitRps"` // requests per second
 	IncludeSpecials  bool    `json:"includeSpecials"`  // include season 0 / specials
@@ -131,6 +131,7 @@ func (s Settings) Clone() Settings {
 	cp.Sources = append([]Source(nil), s.Sources...)
 	for i := range cp.Sources {
 		cp.Sources[i].Libraries = append([]Library(nil), s.Sources[i].Libraries...)
+		cp.Sources[i].ScanIntervalMinutes = cloneInt(s.Sources[i].ScanIntervalMinutes)
 	}
 	cp.Libraries = append([]Library(nil), s.Libraries...)
 	return cp

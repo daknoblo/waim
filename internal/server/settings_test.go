@@ -102,15 +102,15 @@ func TestHeldBackSectionDoesNotBlockOtherFields(t *testing.T) {
 
 	edit := baseForm()
 	edit.Set("ai_endpoint", "http://attacker.tld") // held back
-	edit.Set("scan_interval", "123")               // must still apply
+	edit.Set("scan_rate", "2")                     // must still apply
 	edit.Set("log_level", "debug")
 	got, pending := parse(t, s, edit)
 
 	if len(pending) != 1 {
 		t.Fatalf("expected one held-back section, got %v", pending)
 	}
-	if got.Scan.IntervalMinutes != 123 {
-		t.Errorf("unrelated field was not applied: interval=%d", got.Scan.IntervalMinutes)
+	if got.Scan.TMDBRateLimitRPS != 2 {
+		t.Errorf("unrelated field was not applied: rate=%f", got.Scan.TMDBRateLimitRPS)
 	}
 	if got.LogLevel != "debug" {
 		t.Errorf("unrelated field was not applied: logLevel=%q", got.LogLevel)

@@ -47,6 +47,7 @@ type stored struct {
 }
 
 type storedSource struct {
+	ScanIntervalMinutes  *int      `json:"scanIntervalMinutes,omitempty"`
 	CredentialGeneration string    `json:"credentialGeneration,omitempty"`
 	KeyUnreadable        bool      `json:"keyUnreadable,omitempty"`
 	ID                   string    `json:"id"`
@@ -126,6 +127,8 @@ func Load(dataDir string) (*Manager, error) {
 		if src.ID == "virtual" {
 			foundVirtual = true
 			st.Sources[i] = storedSource{ID: "virtual", Type: "virtual", Name: media.VirtualName, Enabled: true}
+		} else if src.ScanIntervalMinutes == nil {
+			st.Sources[i].ScanIntervalMinutes = cloneInt(&st.Scan.IntervalMinutes)
 		}
 	}
 	if !foundVirtual {
@@ -309,7 +312,7 @@ func (m *Manager) decryptStored(st stored) (Settings, bool) {
 		if err != nil {
 			unreadable = true
 		}
-		s.Sources = append(s.Sources, Source{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, Revision: src.Revision, CredentialGeneration: src.CredentialGeneration, Libraries: append([]Library(nil), src.Libraries...), Jellyfin: JellyfinSettings{URL: src.Jellyfin.URL, UserID: src.Jellyfin.UserID, APIKey: key}, KeyUnreadable: err != nil})
+		s.Sources = append(s.Sources, Source{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, ScanIntervalMinutes: cloneInt(src.ScanIntervalMinutes), Revision: src.Revision, CredentialGeneration: src.CredentialGeneration, Libraries: append([]Library(nil), src.Libraries...), Jellyfin: JellyfinSettings{URL: src.Jellyfin.URL, UserID: src.Jellyfin.UserID, APIKey: key}, KeyUnreadable: err != nil})
 	}
 
 	// Backfill defaults for zero values that should not be empty.
@@ -414,7 +417,7 @@ func storedFromSettings(s Settings) stored {
 	st.Scan = s.Scan
 	st.Cache = s.Cache
 	for _, src := range s.Sources {
-		ss := storedSource{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, Revision: src.Revision, CredentialGeneration: src.CredentialGeneration, Libraries: src.Libraries}
+		ss := storedSource{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, ScanIntervalMinutes: cloneInt(src.ScanIntervalMinutes), Revision: src.Revision, CredentialGeneration: src.CredentialGeneration, Libraries: append([]Library(nil), src.Libraries...)}
 		ss.Jellyfin.URL, ss.Jellyfin.UserID = src.Jellyfin.URL, src.Jellyfin.UserID
 		st.Sources = append(st.Sources, ss)
 	}

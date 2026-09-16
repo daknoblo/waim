@@ -5,6 +5,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
+	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/scanner"
 	"github.com/daknoblo/waim/internal/source"
 	"github.com/daknoblo/waim/internal/store"
@@ -48,9 +50,13 @@ type Scheduler struct {
 	recomputeCh     chan int64
 	scheduleCh      chan struct{}
 	resetScheduleCh chan struct{}
+	sourceTriggerCh chan struct{}
+	sourceRequests  map[string]int64
+	sourceSchedules map[string]sourceSchedule
 	running         atomic.Bool
 	progress        *progressState
 	tmdbFactory     func(config.Settings) scanner.TMDBAPI
+	sourceFactory   source.Factory
 	activities      *activity.Tracker
 }
 
@@ -68,6 +74,9 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*
 		recomputeCh:     make(chan int64, 1),
 		scheduleCh:      make(chan struct{}, 1),
 		resetScheduleCh: make(chan struct{}, 1),
+		sourceTriggerCh: make(chan struct{}, 1),
+		sourceRequests:  make(map[string]int64),
+		sourceSchedules: make(map[string]sourceSchedule),
 		progress:        &progressState{},
 	}
 	if len(activities) > 0 {
@@ -170,6 +179,53 @@ func (s *Scheduler) Trigger() {
 	}
 }
 
+// TriggerSource queues a manual refresh of one enabled, supported real source.
+// Validation is local and happens before any provider or comparison work.
+func (s *Scheduler) TriggerSource(id string) error {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		return err
+	}
+	defer release()
+	src, ok := s.cfg.Get().Source(id)
+	if !ok {
+		return fmt.Errorf("source not found")
+	}
+	if src.Type != media.Jellyfin {
+		return fmt.Errorf("unsupported source type")
+	}
+	if !src.Enabled {
+		return fmt.Errorf("source is disabled")
+	}
+	s.mu.Lock()
+	s.sourceRequests[id] = s.cfg.Gate().Epoch()
+	s.mu.Unlock()
+	select {
+	case s.sourceTriggerCh <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (s *Scheduler) takeSourceRequests() ([]string, int64) {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		return nil, 0
+	}
+	defer release()
+	epoch := s.cfg.Gate().Epoch()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []string
+	for id, queuedEpoch := range s.sourceRequests {
+		if queuedEpoch == epoch {
+			ids = append(ids, id)
+		}
+	}
+	clear(s.sourceRequests)
+	return ids, epoch
+}
+
 // Recompute coalesces edits without contacting a media server.
 func (s *Scheduler) Recompute() {
 	release, err := s.cfg.Gate().Enter()
@@ -197,41 +253,57 @@ func (s *Scheduler) Run(ctx context.Context) {
 	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
 	schedule := scanSchedule{}
-	s.syncSchedule(timer, &schedule, time.Now(), false)
+	s.syncSchedule(timer, &schedule, time.Now(), nil)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case epoch := <-s.triggerCh:
-			s.syncSchedule(timer, &schedule, time.Now(), false)
-			s.runScan(ctx, true, epoch)
-			s.syncSchedule(timer, &schedule, time.Now(), true)
+			s.syncSchedule(timer, &schedule, time.Now(), nil)
+			refreshed := s.runSources(ctx, true, nil, epoch)
+			s.syncSchedule(timer, &schedule, time.Now(), refreshed)
+		case <-s.sourceTriggerCh:
+			ids, epoch := s.takeSourceRequests()
+			s.syncSchedule(timer, &schedule, time.Now(), nil)
+			var refreshed []string
+			if len(ids) > 0 {
+				refreshed = s.runSources(ctx, false, ids, epoch)
+			}
+			s.syncSchedule(timer, &schedule, time.Now(), refreshed)
 		case epoch := <-s.recomputeCh:
-			s.syncSchedule(timer, &schedule, time.Now(), false)
+			s.syncSchedule(timer, &schedule, time.Now(), nil)
 			s.runScan(ctx, false, epoch)
-			s.syncSchedule(timer, &schedule, time.Now(), false)
+			s.syncSchedule(timer, &schedule, time.Now(), nil)
 		case <-s.scheduleCh:
-			s.syncSchedule(timer, &schedule, time.Now(), false)
+			s.syncSchedule(timer, &schedule, time.Now(), nil)
 		case <-s.resetScheduleCh:
-			s.syncSchedule(timer, &schedule, time.Now(), true)
+			s.syncSchedule(timer, &schedule, time.Now(), nil)
 		case due := <-timer.C:
+			// A consumed timer must be rearmed even when maintenance rejects it.
+			schedule.initialized = false
 			release, err := s.cfg.Gate().EnterScheduled(due)
+			var refreshed []string
 			if err != nil {
 				s.log.Info("scheduled scan skipped after or during maintenance")
 			} else {
-				if settings := s.cfg.Get(); settings.Scan.IntervalMinutes > 0 && settings.TMDB.APIKey != "" {
-					s.runScan(ctx, true)
+				s.syncSchedule(timer, &schedule, time.Now(), nil)
+				if ids := s.dueSources(time.Now()); len(ids) > 0 {
+					refreshed = s.runSources(ctx, false, ids)
 				}
 				release()
 			}
-			s.syncSchedule(timer, &schedule, time.Now(), true)
+			s.syncSchedule(timer, &schedule, time.Now(), refreshed)
 		}
 	}
 }
 
 // runScan executes a single scan, ignoring overlapping invocations.
 func (s *Scheduler) runScan(ctx context.Context, refresh bool, epochs ...int64) {
+	s.runSources(ctx, refresh, nil, epochs...)
+}
+
+func (s *Scheduler) runSources(ctx context.Context, fullRefresh bool, refreshIDs []string, epochs ...int64) (refreshed []string) {
 	release, err := s.cfg.Gate().Enter()
 	if err != nil {
 		s.log.Warn("scan skipped during maintenance")
@@ -247,6 +319,21 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool, epochs ...int64) 
 	}
 	defer s.running.Store(false)
 
+	settings := s.cfg.Get()
+	requested := make(map[string]bool, len(refreshIDs))
+	for _, id := range refreshIDs {
+		requested[id] = true
+	}
+	var selected []string
+	for _, src := range settings.Sources {
+		if src.Enabled && src.Type == media.Jellyfin && (fullRefresh || requested[src.ID]) {
+			selected = append(selected, src.ID)
+		}
+	}
+	if !fullRefresh && len(refreshIDs) > 0 && len(selected) == 0 {
+		return nil
+	}
+	refresh := fullRefresh || len(selected) > 0
 	run := s.activities.Start(activity.Scan)
 	ctx = activity.WithRun(ctx, run)
 	outcome, warnings := activity.Failed, 0
@@ -262,7 +349,6 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool, epochs ...int64) 
 	} else {
 		run.Mode(activity.Recompute)
 	}
-	settings := s.cfg.Get()
 	if settings.TMDB.APIKey == "" {
 		outcome = activity.Waiting
 		s.setStatus(func(st *Status) {
@@ -289,7 +375,14 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool, epochs ...int64) 
 	s.log.Info("scan started", "runId", runID)
 
 	s.progress.reset(started)
-	catalog, scanErr := source.Catalog(ctx, s.store, settings, refresh, nil)
+	factory := s.sourceFactory
+	if factory == nil {
+		factory = source.New
+	}
+	catalog, scanErr := source.CatalogForSources(ctx, s.store, settings, selected, func(src config.Source) (source.Adapter, error) {
+		refreshed = append(refreshed, src.ID)
+		return factory(src)
+	})
 	var td scanner.TMDBAPI = tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
 		WithCache(tmdbcache.New(s.store))
 	if s.tmdbFactory != nil {
@@ -306,7 +399,7 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool, epochs ...int64) 
 		result, scanErr = sc.Run(ctx)
 	}
 	mode := "recompute"
-	if refresh {
+	if fullRefresh && len(refreshed) > 0 {
 		mode = "refresh"
 	}
 	if scanErr == nil {
@@ -353,6 +446,7 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool, epochs ...int64) 
 	})
 	s.log.Info("scan finished", "runId", runID, "libraries", result.LibrariesScanned,
 		"items", result.ItemsScanned, "missing", len(result.Findings), "upcoming", len(result.Upcoming))
+	return refreshed
 }
 
 func (s *Scheduler) setStatus(mut func(*Status)) {

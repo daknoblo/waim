@@ -13,6 +13,22 @@ import (
 // Catalog loads only saved snapshots unless refresh was explicitly requested.
 // Remote failures are safe bounded warnings, not raw URLs or credentials.
 func Catalog(ctx context.Context, st *store.Store, settings config.Settings, refresh bool, factory Factory) (media.Catalog, error) {
+	var refreshIDs []string
+	if refresh {
+		for _, src := range settings.Sources {
+			refreshIDs = append(refreshIDs, src.ID)
+		}
+	}
+	return CatalogForSources(ctx, st, settings, refreshIDs, factory)
+}
+
+// CatalogForSources combines all enabled sources' saved inventory, refreshing
+// only the requested real sources. Nil or empty IDs never contact a provider.
+func CatalogForSources(ctx context.Context, st *store.Store, settings config.Settings, refreshIDs []string, factory Factory) (media.Catalog, error) {
+	refresh := make(map[string]bool, len(refreshIDs))
+	for _, id := range refreshIDs {
+		refresh[id] = true
+	}
 	out := media.Catalog{}
 	run := activity.FromContext(ctx)
 	run.Phase(activity.Inventory, -1)
@@ -26,7 +42,7 @@ func Catalog(ctx context.Context, st *store.Store, settings config.Settings, ref
 		fp := src.Fingerprint()
 		run.Subject(src.Name)
 		run.Current("")
-		if refresh {
+		if refresh[src.ID] {
 			adapter, err := factory(src)
 			var snapshot media.Snapshot
 			if err == nil {

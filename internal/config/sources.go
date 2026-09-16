@@ -14,6 +14,9 @@ import (
 
 const LegacySourceID = "jellyfin-default"
 
+// MaxSourceScanIntervalMinutes bounds source schedules to one year.
+const MaxSourceScanIntervalMinutes = 365 * 24 * 60
+
 var ErrSourcesChanged = errors.New("sources changed during computation")
 
 // WithSourcesToken holds the configuration identity stable during result
@@ -28,6 +31,7 @@ func (m *Manager) WithSourcesToken(token string, publish func() error) error {
 }
 
 type Source struct {
+	ScanIntervalMinutes  *int             `json:"scanIntervalMinutes,omitempty"`
 	CredentialGeneration string           `json:"credentialGeneration,omitempty"`
 	ID                   string           `json:"id"`
 	Type                 string           `json:"type"`
@@ -37,6 +41,26 @@ type Source struct {
 	Libraries            []Library        `json:"libraries,omitempty"`
 	Revision             int64            `json:"revision"`
 	KeyUnreadable        bool             `json:"-"`
+}
+
+// ScanInterval returns the source interval, falling back only for legacy sources.
+// Zero explicitly opts out of automatic scans.
+func (s Source) ScanInterval(defaultMinutes int) int {
+	if s.Type == media.Virtual {
+		return 0
+	}
+	if s.ScanIntervalMinutes != nil {
+		return *s.ScanIntervalMinutes
+	}
+	return defaultMinutes
+}
+
+func cloneInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
 
 func VirtualSource() Source {
@@ -87,6 +111,8 @@ func normalizeSources(s *Settings) {
 		if s.Sources[i].ID == media.VirtualID {
 			s.Sources[i] = VirtualSource()
 			found = true
+		} else if s.Sources[i].ScanIntervalMinutes == nil {
+			s.Sources[i].ScanIntervalMinutes = cloneInt(&s.Scan.IntervalMinutes)
 		}
 	}
 	if !found {
@@ -109,6 +135,9 @@ func validateSources(s Settings) error {
 		}
 		if src.Type != media.Jellyfin {
 			return fmt.Errorf("config: unsupported source type")
+		}
+		if err := inRange("source scan interval", src.ScanInterval(s.Scan.IntervalMinutes), 0, MaxSourceScanIntervalMinutes); err != nil {
+			return err
 		}
 		if err := validateEndpoint("source url", src.Jellyfin.URL); err != nil {
 			return err

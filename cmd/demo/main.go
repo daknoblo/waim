@@ -60,7 +60,7 @@ func run(out, locale string) error {
 	for _, tab := range web.SettingsTabs {
 		d := demoSettings(t)
 		d.Tab, d.Demo = tab, true
-		d.Sources = web.SourcesData{Layout: d.Layout, Sources: sources}
+		d.Sources = web.SourcesData{Layout: d.Layout, Sources: sources, DefaultScanMinutes: d.Settings.Scan.IntervalMinutes}
 		d.DataDir, d.DBSize, d.ConfigSize = "/data", "18 MiB", "3 KiB"
 		comp := web.Settings(d)
 		pages["settings-"+tab+".html"] = comp

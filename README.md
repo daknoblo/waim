@@ -56,7 +56,7 @@ Huntarr or Missingarr.
 - TMDB matching that prefers Jellyfin's stored provider IDs and falls back to a
   unique exact title/year search; ambiguous/unresolved titles remain source-local.
 - Detects missing seasons, missing episodes and missing collection entries.
-- Periodic scans (configurable interval), scan-on-startup and a manual
+- Periodic scans with independent intervals per media source, scan-on-startup and a manual
   **Scan now** button.
 - Per-library selection: choose exactly which Jellyfin libraries to scan.
 - Dashboard with grouped findings, sortable columns, a live search box and a
@@ -231,8 +231,13 @@ docker compose up -d
 
 Then open <http://localhost:8080> and enter your TMDB API key on **Settings → Metadata**.
 Use **Virtual collection** immediately, or add Jellyfin instances on **Settings →
-Media management**. Adding a source automatically loads its available libraries; select
-the ones to scan and save the source.
+Media management**. Sources appear in a two-column tile grid (one column on
+phones), with the permanent virtual collection first. Open a real source's
+dialog to edit its connection, libraries and scan interval, run a source-only
+scan, refresh libraries, test access or remove it. The add button below the
+settings opens a provider-selection dialog: Jellyfin is available; Emby and Plex
+are marked as not yet available. Adding a source automatically loads its
+libraries and opens its dialog so you can select the ones to scan.
 **Scan now** refreshes all active real sources; watch edits only recalculate
 using saved snapshots.
 
@@ -251,8 +256,11 @@ scans without this assessment need one new scan/recalculation. A clean result
 is required; unrelated unresolved-title warnings also keep completeness
 unconfirmed, consistent with WAIM's existing inventory uncertainty rules.
 
-Recalculations keep the scheduled source-scan deadline unchanged. Changing the
-scan interval rearms the timer and its displayed deadline together; nightly
+Existing sources automatically inherit their former global scan interval.
+Each source then keeps its own schedule; 0 disables its periodic scans (manual
+and startup scans remain available). Recalculations and other sources' scans
+leave its deadline unchanged. Changing a source's interval rearms that source;
+the dashboard shows the earliest scheduled source deadline. Nightly
 cache cleanup stays at 03:00 local time across daylight-saving changes.
 
 > **Upgrading from 1.3 or older?** The encryption key is now generated

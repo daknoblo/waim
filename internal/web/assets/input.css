@@ -48,6 +48,14 @@
   .card {
     @apply min-w-0 rounded-xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg shadow-black/20;
   }
+  .source-dialog {
+    @apply m-auto w-[calc(100%-2rem)] max-w-2xl rounded-xl border border-slate-700 bg-slate-950 p-5 text-slate-100 shadow-xl;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+  }
+  .source-dialog::backdrop {
+    background: rgb(2 6 23 / 80%);
+  }
 
   @keyframes activity-turn {
     to { transform: rotate(360deg); }

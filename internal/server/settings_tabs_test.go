@@ -103,12 +103,12 @@ func TestSectionSavesPreserveOtherTabsAndKeys(t *testing.T) {
 		t.Fatalf("save failed: %s", w.Body.String())
 	}
 	got := s.cfg.Get()
-	if got.Scan.RunOnStart || !got.Scan.IncludeSpecials || got.Scan.IntervalMinutes != 123 || got.TMDB != initial.TMDB || got.AI != initial.AI || got.Cache != initial.Cache || !got.Scan.EpisodeRatings || got.Locale != "de" {
+	if got.Scan.RunOnStart || !got.Scan.IncludeSpecials || got.Scan.IntervalMinutes != initial.Scan.IntervalMinutes || got.TMDB != initial.TMDB || got.AI != initial.AI || got.Cache != initial.Cache || !got.Scan.EpisodeRatings || got.Locale != "de" {
 		t.Fatalf("media save crossed sections: %+v", got.Redacted())
 	}
 	w = settingsPost(s, url.Values{"tab": {"metadata"}, "scan_rate": {"2"}, "ai_endpoint": {initial.AI.Endpoint}, "cache_refresh_percent": {"5"}}, true)
 	got = s.cfg.Get()
-	if w.Header().Get("X-Waim-Save") != "ok" || got.AI.Enabled || got.Cache.RefreshEnabled || got.Scan.EpisodeRatings || got.AI.APIKey != "retained-ai" || got.TMDB.APIKey != "retained-tmdb" || got.TMDB.Language != "de-DE" || got.Scan.IntervalMinutes != 123 || !got.Scan.IncludeSpecials {
+	if w.Header().Get("X-Waim-Save") != "ok" || got.AI.Enabled || got.Cache.RefreshEnabled || got.Scan.EpisodeRatings || got.AI.APIKey != "retained-ai" || got.TMDB.APIKey != "retained-tmdb" || got.TMDB.Language != "de-DE" || got.Scan.IntervalMinutes != initial.Scan.IntervalMinutes || !got.Scan.IncludeSpecials {
 		t.Fatal("metadata checkbox/key isolation failed")
 	}
 	w = settingsPost(s, url.Values{"tab": {"other"}, "log_level": {"debug"}}, true)
@@ -119,6 +119,7 @@ func TestSectionSavesPreserveOtherTabsAndKeys(t *testing.T) {
 
 func TestConcurrentTabSavesUseLatestConfigAndPreserveValidationDraft(t *testing.T) {
 	s := featureServer(t)
+	originalInterval := s.cfg.Get().Scan.IntervalMinutes
 	var wg sync.WaitGroup
 	for _, form := range []url.Values{
 		{"tab": {"media"}, "scan_interval": {"222"}, "scan_run_on_start": {"on"}},
@@ -136,11 +137,11 @@ func TestConcurrentTabSavesUseLatestConfigAndPreserveValidationDraft(t *testing.
 	}
 	wg.Wait()
 	got := s.cfg.Get()
-	if got.Scan.IntervalMinutes != 222 || got.LogLevel != config.LogLevelWarn || got.Locale != "de" || got.TMDB.Region != "DE" {
+	if got.Scan.IntervalMinutes != originalInterval || !got.Scan.RunOnStart || got.LogLevel != config.LogLevelWarn || got.Locale != "de" || got.TMDB.Region != "DE" {
 		t.Fatalf("tab race lost settings: %+v", got.Redacted())
 	}
-	w := settingsPost(s, url.Values{"tab": {"media"}, "scan_interval": {"-3"}}, false)
-	if !strings.Contains(w.Body.String(), `value="-3"`) || !strings.Contains(w.Body.String(), `name="tab" value="media"`) || s.cfg.Get().Scan.IntervalMinutes != 222 {
+	w := settingsPost(s, url.Values{"tab": {"metadata"}, "scan_rate": {"-3"}}, false)
+	if !strings.Contains(w.Body.String(), `value="-3"`) || !strings.Contains(w.Body.String(), `name="tab" value="metadata"`) || s.cfg.Get().Scan.TMDBRateLimitRPS != got.Scan.TMDBRateLimitRPS {
 		t.Fatal("validation draft lost or invalid settings persisted")
 	}
 	w = settingsPost(s, url.Values{"tab": {"unknown"}, "log_level": {"debug"}}, true)

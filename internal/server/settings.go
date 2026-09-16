@@ -74,6 +74,10 @@ func (s *Server) renderSettingsDraft(w http.ResponseWriter, r *http.Request, mes
 	}
 	if tab == "media" {
 		d.Sources = s.sourceSettingsData(r)
+		if d.Sources.OpenID != "" || d.Sources.AddOpen {
+			d.Sources.Message, d.Sources.Failed = d.Message, d.IsError
+			d.Message = ""
+		}
 	}
 	s.render(w, r, web.Settings(d))
 }
@@ -257,7 +261,8 @@ func parseSettingsFormFrom(r *http.Request, cur config.Settings) (config.Setting
 	}
 
 	if tab == "" || tab == "media" {
-		ns.Scan.IntervalMinutes = atoiDefault(r.FormValue("scan_interval"), cur.Scan.IntervalMinutes)
+		// Retain the legacy default for migration/new sources; real schedules
+		// are edited only on each source's explicit form.
 		ns.Scan.RunOnStart = r.FormValue("scan_run_on_start") != ""
 		ns.Scan.IncludeSpecials = r.FormValue("scan_include_specials") != ""
 	}
@@ -318,7 +323,7 @@ func atofDefault(s string, def float64) float64 {
 
 func validateSettingsNumbers(r *http.Request, tab string) error {
 	fields := map[string]string{
-		"scan_interval": "media", "scan_rate": "metadata",
+		"scan_rate":              "metadata",
 		"cache_refresh_interval": "metadata", "cache_refresh_percent": "metadata", "cache_cleanup_max_age": "metadata",
 	}
 	for field, section := range fields {

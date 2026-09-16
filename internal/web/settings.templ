@@ -63,10 +63,6 @@ templ settingsBody(d SettingsData) {
 		<div class="card grid gap-3">
 			<h2 class="text-lg font-semibold">{ d.Layout.T.T("settings.scan") }</h2>
 			<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.scanHint") }</p>
-			<div class="grid gap-3 sm:grid-cols-2">
-				@numberField(d.Layout.T.T("settings.interval"), "scan_interval", strconv.Itoa(d.Settings.Scan.IntervalMinutes), "1")
-			</div>
-			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.intervalHint") }</p>
 			@checkboxField(d.Layout.T.T("settings.runOnStart"), "scan_run_on_start", d.Settings.Scan.RunOnStart)
 			@checkboxField(d.Layout.T.T("settings.includeSpecials"), "scan_include_specials", d.Settings.Scan.IncludeSpecials)
 			<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.includeSpecialsHint") }</p>
@@ -162,6 +158,9 @@ templ settingsBody(d SettingsData) {
 			<button class="btn-primary" type="submit">{ d.Layout.T.T("settings.save") }</button>
 		</div>
 	</form>
+	if d.Tab == "media" {
+		@sourceAddButton(d.Layout.T)
+	}
 	if d.Tab == "other" {
 		@dangerZone(d.Layout.T, d.Demo)
 	}

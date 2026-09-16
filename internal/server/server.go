@@ -107,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /sources/{id}/remove", s.handleRemoveSource)
 	mux.HandleFunc("POST /sources/{id}/libraries", s.handleSourceLibraries)
 	mux.HandleFunc("POST /sources/{id}/test", s.handleTestSource)
+	mux.HandleFunc("POST /sources/{id}/scan", s.handleScanSource)
 	mux.HandleFunc("GET /collection", s.handleCollection)
 	mux.HandleFunc("POST /collection/add", s.handleWatchAdd)
 	mux.HandleFunc("POST /collection/remove", s.handleWatchRemove)

@@ -27,6 +27,7 @@ the key file allows the stored credentials to be decrypted.
       "type": "jellyfin",
       "name": "Living room",
       "enabled": true,
+      "scanIntervalMinutes": 60, // this source only; 0 = manual only
       "revision": 1,
       "credentialGeneration": "<manager-generated public token>",
       "jellyfin": {
@@ -52,7 +53,7 @@ the key file allows the stored credentials to be decrypted.
     "model": ""                // model / deployment name
   },
   "scan": {
-    "intervalMinutes": 60,     // 0 disables periodic scans (manual only)
+    "intervalMinutes": 60,     // legacy migration/new-source default; no global periodic timer
     "runOnStart": true,        // scan once on container startup
     "tmdbRateLimitRps": 1,     // TMDB requests per second
     "includeSpecials": false,  // include season 0 / specials in comparisons
@@ -74,7 +75,7 @@ the key file allows the stored credentials to be decrypted.
 
 | Tab | Contents |
 | --- | --- |
-| Media management (`/settings?tab=media`) | Full source management, library selection, scan interval/startup/specials. |
+| Media management (`/settings?tab=media`) | Source tiles/dialogs, per-source libraries and scan intervals, shared startup/specials. |
 | Metadata (`?tab=metadata`) | TMDB credentials, AI suggestions, shared rate limit, episode ratings and cache maintenance. The provider area currently implements TMDB only. |
 | Interface (`?tab=interface`) | UI language plus metadata language and region. |
 | Other (`?tab=other`) | Database size including WAL/SHM, configuration size, data directory, cache count, exports, log level and Danger Zone. |
@@ -97,10 +98,22 @@ rejected instead of overwriting another edit. Changing a Jellyfin address
 Blank keys otherwise retain the saved value. Test/refresh buttons use **saved**
 settings, not unsaved form fields. AI host changes also require a key.
 
+The source overview displays two large tiles per row on wider screens and one
+per row on phones. The virtual collection is always first; it opens the existing
+collection page and has no media-server scan timer. Real-source tiles open an
+accessible dialog containing connection settings, library selection, the
+source's scan interval, a source-only scan button, library refresh, connection
+test and confirmed removal. Dialog links also work without JavaScript.
+The **Add source** button below the media settings opens a dialog with a provider
+dropdown. Jellyfin is selectable; Emby and Plex are disabled as not yet available.
+
 Unsaved source edits are never automatically submitted when switching tabs.
 A localized discard confirmation protects tab navigation, and the browser's
 native leave-page warning protects other navigation. **Save source** submits
 that source explicitly; validation drafts remain protected after a failed save.
+Closing a dirty dialog (including Escape), or invoking a saved-settings action,
+requires confirming that unsaved changes can be discarded. Passwords are never
+returned by the server when a validation failure reopens a dialog.
 
 Adding a Jellyfin source immediately fetches its available libraries. They start
 unselected so you can choose what to scan. If discovery fails, the saved source
@@ -249,7 +262,7 @@ turned off by default.
 | API key               | Stored encrypted, like the Jellyfin and TMDB keys.               |
 | Model                 | Model / deployment name to request.                              |
 
-### Scanning (all active real sources)
+### Scanning (independent media sources)
 
 When and how waim reads your Jellyfin libraries.
 New installations show separate setup cards for **Metadata** and **Media
@@ -266,9 +279,18 @@ Actual scan errors remain visible in the scan status.
 
 | Field                  | Description                                                              |
 | ---------------------- | ------------------------------------------------------------------------ |
-| Scan interval (minutes) | How often a scan starts automatically. One scan is a single pass over all enabled libraries; `0` means only the *Scan now* button starts one. |
+| Scan interval (minutes, per source) | How often this source's enabled libraries are scanned. `0` disables periodic scans for this source; allowed range is 0–525600. Other sources keep their schedules. |
 | Run a scan on startup  | Trigger one scan when the container starts.                              |
 | Include specials (season 0) | When enabled, specials count as gaps and appear in the statistics; off by default. |
+
+When an older source has no interval of its own, its previous global interval is
+copied automatically and persisted without replacing credentials or snapshots.
+An interval-only edit does not change inventory identity. Source-specific and
+scheduled scans refresh only the selected/due sources, then evaluate the combined
+catalog using the other saved inventories. The dashboard **Scan now** still
+refreshes all active sources; its next-scan time is the earliest individual
+deadline. Recalculation and another source's refresh do not postpone unchanged
+sources. Startup scanning remains a shared setting.
 
 ### TMDB requests & data refresh
 

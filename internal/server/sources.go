@@ -38,19 +38,43 @@ func (s *Server) renderSources(w http.ResponseWriter, r *http.Request, message s
 }
 
 func (s *Server) sourceSettingsData(r *http.Request) web.SourcesData {
-	d := web.SourcesData{Layout: s.layout(r, web.NavSettings), Sources: s.cfg.Get().Redacted().Sources}
+	settings := s.cfg.Get()
+	d := web.SourcesData{Layout: s.layout(r, web.NavSettings), Sources: settings.Redacted().Sources,
+		DefaultScanMinutes: settings.Scan.IntervalMinutes, NextRuns: map[string]string{}}
+	d.OpenID = r.URL.Query().Get("source")
+	if id := r.PathValue("id"); id != "" {
+		d.OpenID = id
+	}
+	if d.OpenID == "new" {
+		d.OpenID, d.AddOpen = "", true
+	}
+	if d.OpenID != "" {
+		src, ok := settings.Source(d.OpenID)
+		if !ok || src.Type == media.Virtual {
+			d.OpenID = ""
+		}
+	}
+	for _, src := range d.Sources {
+		if next := s.sched.SourceNextRun(src.ID); next != nil {
+			d.NextRuns[src.ID] = web.FormatTimeValue(*next)
+		}
+	}
 	if draft, ok := r.Context().Value(sourceDraftKey{}).(*config.Source); ok {
 		found := false
 		for i := range d.Sources {
 			if d.Sources[i].ID == draft.ID {
 				d.Sources[i] = *draft
 				d.EditDraftID = draft.ID
+				d.OpenID = draft.ID
 				found = true
 			}
 		}
 		if !found {
 			d.AddDraft = *draft
+			d.OpenID, d.AddOpen = "", true
 		}
+		d.IntervalDraft = r.FormValue("scan_interval")
+		_, d.HasIntervalDraft = r.PostForm["scan_interval"]
 	}
 	return d
 }
@@ -66,6 +90,18 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	src := config.Source{ID: hex.EncodeToString(id[:]), Type: media.Jellyfin, Name: strings.TrimSpace(r.FormValue("name")), Enabled: true, Jellyfin: config.JellyfinSettings{URL: strings.TrimRight(strings.TrimSpace(r.FormValue("url")), "/"), APIKey: strings.TrimSpace(r.FormValue("key")), UserID: strings.TrimSpace(r.FormValue("user"))}}
+	if provider := r.FormValue("type"); provider != "" && provider != media.Jellyfin {
+		src.Jellyfin.APIKey = ""
+		s.renderSources(w, r, s.translator(r).T("sources.unsupportedProvider"), true, &src)
+		return
+	}
+	minutes, err := parseSourceInterval(r, s.cfg.Get().Scan.IntervalMinutes)
+	if err != nil {
+		src.Jellyfin.APIKey = ""
+		s.renderSources(w, r, s.translator(r).T("sources.invalidInterval"), true, &src)
+		return
+	}
+	src.ScanIntervalMinutes = &minutes
 	if err := s.cfg.AddSource(src); err != nil {
 		src.Jellyfin.APIKey = ""
 		s.renderSources(w, r, err.Error(), true, &src)
@@ -79,13 +115,28 @@ func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.refreshSourceLibraries(r.Context(), saved); err != nil {
 		s.log.Warn("initial library discovery failed", "sourceId", src.ID, "err", err)
+		r.SetPathValue("id", src.ID)
 		s.renderSources(w, r, s.translator(r).T("sources.addedLibrariesFailed"), true)
 		return
 	}
 	s.changedCatalog()
-	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
+	http.Redirect(w, r, web.SourceSettingsURL(src.ID), http.StatusSeeOther)
 }
 
+func parseSourceInterval(r *http.Request, fallback int) (int, error) {
+	values, present := r.PostForm["scan_interval"]
+	if !present {
+		return fallback, nil
+	}
+	if len(values) != 1 {
+		return 0, errors.New("invalid source interval")
+	}
+	value, err := strconv.Atoi(values[0])
+	if err != nil || value < 0 || value > config.MaxSourceScanIntervalMinutes {
+		return 0, errors.New("invalid source interval")
+	}
+	return value, nil
+}
 func sourceRevision(r *http.Request) (int64, error) {
 	if err := r.ParseForm(); err != nil {
 		return 0, err
@@ -99,13 +150,20 @@ func (s *Server) handleUpdateSource(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid revision", 400)
 		return
 	}
+	defaultInterval := s.cfg.Get().Scan.IntervalMinutes
+	invalidInterval := s.translator(r).T("sources.invalidInterval")
 	err = s.cfg.UpdateSourceWithKey(r.PathValue("id"), rev, strings.TrimSpace(r.FormValue("key")), func(src *config.Source) error {
+		minutes, err := parseSourceInterval(r, src.ScanInterval(defaultInterval))
+		if err != nil {
+			return errors.New(invalidInterval)
+		}
 		address := strings.TrimRight(strings.TrimSpace(r.FormValue("url")), "/")
 		key := strings.TrimSpace(r.FormValue("key"))
 		if address != src.Jellyfin.URL && key == "" {
 			return errors.New("enter the API key for the new server address")
 		}
 		src.Name = strings.TrimSpace(r.FormValue("name"))
+		src.ScanIntervalMinutes = &minutes
 		src.Enabled = r.FormValue("enabled") == "on"
 		if address != src.Jellyfin.URL {
 			src.Libraries = nil
@@ -138,7 +196,7 @@ func (s *Server) handleUpdateSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.changedCatalog()
-	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
+	http.Redirect(w, r, web.SourceSettingsURL(r.PathValue("id")), http.StatusSeeOther)
 }
 
 func (s *Server) handleRemoveSource(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +213,15 @@ func (s *Server) handleRemoveSource(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
 }
 
+func (s *Server) handleScanSource(w http.ResponseWriter, r *http.Request) {
+	if err := s.sched.TriggerSource(r.PathValue("id")); err != nil {
+		s.log.Warn("source scan request rejected", "sourceId", r.PathValue("id"), "err", err)
+		s.renderSources(w, r, s.translator(r).T("sources.scanRejected"), true)
+		return
+	}
+	s.renderSources(w, r, s.translator(r).T("sources.scanQueued"), false)
+}
+
 func (s *Server) handleSourceLibraries(w http.ResponseWriter, r *http.Request) {
 	src, ok := s.cfg.Get().Source(r.PathValue("id"))
 	if !ok || src.Type == media.Virtual {
@@ -167,7 +234,7 @@ func (s *Server) handleSourceLibraries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.changedCatalog()
-	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
+	http.Redirect(w, r, web.SourceSettingsURL(src.ID), http.StatusSeeOther)
 }
 
 func (s *Server) refreshSourceLibraries(ctx context.Context, src config.Source) (resultErr error) {
