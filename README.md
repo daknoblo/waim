@@ -60,7 +60,7 @@ Huntarr or Missingarr.
   **Scan now** button.
 - Per-library selection: choose exactly which Jellyfin libraries to scan.
 - Dashboard with grouped findings, sortable columns, a live search box and a
-  per-library quick filter. Library labels use `Type · Address · Library` on one
+  per-library quick filter. Library labels use `Type · Instance name · Library` on one
   line; virtual entries simply show **Virtual collection**, without a repeated
   watch-only note beneath the title. Long labels scroll horizontally on mobile.
   Each finding shows its TMDB link and a media-server link only when that leads

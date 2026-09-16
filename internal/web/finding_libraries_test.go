@@ -12,7 +12,7 @@ import (
 	"github.com/daknoblo/waim/internal/store"
 )
 
-func TestFindingLibraryLabelsIncludeTypeServerAndEachLibrary(t *testing.T) {
+func TestFindingLibraryLabelsIncludeTypeInstanceNameAndEachLibrary(t *testing.T) {
 	cat, err := i18n.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -20,19 +20,19 @@ func TestFindingLibraryLabelsIncludeTypeServerAndEachLibrary(t *testing.T) {
 	refs := []media.Reference{
 		{ID: "a", Type: media.Jellyfin, Name: "Living room", LibraryID: "a/movies", LibraryName: "Films", ServerURL: "https://jf.example/jellyfin", ItemID: "one"},
 		{ID: "a", Type: media.Jellyfin, Name: "Living room", LibraryID: "a/movies", LibraryName: "Films", ServerURL: "https://jf.example/jellyfin", ItemID: "two", Stale: true},
-		{ID: "a", Type: media.Jellyfin, LibraryID: "a/series", LibraryName: "Series", ServerURL: "https://jf.example/jellyfin"},
-		{ID: "b", Type: "emby", LibraryID: "b/movies", LibraryName: "Cinema", ServerURL: "http://emby.example:8096"},
-		{ID: "c", Type: "plex", LibraryID: "c/movies", LibraryName: "Movies", ServerURL: "https://plex.example"},
+		{ID: "a", Type: media.Jellyfin, Name: "Living room", LibraryID: "a/series", LibraryName: "Series", ServerURL: "https://jf.example/jellyfin"},
+		{ID: "b", Type: "emby", Name: "Archive", LibraryID: "b/movies", LibraryName: "Cinema", ServerURL: "http://emby.example:8096"},
+		{ID: "c", Type: "plex", Name: "Home cinema", LibraryID: "c/movies", LibraryName: "Movies", ServerURL: "https://plex.example"},
 		{ID: media.VirtualID, Type: media.Virtual, Name: "Watch collection", LibraryID: media.VirtualID, URL: "https://www.themoviedb.org/movie/1"},
 	}
 	for _, locale := range []string{"en", "de"} {
 		tr := cat.For(locale)
 		labels := FindingLibraryLabels(tr, refs, "", "")
 		want := []string{
-			"Jellyfin \u00b7 https://jf.example/jellyfin \u00b7 Films",
-			"Jellyfin \u00b7 https://jf.example/jellyfin \u00b7 Series",
-			"Emby \u00b7 http://emby.example:8096 \u00b7 Cinema",
-			"Plex \u00b7 https://plex.example \u00b7 Movies",
+			"Jellyfin \u00b7 Living room \u00b7 Films",
+			"Jellyfin \u00b7 Living room \u00b7 Series",
+			"Emby \u00b7 Archive \u00b7 Cinema",
+			"Plex \u00b7 Home cinema \u00b7 Movies",
 			tr.T("sources.collection"),
 		}
 		if len(labels) != len(want) {
@@ -52,7 +52,7 @@ func TestFindingLibraryLabelsIncludeTypeServerAndEachLibrary(t *testing.T) {
 	}
 }
 
-func TestFindingLibraryURLLegacyAndSanitization(t *testing.T) {
+func TestFindingLibraryLabelsIgnoreServerAndLegacyURLs(t *testing.T) {
 	for _, tc := range []struct {
 		ref  media.Reference
 		want string
@@ -61,15 +61,17 @@ func TestFindingLibraryURLLegacyAndSanitization(t *testing.T) {
 		{media.Reference{ServerURL: "https://user:secret@jf.example/base?api_key=secret#token"}, "https://jf.example/base"},
 		{media.Reference{ServerURL: "javascript:alert(1)"}, ""},
 	} {
-		if got := referenceServerURL(tc.ref); got != tc.want {
-			t.Fatalf("server URL = %q, want %q", got, tc.want)
+		tc.ref.Name = "Instance"
+		labels := FindingLibraryLabels(testTranslator(t), []media.Reference{tc.ref}, "", "")
+		if len(labels) != 1 || !strings.Contains(labels[0].Text, "Instance") || (tc.want != "" && strings.Contains(labels[0].Text, tc.want)) {
+			t.Fatal("labels should show the instance name without a server address")
 		}
 	}
 }
 
 func TestCollectionFindingsShowReferencesOnlyInLibraryColumn(t *testing.T) {
 	tr := testTranslator(t)
-	ref := media.Reference{ID: "a", Type: media.Jellyfin, LibraryID: "a/movies", LibraryName: "Films", ServerURL: "https://jf.example", URL: "https://jf.example/web/#/details?id=one"}
+	ref := media.Reference{ID: "a", Type: media.Jellyfin, Name: "Living room", LibraryID: "a/movies", LibraryName: "Films", ServerURL: "https://jf.example", URL: "https://jf.example/web/#/details?id=one"}
 	findings := []store.Finding{{
 		Kind: store.KindMissingCollection, MediaType: store.MediaMovie, TMDBID: 100, Title: "Saga",
 		LibraryID: "a/movies", LibraryName: "Films", Provenance: store.Provenance{ContextReferences: []media.Reference{ref, ref}},
@@ -81,7 +83,7 @@ func TestCollectionFindingsShowReferencesOnlyInLibraryColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := b.String()
-	if strings.Count(html, "Jellyfin \u00b7 https://jf.example \u00b7 Films") != 1 {
+	if strings.Count(html, "Jellyfin \u00b7 Living room \u00b7 Films") != 1 || strings.Contains(html, "https://jf.example") {
 		t.Fatal("expected one expanded library label")
 	}
 	if !strings.Contains(html, "badge whitespace-nowrap") || strings.Contains(html, "whitespace-normal") || strings.Contains(html, "break-words") {

@@ -1,7 +1,6 @@
 package web
 
 import (
-	"net/url"
 	"strings"
 
 	"github.com/daknoblo/waim/internal/i18n"
@@ -45,9 +44,7 @@ func FindingLibraryLabels(t *i18n.Translator, refs []media.Reference, fallbackID
 					parts = append(parts, ref.Type)
 				}
 			}
-			if address := referenceServerURL(ref); address != "" {
-				parts = append(parts, address)
-			} else if ref.Name != "" {
+			if ref.Name != "" {
 				parts = append(parts, ref.Name)
 			}
 			if ref.LibraryName != "" {
@@ -64,27 +61,4 @@ func FindingLibraryLabels(t *i18n.Translator, refs []media.Reference, fallbackID
 		labels = append(labels, FindingLibraryLabel{Text: LibraryDisplayName(t, fallbackID, fallbackName), Color: LibraryColor(fallbackID)})
 	}
 	return labels
-}
-
-func referenceServerURL(ref media.Reference) string {
-	raw := ref.ServerURL
-	if raw == "" {
-		raw = ref.URL
-	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		return ""
-	}
-	u.User, u.RawQuery, u.Fragment, u.RawFragment = nil, "", "", ""
-	if ref.ServerURL == "" {
-		// Older Jellyfin snapshots only stored their item deep link.
-		if ref.Type == media.Jellyfin {
-			path := strings.TrimSuffix(u.Path, "/")
-			u.Path = strings.TrimSuffix(path, "/web")
-		} else {
-			u.Path = ""
-		}
-		u.RawPath = ""
-	}
-	return strings.TrimRight(u.String(), "/")
 }

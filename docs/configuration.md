@@ -223,7 +223,9 @@ if a desired result is not on that page. Add/remove is idempotent and only edits
 watch membership. No media-server files are written.
 
 Dashboard findings show their source references in the Library column as
-`type / server URL / library`, with one label per source/library membership.
+`type · instance name · library`, with one single-line label per source/library
+membership. The configured instance name is shown rather than its server URL;
+the underlying media links are unchanged.
 Virtual entries use a localized virtual-collection label. Collection origins
 are represented by these labels rather than a separate context link below
 the title. Individual missing movie parts do not offer virtual-collection actions;
