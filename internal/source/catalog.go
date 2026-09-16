@@ -58,15 +58,18 @@ func Catalog(ctx context.Context, st *store.Store, settings config.Settings, ref
 		}
 		if saved.Snapshot == nil {
 			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: unknown inventory; refresh required", src.Name))
+			run.Report(activity.Diagnostic{Reason: activity.SourceUnknown, Severity: activity.Warning, Phase: activity.Inventory, Subject: src.Name})
 			run.Warnings(len(out.Warnings))
 			continue
 		}
 		stale := saved.Error != ""
 		for _, warning := range saved.Snapshot.Warnings {
 			out.Warnings = append(out.Warnings, src.Name+": "+warning)
+			run.ReportLegacy(warning, src.Name)
 		}
 		if stale {
 			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: stale inventory (last successful snapshot)", src.Name))
+			run.Report(activity.Diagnostic{Reason: activity.SourceStale, Severity: activity.Warning, Phase: activity.Inventory, Subject: src.Name})
 		}
 		run.Warnings(len(out.Warnings))
 		for _, item := range saved.Snapshot.Items {

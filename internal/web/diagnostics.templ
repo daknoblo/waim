@@ -1,0 +1,66 @@
+package web
+
+import "github.com/daknoblo/waim/internal/activity"
+import "github.com/daknoblo/waim/internal/i18n"
+
+templ HealthIndicator(t *i18n.Translator, severity activity.Severity) {
+	if severity != "" {
+		<a href="/logs#diagnostics" data-diagnostics-link="true" data-health={ string(severity) }
+			aria-label={ t.T(HealthKey(severity)) } title={ t.T(HealthKey(severity)) }
+			class={ "inline-flex h-8 w-8 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2",
+				templ.KV("text-rose-400 hover:text-rose-200",severity==activity.Error),
+				templ.KV("text-amber-400 hover:text-amber-200",severity!=activity.Error) }>
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+				<circle cx="12" cy="12" r="9"></circle>
+				<path d="M12 7v6" stroke-linecap="round"></path>
+				<circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"></circle>
+			</svg>
+		</a>
+	}
+}
+
+templ DiagnosticsPanel(t *i18n.Translator,d DiagnosticsData) {
+	<p class="mb-3 text-xs text-slate-400">{ t.T("diagnostics.scope") }</p>
+	if d.Retrying {
+		<p class="mb-3 text-sm text-amber-200">{ t.T("diagnostics.retrying") }</p>
+	}
+	if d.Unavailable {
+		<p class="mb-3 text-sm text-amber-200">{ t.T("diagnostics.unavailable") }</p>
+	}
+	if d.Truncated {
+		<p class="mb-3 text-sm text-amber-200">{ t.T("diagnostics.truncated") }</p>
+	}
+	if len(d.Items) == 0 && !d.Unavailable && !d.Retrying {
+		<p class="text-sm text-slate-400">{ t.T("diagnostics.clean") }</p>
+	}
+	<ul class="grid gap-3">
+		for _, item := range d.Items {
+			<li class="min-w-0 rounded-lg border border-slate-800 p-3" data-reason={ string(item.Reason) }>
+				<div class="flex flex-wrap gap-2 text-xs text-slate-400">
+					if item.Job != "" {
+						<span>{ t.T(item.JobKey()) }</span>
+					}
+					if item.Phase != "" {
+						<span>· { t.T(item.PhaseKey()) }</span>
+					}
+					if item.Persisted {
+						<span>· { t.T("diagnostics.persisted") }</span>
+					}
+					if item.Previous {
+						<span>· { t.T("diagnostics.previous") }</span>
+					}
+				</div>
+				<p class={ "mt-1 break-words text-sm",item.Tone() }>{ t.T(item.ReasonKey()) }</p>
+				if item.Subject != "" {
+					<p class="mt-1 break-words text-sm text-slate-300">{ item.Subject }</p>
+				}
+				if item.Current != "" {
+					<p class="mt-1 break-words font-medium text-slate-100">{ item.Current }</p>
+				}
+				if item.Query != "" {
+					<p class="mt-1 break-all font-mono text-xs text-slate-400">{ item.Query }</p>
+				}
+			</li>
+		}
+	</ul>
+}

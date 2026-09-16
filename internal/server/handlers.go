@@ -24,9 +24,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	d := web.LogPageData{
-		Layout:     s.layout(r, web.NavLogs),
-		Logs:       web.BuildLogViews(s.logs.Entries()),
-		Activities: s.activityViews(),
+		Layout:      s.layout(r, web.NavLogs),
+		Logs:        web.BuildLogViews(s.logs.Entries()),
+		Activities:  s.activityViews(),
+		Diagnostics: s.diagnostics(r.Context()),
 	}
 	s.render(w, r, web.Logs(d))
 }
@@ -355,13 +356,6 @@ func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusV
 
 	if run, err := s.currentRun(ctx); err == nil && run != nil {
 		sv.ItemsScanned = run.ItemsScanned
-		if run.Metadata.Basis == "" {
-			sv.Warning = t.T("sources.legacy")
-		} else if len(run.Metadata.Warnings) > 0 {
-			sv.Warning = t.T("sources.incomplete")
-		} else if run.Metadata.Pending || s.dataState(ctx) == web.DataIncomplete {
-			sv.Warning = t.T("sources.updating")
-		}
 		sv.LibrariesScanned = run.LibrariesScanned
 		sv.MissingTotal = run.MissingCount
 		sv.Duration = web.FormatDuration(run.Duration())

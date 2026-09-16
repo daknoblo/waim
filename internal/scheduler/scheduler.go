@@ -250,7 +250,12 @@ func (s *Scheduler) runScan(ctx context.Context, refresh bool, epochs ...int64) 
 	run := s.activities.Start(activity.Scan)
 	ctx = activity.WithRun(ctx, run)
 	outcome, warnings := activity.Failed, 0
-	defer func() { run.Finish(ctx, outcome, warnings) }()
+	defer func() {
+		if outcome == activity.Failed && ctx.Err() == nil {
+			run.Report(activity.Diagnostic{Reason: activity.ScanFailed, Severity: activity.Error})
+		}
+		run.Finish(ctx, outcome, warnings)
+	}()
 	run.Phase(activity.Inventory, -1)
 	if refresh {
 		run.Mode(activity.SourceRefresh)

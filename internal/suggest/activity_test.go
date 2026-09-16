@@ -125,6 +125,9 @@ func TestSuggestionsReportTitleAndPendingAIAndJoinOnClose(t *testing.T) {
 				if state.Status != activity.Partial || state.Warnings == 0 || result == nil || len(result.AI) != 0 {
 					t.Fatalf("failed AI job not partial: %+v", state)
 				}
+				if len(state.Diagnostics) != 1 || state.Diagnostics[0].Reason != activity.AIUnavailable || state.Diagnostics[0].Query != "" {
+					t.Fatalf("AI failure lacks a safe reason: %+v", state.Diagnostics)
+				}
 				return
 			}
 			expected := activity.Completed

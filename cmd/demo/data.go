@@ -345,6 +345,8 @@ func demoSuggestions(t *i18n.Translator) web.SuggestionsData {
 
 func demoLogs(t *i18n.Translator) web.LogPageData {
 	now := time.Now()
+	layout := demoLayout(t, web.NavLogs)
+	layout.HealthSeverity = activity.Error
 	entries := []logbuf.Entry{
 		{Time: now.Add(-42 * time.Minute), Level: "INFO", Message: "scan started libraries=2"},
 		{Time: now.Add(-41 * time.Minute), Level: "INFO", Message: "jellyfin items fetched library=Movies count=8"},
@@ -354,8 +356,12 @@ func demoLogs(t *i18n.Translator) web.LogPageData {
 		{Time: now.Add(-36 * time.Minute), Level: "INFO", Message: "scan finished items=14 missing=16 duration=6m12s"},
 	}
 	return web.LogPageData{
-		Layout: demoLayout(t, web.NavLogs),
+		Layout: layout,
 		Logs:   web.BuildLogViews(entries),
+		Diagnostics: web.DiagnosticsData{
+			Severity: activity.Error,
+			Items:    []web.DiagnosticView{{Job: activity.Cache, Diagnostic: activity.Diagnostic{Reason: activity.CacheUnavailable, Severity: activity.Error, Phase: activity.Refresh, Query: "/movie/301"}}},
+		},
 		Activities: web.BuildActivities([]activity.State{
 			{Job: activity.Scan, Status: activity.Running, Phase: activity.Metadata, Current: "Chronicles of the Deep", Subject: "Living room · Series", Query: "/tv/901/season/4", Known: true, Done: 42, Total: 60, StartedAt: now.Add(-94 * time.Second)},
 			{Job: activity.Cache, Status: activity.Running, Phase: activity.Refresh, Query: "/movie/301", Known: true, Done: 7, Total: 20, Failures: 1, StartedAt: now.Add(-31 * time.Second)},

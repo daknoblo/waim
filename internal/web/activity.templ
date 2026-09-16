@@ -103,15 +103,18 @@ templ activityCard(t *i18n.Translator, a ActivityView) {
 		if a.Failures > 0 || a.Skipped > 0 || a.Warnings > 0 {
 			<p class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
 				if a.Failures > 0 {
-					<span>{ strconv.Itoa(a.Failures) } { t.T("activity.failures") }</span>
+					<a href="/logs#diagnostics" data-diagnostics-link="true" class="underline">{ strconv.Itoa(a.Failures) } { t.T("activity.failures") }</a>
 				}
 				if a.Skipped > 0 {
-					<span>{ strconv.Itoa(a.Skipped) } { t.T("activity.skipped") }</span>
+					<a href="/logs#diagnostics" data-diagnostics-link="true" class="underline">{ strconv.Itoa(a.Skipped) } { t.T("activity.skipped") }</a>
 				}
 				if a.Warnings > 0 {
-					<span>{ strconv.Itoa(a.Warnings) } { t.T("activity.warnings") }</span>
+					<a href="/logs#diagnostics" data-diagnostics-link="true" class="underline">{ strconv.Itoa(a.Warnings) } { t.T("activity.warnings") }</a>
 				}
 			</p>
+		}
+		if len(a.Diagnostics)>0 || a.DiagnosticsTruncated || a.PreviousSeverity!="" {
+			<a href="/logs#diagnostics" data-diagnostics-link="true" class="mt-2 inline-block text-xs underline">{ t.T("diagnostics.heading") }</a>
 		}
 	</article>
 }

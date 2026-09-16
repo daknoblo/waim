@@ -111,7 +111,9 @@ owned titles. Inventory (including library/episode pages), persistence, upcoming
 discovery and the pending AI response are explicitly indeterminate.
 
 Processed counts include failed/skipped units; diagnostic counts span the run
-and can include the same title in different phases. Stale source fallback,
+and a skipped title can also contribute a warning. Identity-resolution skips are
+not counted again when metadata evaluation reaches the same unresolved title.
+Stale source fallback,
 unresolved titles and metadata failures finish **with warnings**, never as fully
 verified success. Cancellation and failure are separate outcomes. Initial missing
 TMDB configuration shows **Waiting for setup**; the global setup banner links to
@@ -122,6 +124,32 @@ not a persisted history. Concurrent source connection requests show the latest
 request; old handles cannot overwrite a newer run. Logs and persisted scan
 history remain available. Titles/source names are bounded, while metadata paths
 are allowlisted and exclude every query string, credential and response body.
+
+Open **Logs → Warnings, skipped titles & errors**, or follow an activity counter,
+to see concrete subjects, phases and safe reason descriptions. Repeated events
+are deduplicated; each job retains at most 100 details and the combined view is
+also capped at 100, with errors first and an explicit truncation notice. Older
+counter-only attempts say that details are unavailable rather than inventing
+reasons. Known persisted scan/source warnings are localized; unknown legacy
+warning bodies are replaced by an explicit safe fallback notice.
+
+The diagnostic expander is outside the two-second activity swap. Its contents
+poll independently and unchanged details return 204, so reading/expanded state
+does not reset as progress advances. A small circled exclamation in the header
+(also visible on mobile) links to `/logs#diagnostics`: amber means warnings,
+skipped/incomplete work, and red takes precedence for failures or storage errors.
+Operational inventory/legacy/pending notices now live in Logs, not repeated
+page-wide banners. Metadata/media-source setup cards and key-recovery guidance
+remain separate; statistics still mark unverified results as uncertain.
+
+The header reads only small persisted status/version rows on each poll, plus
+in-memory activity. Warning payloads are cached until the scan/source/config
+version changes; it does not build the catalog or make upstream API requests.
+Saved warnings and failed/unfinished scans survive restart. A retry retains its
+previous issue indication until it finishes; a later completed attempt replaces
+that job's issues, and later successful scans replace saved scan warnings/errors.
+Old ring-buffer log entries alone do not latch the indicator. Full reset also
+clears the diagnostic cache and retained activity details.
 
 ## Screenshots
 

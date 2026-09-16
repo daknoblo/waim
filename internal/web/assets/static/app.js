@@ -394,6 +394,11 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    document.addEventListener("click", function (e) {
+      var link = e.target.closest ? e.target.closest("a[data-diagnostics-link]") : null;
+      var panel = document.getElementById("diagnostics");
+      if (link && panel) panel.open = true;
+    });
     settingsNavigation();
     var box = document.getElementById("finding-search");
     if (box) {

@@ -35,17 +35,18 @@ const (
 
 // Server holds the dependencies shared by all HTTP handlers.
 type Server struct {
-	cfg        *config.Manager
-	store      *store.Store
-	sched      *scheduler.Scheduler
-	suggest    *suggest.Service
-	logs       *logbuf.Buffer
-	catalog    *i18n.Catalog
-	log        *slog.Logger
-	logLevel   *slog.LevelVar
-	info       version.Info
-	assetVer   string
-	activities *activity.Tracker
+	cfg             *config.Manager
+	store           *store.Store
+	sched           *scheduler.Scheduler
+	suggest         *suggest.Service
+	logs            *logbuf.Buffer
+	catalog         *i18n.Catalog
+	log             *slog.Logger
+	logLevel        *slog.LevelVar
+	info            version.Info
+	assetVer        string
+	activities      *activity.Tracker
+	diagnosticCache diagnosticCache
 }
 
 // New constructs a Server.
@@ -118,6 +119,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /partials/findings", s.handlePartialFindings)
 	mux.HandleFunc("GET /partials/log", s.handlePartialLog)
 	mux.HandleFunc("GET /partials/activity", s.handlePartialActivity)
+	mux.HandleFunc("GET /partials/health-indicator", s.handleHealthIndicator)
+	mux.HandleFunc("GET /partials/diagnostics", s.handleDiagnostics)
 	mux.HandleFunc("GET /partials/series-flow", s.handlePartialSeriesDetail)
 	mux.HandleFunc("GET /partials/upcoming", s.handlePartialUpcoming)
 
@@ -154,15 +157,9 @@ func (s *Server) layout(r *http.Request, active string) web.Layout {
 		count = -1
 	}
 	notices := setupNotices(settings, count)
-	warning := ""
-	if err != nil {
-		warning = t.T("sources.storeError")
-	} else if len(notices) == 0 {
-		warning = s.catalogWarning(r)
-	}
 	return web.Layout{
 		SetupNotices:   notices,
-		CatalogWarning: warning,
+		HealthSeverity: s.diagnostics(r.Context()).Severity,
 		T:              t,
 		Active:         active,
 		Version:        s.info.Version,
@@ -193,6 +190,11 @@ const viewTagHeader = "X-Waim-View"
 // dashboard flicker and jump while reading).
 func (s *Server) renderPartial(w http.ResponseWriter, r *http.Request, comp templ.Component) {
 	r = s.provenanceRequest(r)
+	s.renderPartialPlain(w, r, comp)
+}
+
+// Text-only polled components do not need catalog/link enrichment.
+func (s *Server) renderPartialPlain(w http.ResponseWriter, r *http.Request, comp templ.Component) {
 	var buf bytes.Buffer
 	if err := comp.Render(r.Context(), &buf); err != nil {
 		s.log.Error("render failed", "path", r.URL.Path, "err", err)
@@ -225,42 +227,6 @@ func (s *Server) provenanceRequest(r *http.Request) *http.Request {
 		return r.WithContext(ctx)
 	}
 	return r.WithContext(web.WithProvenance(ctx, catalog, run))
-}
-
-func (s *Server) catalogWarning(r *http.Request) string {
-	t := s.translator(r)
-	catalog, err := source.Catalog(r.Context(), s.store, s.cfg.Get(), false, nil)
-	if err != nil {
-		return t.T("sources.storeError")
-	}
-	if len(catalog.Warnings) > 0 {
-		return t.T("sources.incomplete")
-	}
-	run, err := s.currentRun(r.Context())
-	if err != nil {
-		return t.T("sources.storeError")
-	}
-	if run != nil {
-		if run.Metadata.Basis == "" {
-			return t.T("sources.legacy")
-		}
-		if run.Metadata.Pending {
-			return t.T("sources.updating")
-		}
-		if run.Metadata.SourcesToken != s.cfg.Get().SourcesToken() {
-			return t.T("sources.updating")
-		}
-		if run.Metadata.Revision != catalog.Revision || s.sched.Running() {
-			return t.T("sources.updating")
-		}
-		if run.FinishedAt != nil && catalog.UpdatedAt.After(*run.FinishedAt) {
-			return t.T("sources.updating")
-		}
-		if len(run.Metadata.Warnings) > 0 {
-			return t.T("sources.incomplete")
-		}
-	}
-	return ""
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

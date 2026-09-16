@@ -184,7 +184,11 @@ func (s *Service) Generate() {
 		if s.cfg.Get().TMDB.APIKey == "" {
 			outcome = activity.Waiting
 		}
-		run.Finish(ctx, outcome, len(res.Errors))
+		warnings := len(res.Errors)
+		if outcome == activity.Waiting {
+			warnings = 0
+		}
+		run.Finish(ctx, outcome, warnings)
 		s.log.Info("suggestions generated", "trending", len(res.Trending), "similar", len(res.Similar),
 			"upcoming", len(res.UpcomingTaste)+len(res.UpcomingRegion), "ai", len(res.AI))
 	}()
@@ -218,6 +222,7 @@ func (s *Service) build(ctx context.Context) *Result {
 	catalog, err := source.Catalog(ctx, s.store, settings, false, nil)
 	if err != nil {
 		res.Errors = append(res.Errors, "Catalog unavailable")
+		run.Problem(activity.StorageUnavailable, activity.Error)
 		run.Finish(ctx, activity.Failed, 1)
 		return res
 	}
@@ -226,10 +231,16 @@ func (s *Service) build(ctx context.Context) *Result {
 	if err != nil {
 		s.log.Error("catalog resolution failed", "err", err)
 		res.Errors = append(res.Errors, "Catalog resolution unavailable")
+		run.Problem(activity.StorageUnavailable, activity.Error)
 		run.Finish(ctx, activity.Failed, 1)
 		return res
 	}
 	res.Errors = append(res.Errors, catalog.Warnings...)
+	for _, warning := range catalog.Warnings {
+		if !strings.HasPrefix(warning, "Unresolved title: ") {
+			run.ReportLegacy(warning, "")
+		}
+	}
 	run.Warnings(len(res.Errors))
 	for _, it := range catalog.Items {
 		if it.WatchOnly {
@@ -279,15 +290,17 @@ func (s *Service) buildTrending(ctx context.Context, td *tmdb.Client, ownedTV, o
 	var out []Item
 	run := activity.FromContext(ctx)
 	if tv, err := td.TrendingTV(ctx); err != nil {
+		run.Problem(activity.SuggestionsUnavailable, activity.Error)
 		run.Advance(true, false)
-		res.Errors = append(res.Errors, "tmdb trending tv: "+err.Error())
+		res.Errors = append(res.Errors, "tmdb trending tv: request failed")
 	} else {
 		run.Advance(false, false)
 		out = append(out, dedupeTake(tv, "series", ownedTV, trendingTake)...)
 	}
 	if mv, err := td.TrendingMovie(ctx); err != nil {
+		run.Problem(activity.SuggestionsUnavailable, activity.Error)
 		run.Advance(true, false)
-		res.Errors = append(res.Errors, "tmdb trending movies: "+err.Error())
+		res.Errors = append(res.Errors, "tmdb trending movies: request failed")
 	} else {
 		run.Advance(false, false)
 		out = append(out, dedupeTake(mv, "movie", ownedMovie, trendingTake)...)
@@ -311,6 +324,7 @@ func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, s
 		recs, err := td.TVRecommendations(ctx, id)
 		run.Advance(err != nil, false)
 		if err != nil {
+			run.Problem(activity.SuggestionsUnavailable, activity.Error)
 			res.Errors = append(res.Errors, "TV recommendations unavailable")
 			continue
 		}
@@ -333,6 +347,7 @@ func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, s
 		recs, err := td.MovieRecommendations(ctx, id)
 		run.Advance(err != nil, false)
 		if err != nil {
+			run.Problem(activity.SuggestionsUnavailable, activity.Error)
 			res.Errors = append(res.Errors, "Movie recommendations unavailable")
 			continue
 		}
@@ -360,26 +375,30 @@ func (s *Service) buildUpcoming(ctx context.Context, td *tmdb.Client, ownedTV, o
 
 	if ids := genreIDs(ctx, td.TVGenres, tvNames, res, "tmdb tv genres"); len(ids) > 0 || len(tvNames) == 0 {
 		if tv, err := td.DiscoverUpcomingTV(ctx, ids, from); err != nil {
-			res.Errors = append(res.Errors, "tmdb upcoming tv: "+err.Error())
+			activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+			res.Errors = append(res.Errors, "tmdb upcoming tv: request failed")
 		} else {
 			taste = append(taste, dedupeTake(tv, "series", ownedTV, upcomingTake/2)...)
 		}
 	}
 	if ids := genreIDs(ctx, td.MovieGenres, movieNames, res, "tmdb movie genres"); len(ids) > 0 || len(movieNames) == 0 {
 		if mv, err := td.DiscoverUpcomingMovies(ctx, ids, from); err != nil {
-			res.Errors = append(res.Errors, "tmdb upcoming movies: "+err.Error())
+			activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+			res.Errors = append(res.Errors, "tmdb upcoming movies: request failed")
 		} else {
 			taste = append(taste, dedupeTake(mv, "movie", ownedMovie, upcomingTake/2)...)
 		}
 	}
 
 	if mv, err := td.UpcomingMovies(ctx); err != nil {
-		res.Errors = append(res.Errors, "tmdb movie releases: "+err.Error())
+		activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+		res.Errors = append(res.Errors, "tmdb movie releases: request failed")
 	} else {
 		region = append(region, dedupeTake(mv, "movie", ownedMovie, upcomingTake/2)...)
 	}
 	if tv, err := td.OnTheAirTV(ctx); err != nil {
-		res.Errors = append(res.Errors, "tmdb on the air: "+err.Error())
+		activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+		res.Errors = append(res.Errors, "tmdb on the air: request failed")
 	} else {
 		region = append(region, dedupeTake(tv, "series", ownedTV, upcomingTake/2)...)
 	}
@@ -432,7 +451,8 @@ func genreIDs(ctx context.Context, list func(context.Context) ([]tmdb.Genre, err
 	}
 	all, err := list(ctx)
 	if err != nil {
-		res.Errors = append(res.Errors, label+": "+err.Error())
+		activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+		res.Errors = append(res.Errors, label+": request failed")
 		return nil
 	}
 	byName := make(map[string]int, len(all))
@@ -453,7 +473,8 @@ func (s *Service) buildAI(ctx context.Context, cfg config.AISettings, seriesName
 	prompt := buildAIPrompt(seriesNames, movieNames)
 	suggestions, err := client.Suggest(ctx, prompt)
 	if err != nil {
-		res.Errors = append(res.Errors, "ai: "+err.Error())
+		activity.FromContext(ctx).Problem(activity.AIUnavailable, activity.Error)
+		res.Errors = append(res.Errors, "ai: recommendation request failed")
 		return nil
 	}
 	out := make([]AIItem, 0, len(suggestions))

@@ -20,7 +20,6 @@ type SourcesData struct {
 	Sources     []config.Source
 	Message     string
 	Failed      bool
-	Warnings    []string
 }
 
 type CollectionData struct {

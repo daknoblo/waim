@@ -42,6 +42,7 @@ func ResolveID(ctx context.Context, item media.Item, td Resolver) int64 {
 	if item.Type == media.Movie {
 		items, err := td.SearchMovie(ctx, item.Name, item.ProductionYear)
 		if err != nil {
+			reportIdentityFailure(ctx, item, "/search/movie")
 			return 0
 		}
 		for _, found := range items {
@@ -50,6 +51,7 @@ func ResolveID(ctx context.Context, item media.Item, td Resolver) int64 {
 	} else {
 		items, err := td.SearchTV(ctx, item.Name, item.ProductionYear)
 		if err != nil {
+			reportIdentityFailure(ctx, item, "/search/tv")
 			return 0
 		}
 		for _, found := range items {
@@ -79,6 +81,11 @@ func resolveCatalog(ctx context.Context, c media.Catalog, td Resolver) (media.Ca
 		}
 		id := ResolveID(ctx, c.Items[i], td)
 		if id <= 0 {
+			name := ""
+			if len(c.Items[i].References) > 0 {
+				name = c.Items[i].References[0].Name
+			}
+			run.UnresolvedTitle(c.Items[i].ID, name, c.Items[i].Name)
 			run.Advance(false, true)
 			c.Warnings = append(c.Warnings, "Unresolved title: "+c.Items[i].Name)
 			continue

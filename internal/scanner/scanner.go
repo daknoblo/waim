@@ -116,8 +116,14 @@ type missingCollectionDetail struct {
 // occurrence identities before this boundary so live views reuse the same union.
 func (s *Scanner) Run(ctx context.Context) (Result, error) {
 	var res Result
+	run := activity.FromContext(ctx)
 
 	res.Warnings = append(res.Warnings, s.catalog.Warnings...)
+	for _, warning := range s.catalog.Warnings {
+		if !strings.HasPrefix(warning, "Unresolved title: ") {
+			run.ReportLegacy(warning, "")
+		}
+	}
 	libNames := map[string]string{}
 	for _, l := range s.catalog.Libraries {
 		libNames[l.ID] = l.Name
@@ -146,8 +152,14 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 		}
 		if it.TMDBID() == 0 {
 			warning := "Unresolved title: " + it.Name
+			name := ""
+			if len(it.References) > 0 {
+				name = it.References[0].Name
+			}
+			run.UnresolvedTitle(it.ID, name, it.Name)
 			if !slices.Contains(s.catalog.Warnings, warning) {
 				res.Warnings = append(res.Warnings, warning)
+				s.log.Warn("title skipped: identity unresolved", "title", it.Name)
 			}
 			res.Media = append(res.Media, s.basicStat(it, libID, libNames[libID]))
 		}
@@ -167,7 +179,6 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 		sum := summaries[libID]
 		s.reporter.LibraryStart(libID, sum.Name, sum.Total)
 	}
-	run := activity.FromContext(ctx)
 	run.Phase(activity.Metadata, len(movies)+len(series))
 	itemDone := func(item media.Item, fallback string, missing int) {
 		for _, id := range itemLibraries(item, fallback) {
@@ -211,6 +222,7 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			movie, err := s.td.Movie(ctx, id)
 			if err != nil {
 				res.Warnings = append(res.Warnings, "Movie metadata unavailable: "+m.item.Name)
+				run.ReportLegacy("Movie metadata unavailable: "+m.item.Name, "")
 				res.Media = append(res.Media, s.basicStat(m.item, m.libID, libNames[m.libID]))
 				s.log.Warn("tmdb movie lookup failed", "title", m.item.Name, "tmdbId", id, "err", err)
 			} else {
@@ -224,7 +236,10 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 			}
 		}
 		itemDone(m.item, m.libID, missingCount)
-		run.Advance(len(res.Warnings) > beforeWarnings, m.item.TMDBID() == 0)
+		for _, warning := range res.Warnings[beforeWarnings:] {
+			run.ReportLegacy(warning, "")
+		}
+		run.Advance(len(res.Warnings) > beforeWarnings, m.item.TMDBID() == 0 && !slices.Contains(s.catalog.Warnings, "Unresolved title: "+m.item.Name))
 	}
 
 	// --- Series: evaluate seasons and episodes. ---
@@ -238,7 +253,10 @@ func (s *Scanner) Run(ctx context.Context) (Result, error) {
 		beforeWarnings := len(res.Warnings)
 		missing := s.scanSeries(ctx, sv.libID, libNames[sv.libID], sv.item, &res)
 		itemDone(sv.item, sv.libID, missing)
-		run.Advance(len(res.Warnings) > beforeWarnings, sv.item.TMDBID() == 0)
+		for _, warning := range res.Warnings[beforeWarnings:] {
+			run.ReportLegacy(warning, "")
+		}
+		run.Advance(len(res.Warnings) > beforeWarnings, sv.item.TMDBID() == 0 && !slices.Contains(s.catalog.Warnings, "Unresolved title: "+sv.item.Name))
 	}
 
 	for _, libID := range order {
@@ -277,6 +295,7 @@ func (s *Scanner) evalCollection(ctx context.Context, libID, libName string, ite
 	col, err := s.td.Collection(ctx, cid)
 	if err != nil {
 		res.Warnings = append(res.Warnings, "Collection metadata unavailable: "+movie.BelongsToCollection.Name)
+		activity.FromContext(ctx).ReportLegacy("Collection metadata unavailable: "+movie.BelongsToCollection.Name, "")
 		s.log.Warn("tmdb collection lookup failed", "collection", movie.BelongsToCollection.Name, "err", err)
 		return 0
 	}
@@ -351,6 +370,7 @@ func (s *Scanner) scanSeries(ctx context.Context, libID, libName string, item me
 	tv, err := s.td.TV(ctx, id)
 	if err != nil {
 		res.Warnings = append(res.Warnings, "Series metadata unavailable: "+item.Name)
+		activity.FromContext(ctx).ReportLegacy("Series metadata unavailable: "+item.Name, "")
 		res.Media = append(res.Media, s.basicStat(item, libID, libName))
 		s.log.Warn("tmdb tv lookup failed", "title", item.Name, "tmdbId", id, "err", err)
 		return 0

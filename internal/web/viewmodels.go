@@ -3,6 +3,7 @@ package web
 import (
 	"strings"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
@@ -29,7 +30,7 @@ type LangOption struct {
 // Layout carries data shared by every page (header, navigation, footer).
 type Layout struct {
 	SetupNotices   []SetupNotice
-	CatalogWarning string
+	HealthSeverity activity.Severity
 	T              *i18n.Translator
 	Active         string
 	Version        string
@@ -50,7 +51,6 @@ type SetupNotice struct {
 // StatusView is the display model for the scan status card.
 type StatusView struct {
 	SetupRequired    bool
-	Warning          string
 	State            string
 	StateLabel       string
 	Running          bool
@@ -177,9 +177,10 @@ type SuggestionsData struct {
 
 // LogPageData is the model for the dedicated activity-log page.
 type LogPageData struct {
-	Layout     Layout
-	Logs       []LogEntryView
-	Activities []ActivityView
+	Layout      Layout
+	Logs        []LogEntryView
+	Activities  []ActivityView
+	Diagnostics DiagnosticsData
 }
 
 // LangChoice is a selectable metadata language for TMDB.

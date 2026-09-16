@@ -115,6 +115,15 @@ func TestScanActivityDuringMetadataAndTerminalOutcomes(t *testing.T) {
 			if mode == "stale" && state.Warnings == 0 {
 				t.Fatal("stale inventory reported as verified")
 			}
+			if mode == "stale" {
+				found := false
+				for _, d := range state.Diagnostics {
+					found = found || (d.Reason == activity.SourceStale && d.Subject == "Home")
+				}
+				if !found {
+					t.Fatalf("stale source reason not retained: %+v", state.Diagnostics)
+				}
+			}
 		})
 	}
 }

@@ -86,6 +86,7 @@ func (a *jellyfinAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) 
 			}
 			if virtualPlaceholder(it) {
 				out.Warnings = append(out.Warnings, "Ignored virtual title: "+it.Name)
+				run.ReportLegacy("Ignored virtual title: "+it.Name, a.source.Name)
 				continue
 			}
 			n := normalize(it)
@@ -101,6 +102,9 @@ func (a *jellyfinAdapter) Snapshot(ctx context.Context) (media.Snapshot, error) 
 				normalized, warnings := normalizeEpisodes(eps, it.Name)
 				n.Episodes = normalized
 				out.Warnings = append(out.Warnings, warnings...)
+				for _, warning := range warnings {
+					run.ReportLegacy(warning, a.source.Name)
+				}
 			}
 			out.Items = append(out.Items, n)
 		}

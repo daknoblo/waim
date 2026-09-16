@@ -9,6 +9,7 @@ import (
 	"github.com/daknoblo/waim/internal/maintenance"
 	"github.com/daknoblo/waim/internal/reset"
 	"github.com/daknoblo/waim/internal/store"
+	"github.com/daknoblo/waim/internal/web"
 )
 
 // Readers also hold admission, so an export cannot straddle config/database
@@ -61,6 +62,12 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 		s.suggest.Invalidate()
 		s.sched.ResetState()
 		s.activities.Clear()
+		s.diagnosticCache.mu.Lock()
+		s.diagnosticCache.data = web.DiagnosticsData{}
+		s.diagnosticCache.sources = nil
+		s.diagnosticCache.run = nil
+		s.diagnosticCache.valid = false
+		s.diagnosticCache.mu.Unlock()
 		if scope == store.ResetFactory {
 			s.logs.Clear()
 			s.applyLogLevel(s.cfg.Get().LogLevel)

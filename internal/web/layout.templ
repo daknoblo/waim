@@ -56,6 +56,9 @@ templ Page(l Layout, body templ.Component) {
 								<img src={ "/static/waim-icon.svg?v=" + l.AssetVersion } width="32" height="32" class="h-8 w-8 shrink-0" alt="" aria-hidden="true"/>
 								{ l.T.T("app.title") }
 							</a>
+							<div id="health-indicator" hx-get="/partials/health-indicator" hx-trigger="every 3s" hx-swap="innerHTML" class="shrink-0">
+								@HealthIndicator(l.T,l.HealthSeverity)
+							</div>
 							<span class="hidden text-sm text-slate-400 sm:inline">{ l.T.T("app.tagline") }</span>
 						</div>
 						<nav class="hidden items-center gap-1 text-sm md:flex">
@@ -101,11 +104,6 @@ templ Page(l Layout, body templ.Component) {
 								</section>
 							}
 						</div>
-					}
-					if l.CatalogWarning != "" {
-						<p role="status" class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
-							{ l.CatalogWarning }
-						</p>
 					}
 					@body
 				</main>

@@ -12,6 +12,12 @@ templ logsBody(d LogPageData) {
 		<div id="activity" hx-get="/partials/activity" hx-trigger="every 2s" hx-swap="innerHTML">
 			@ActivityPanel(d.Layout.T, d.Activities)
 		</div>
+		<details id="diagnostics" class="card scroll-mt-24" open>
+			<summary class="cursor-pointer text-sm font-semibold">{ d.Layout.T.T("diagnostics.heading") }</summary>
+			<div id="diagnostic-content" hx-get="/partials/diagnostics" hx-trigger="every 3s" hx-swap="innerHTML" class="mt-3">
+				@DiagnosticsPanel(d.Layout.T,d.Diagnostics)
+			</div>
+		</details>
 		<div
 			id="log"
 			hx-get="/partials/log"

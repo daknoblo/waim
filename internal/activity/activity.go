@@ -64,7 +64,7 @@ const (
 	Recompute     Mode = "recompute"
 )
 
-// State is a value-only immutable snapshot. Done includes failed/skipped work
+// State snapshots deep-copy diagnostics. Done includes failed/skipped work
 // units; Failures, Skipped and Warnings are run-wide diagnostic counts.
 type State struct {
 	Job                           Job
@@ -78,6 +78,9 @@ type State struct {
 	Failures, Skipped, Warnings   int
 	Page                          int
 	StartedAt, UpdatedAt, EndedAt time.Time
+	Diagnostics                   []Diagnostic
+	DiagnosticsTruncated          bool
+	PreviousSeverity              Severity
 }
 
 func (s State) Percent() int {
@@ -136,7 +139,15 @@ func (t *Tracker) Start(job Job) *Run {
 	v := t.slots[job]
 	v.token++
 	now := time.Now()
+	previous := v.state
 	v.state = State{Job: job, Status: Running, StartedAt: now, UpdatedAt: now}
+	if severity := previous.Severity(); severity != "" {
+		v.state.PreviousSeverity = severity
+		v.state.Diagnostics = append([]Diagnostic(nil), previous.Diagnostics...)
+		for i := range v.state.Diagnostics {
+			v.state.Diagnostics[i].Previous = true
+		}
+	}
 	t.slots[job] = v
 	return &Run{t, job, v.token}
 }
@@ -154,6 +165,7 @@ func (t *Tracker) Snapshot() []State {
 	for i := range out {
 		if v, ok := t.slots[out[i].Job]; ok {
 			out[i] = v.state
+			out[i].Diagnostics = append([]Diagnostic(nil), v.state.Diagnostics...)
 		}
 	}
 	return out
@@ -195,11 +207,15 @@ var endpoint = regexp.MustCompile(`^/(?:movie/[0-9]+(?:/recommendations)?|tv/[0-
 
 // Endpoint accepts only known TMDB path shapes and never exposes query values.
 func (r *Run) Endpoint(path string) {
+	r.update(func(s *State) { s.Query = safeEndpoint(path) })
+}
+
+func safeEndpoint(path string) string {
 	path, _, _ = strings.Cut(path, "?")
-	if !endpoint.MatchString(path) {
+	if len(path) > 128 || !endpoint.MatchString(path) {
 		path = ""
 	}
-	r.update(func(s *State) { s.Query = path })
+	return path
 }
 
 func (r *Run) Subject(name string) {
@@ -239,10 +255,14 @@ func (r *Run) Warnings(count int) {
 // run. Call it on every exit; cancellation wins over the requested outcome.
 func (r *Run) Finish(ctx context.Context, status Status, warnings int) {
 	r.update(func(s *State) {
+		currentIssues := false
+		for _, d := range s.Diagnostics {
+			currentIssues = currentIssues || !d.Previous
+		}
 		switch {
 		case ctx.Err() != nil:
 			status = Cancelled
-		case status == Completed && (warnings > 0 || s.Warnings > 0 || s.Failures > 0 || s.Skipped > 0 || (s.Known && s.Done < s.Total)):
+		case status == Completed && (currentIssues || warnings > 0 || s.Warnings > 0 || s.Failures > 0 || s.Skipped > 0 || (s.Known && s.Done < s.Total)):
 			status = Partial
 		}
 		switch status {
@@ -251,6 +271,14 @@ func (r *Run) Finish(ctx context.Context, status Status, warnings int) {
 			status = Failed
 		}
 		s.Status, s.Warnings, s.EndedAt = status, max(s.Warnings, warnings), time.Now()
+		s.PreviousSeverity = ""
+		current := s.Diagnostics[:0]
+		for _, d := range s.Diagnostics {
+			if !d.Previous {
+				current = append(current, d)
+			}
+		}
+		s.Diagnostics = current
 	})
 }
 
@@ -266,11 +294,21 @@ func FromContext(ctx context.Context) *Run {
 }
 
 var address = regexp.MustCompile(`(?i)(?:https?://|www\.)\S+`)
+var credential = regexp.MustCompile(`(?i)\b(?:(?:api[_-]?key|token|password|authorization|secret)\s*[:=]\s*\S+|bearer\s+\S+)`)
 
 // Titles and display names are the only free-text inputs. Addresses are never
 // useful activity labels; strip them even if embedded in a source/title name.
 func safeLabel(text string) string {
+	return SafeLabel(text)
+}
+
+// SafeLabel bounds free-text display names and removes embedded addresses.
+func SafeLabel(text string) string {
 	text = address.ReplaceAllString(text, "[address]")
+	text = credential.ReplaceAllString(text, "[redacted]")
+	if i := strings.IndexAny(text, "?&"); i >= 0 && strings.Contains(text[i:], "=") {
+		text = text[:i] + " [query omitted]"
+	}
 	text = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
 			return ' '

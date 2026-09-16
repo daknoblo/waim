@@ -100,6 +100,9 @@ func TestCacheActivityReportsActualBatchAndSafePaths(t *testing.T) {
 	if s.Status != activity.Partial || s.Done != 2 || s.Failures != 1 || s.Remaining() != 0 {
 		t.Fatalf("failed batch appeared fully successful: %+v", s)
 	}
+	if len(s.Diagnostics) != 1 || s.Diagnostics[0].Reason != activity.CacheUnavailable || s.Diagnostics[0].Query != "/search/movie" {
+		t.Fatalf("failed cache request lacks a safe concrete reason: %+v", s.Diagnostics)
+	}
 }
 
 func TestCacheWaitingEmptyAndCancelled(t *testing.T) {

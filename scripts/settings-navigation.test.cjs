@@ -35,9 +35,10 @@ function fixture({ htmx = true, draft = false } = {}) {
   settings.dataset = { saving: "Saving", failed: "Failed" };
   settings.reportValidity = () => true;
   const document = new Events();
+  const diagnosticPanel = { open: false };
   document.body = new Events();
   document.querySelectorAll = selector => selector === "form[data-source-edit]" ? [source] : [];
-  document.getElementById = id => id === "settings-form" ? settings : null;
+  document.getElementById = id => id === "settings-form" ? settings : id === "diagnostics" ? diagnosticPanel : null;
   const window = new Events();
   const prompts = [], navigations = [], saves = [];
   let answer = false;
@@ -53,12 +54,16 @@ function fixture({ htmx = true, draft = false } = {}) {
     document, window, FormData, navigator: {}, console,
   });
   document.emit("DOMContentLoaded");
-  const link = { href: "/settings?tab=metadata", closest: () => link };
+  const link = { href: "/settings?tab=metadata", closest: selector => selector === "a[data-settings-tab]" ? link : null };
   return {
-    source, settings, window, prompts, navigations, saves,
+    source, settings, window, prompts, navigations, saves, diagnosticPanel,
     answer(value) { answer = value; },
     edit(value = "Unsaved source") { source.values.name = value; source.emit("input"); },
     tab() { return document.emit("click", { target: link, button: 0 }); },
+    diagnostics() {
+      const diagnosticLink = { closest: selector => selector === "a[data-diagnostics-link]" ? diagnosticLink : null };
+      return document.emit("click", { target: diagnosticLink, button: 0 });
+    },
     unload() { return window.emit("beforeunload"); },
     response(state) {
       settings.emit("htmx:afterRequest", {
@@ -143,4 +148,11 @@ test("approved discard waits for global autosave but never submits source values
   assert.equal(f.saves.length, 1);
   assert.equal(f.saves[0].form, f.settings);
   assert.equal(f.unload().defaultPrevented, false);
+});
+
+test("diagnostic links open the stable outer details panel without saving", () => {
+  const f = fixture();
+  f.diagnostics();
+  assert.equal(f.diagnosticPanel.open, true);
+  assert.equal(f.saves.length, 0);
 });

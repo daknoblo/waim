@@ -12,5 +12,5 @@ func (s *Server) activityViews() []web.ActivityView {
 }
 
 func (s *Server) handlePartialActivity(w http.ResponseWriter, r *http.Request) {
-	s.renderPartial(w, r, web.ActivityPanel(s.translator(r), s.activityViews()))
+	s.renderPartialPlain(w, r, web.ActivityPanel(s.translator(r), s.activityViews()))
 }

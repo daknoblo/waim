@@ -124,6 +124,7 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 
 	count, err := r.store.TMDBCacheCount(ctx)
 	if err != nil {
+		run.Report(activity.Diagnostic{Reason: activity.StorageUnavailable, Severity: activity.Error})
 		r.log.Warn("refresher: count cache", "error", err)
 		return
 	}
@@ -147,6 +148,7 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 
 	keys, err := r.store.TMDBCacheOldestKeys(ctx, batch)
 	if err != nil {
+		run.Report(activity.Diagnostic{Reason: activity.StorageUnavailable, Severity: activity.Error})
 		r.log.Warn("refresher: oldest keys", "error", err)
 		return
 	}
@@ -166,6 +168,7 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 			return
 		}
 		if err := td.RefreshKey(ctx, key); err != nil {
+			run.Report(activity.Diagnostic{Reason: activity.CacheUnavailable, Severity: activity.Error, Query: key})
 			run.Advance(true, false)
 			failed++
 			r.log.Debug("refresher: refresh failed", "key", key, "error", err)
@@ -202,6 +205,7 @@ func (r *Refresher) cleanup(ctx context.Context) {
 	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
 	n, err := r.store.TMDBCachePruneUnusedBefore(ctx, cutoff)
 	if err != nil {
+		run.Report(activity.Diagnostic{Reason: activity.StorageUnavailable, Severity: activity.Error})
 		r.log.Warn("refresher: cleanup", "error", err)
 		return
 	}

@@ -117,6 +117,7 @@ func staticHTML(html string, t *i18n.Translator) string {
 		`href="/collection"`, `href="collection.html"`,
 		`href="/suggestions"`, `href="suggestions.html"`,
 		`href="/logs"`, `href="logs.html"`,
+		`href="/logs#diagnostics"`, `href="logs.html#diagnostics"`,
 		`href="/settings"`, `href="settings.html"`,
 		`href="/about"`, `href="about.html"`,
 		`href="/export/settings"`, `href="`+repoURL+`"`,

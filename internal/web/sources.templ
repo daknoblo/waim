@@ -15,9 +15,6 @@ templ sourcesBody(d SourcesData) {
 	if d.Message != "" {
 		<p role="status" class={ "card mb-4", templ.KV("alert-error", d.Failed) }>{ d.Message }</p>
 	}
-	for _, warning := range d.Warnings {
-		<p role="status" class="mb-3 text-amber-200">{ warning }</p>
-	}
 	<div class="grid gap-4">
 		for _, src := range d.Sources {
 			<section class="card grid gap-3">

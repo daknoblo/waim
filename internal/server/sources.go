@@ -39,22 +39,6 @@ func (s *Server) renderSources(w http.ResponseWriter, r *http.Request, message s
 
 func (s *Server) sourceSettingsData(r *http.Request) web.SourcesData {
 	d := web.SourcesData{Layout: s.layout(r, web.NavSettings), Sources: s.cfg.Get().Redacted().Sources}
-	for _, src := range s.cfg.Get().Sources {
-		if src.Type == media.Virtual || !src.Enabled {
-			continue
-		}
-		snapshot, err := s.store.SourceSnapshot(r.Context(), src.ID, src.Fingerprint())
-		if err != nil {
-			d.Message = s.translator(r).T("sources.storeError")
-			d.Failed = true
-			break
-		}
-		if snapshot.Snapshot == nil {
-			d.Warnings = append(d.Warnings, src.Name+": "+s.translator(r).T("sources.unknown"))
-		} else if snapshot.Error != "" {
-			d.Warnings = append(d.Warnings, src.Name+": "+s.translator(r).T("sources.stale"))
-		}
-	}
 	if draft, ok := r.Context().Value(sourceDraftKey{}).(*config.Source); ok {
 		found := false
 		for i := range d.Sources {
@@ -201,6 +185,7 @@ func (s *Server) refreshSourceLibraries(ctx context.Context, src config.Source) 
 		status := activity.Completed
 		if resultErr != nil {
 			status = activity.Failed
+			run.Report(activity.Diagnostic{Reason: activity.SourceUnavailable, Severity: activity.Error, Subject: src.Name})
 		}
 		run.Finish(ctx, status, 0)
 	}()
@@ -238,7 +223,12 @@ func (s *Server) handleTestSource(w http.ResponseWriter, r *http.Request) {
 	run.Subject(src.Name)
 	run.Operation(activity.Test)
 	status := activity.Failed
-	defer func() { run.Finish(r.Context(), status, 0) }()
+	defer func() {
+		if status == activity.Failed {
+			run.Report(activity.Diagnostic{Reason: activity.SourceUnavailable, Severity: activity.Error, Subject: src.Name})
+		}
+		run.Finish(r.Context(), status, 0)
+	}()
 	adapter, err := source.New(src)
 	if err == nil {
 		err = adapter.(source.Tester).Test(r.Context())
