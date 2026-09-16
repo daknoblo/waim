@@ -146,9 +146,23 @@ func (s *Server) translator(r *http.Request) *i18n.Translator {
 
 func (s *Server) layout(r *http.Request, active string) web.Layout {
 	t := s.translator(r)
+	settings := s.cfg.Get()
+	entries, _, err := s.store.VirtualEntries(r.Context())
+	count := len(entries)
+	if err != nil {
+		s.log.Error("setup collection lookup failed", "err", err)
+		count = -1
+	}
+	notices := setupNotices(settings, count)
+	warning := ""
+	if err != nil {
+		warning = t.T("sources.storeError")
+	} else if len(notices) == 0 {
+		warning = s.catalogWarning(r)
+	}
 	return web.Layout{
-		SetupRequired:  !scanConfigured(s.cfg.Get()),
-		CatalogWarning: s.catalogWarning(r),
+		SetupNotices:   notices,
+		CatalogWarning: warning,
 		T:              t,
 		Active:         active,
 		Version:        s.info.Version,
@@ -215,9 +229,6 @@ func (s *Server) provenanceRequest(r *http.Request) *http.Request {
 
 func (s *Server) catalogWarning(r *http.Request) string {
 	t := s.translator(r)
-	if s.cfg.Get().TMDB.APIKey == "" {
-		return t.T("sources.tmdbRequired")
-	}
 	catalog, err := source.Catalog(r.Context(), s.store, s.cfg.Get(), false, nil)
 	if err != nil {
 		return t.T("sources.storeError")

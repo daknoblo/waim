@@ -252,10 +252,17 @@ turned off by default.
 ### Scanning (all active real sources)
 
 When and how waim reads your Jellyfin libraries.
-Before a TMDB key is configured, the UI shows one central setup notice linking
-to Settings. Scanning waits for setup and the manual scan button is disabled;
-missing initial configuration is not recorded as a failed scan. Actual scan
-errors remain visible in the scan status.
+New installations show separate setup cards for **Metadata** and **Media
+sources**, each linking to its settings tab. The metadata card requests a
+missing TMDB key. The media card distinguishes an absent/incomplete server
+connection from an unselected library list, and offers the virtual collection
+as an alternative. A configured source with selected libraries, or existing
+virtual entries, satisfies the media-input requirement; a media server is not
+mandatory. Each card disappears independently as its requirement is fulfilled.
+These checks read saved configuration only and do not make connection probes.
+Without a TMDB key, scanning waits for setup and the manual scan button is
+disabled; missing initial configuration is not recorded as a failed scan.
+Actual scan errors remain visible in the scan status.
 
 | Field                  | Description                                                              |
 | ---------------------- | ------------------------------------------------------------------------ |

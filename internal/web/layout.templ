@@ -86,13 +86,25 @@ templ Page(l Layout, body templ.Component) {
 					</div>
 				}
 				<main class="flex-1 pb-10">
+					if len(l.SetupNotices) > 0 {
+						<div class={ "mb-4 grid gap-3", templ.KV("sm:grid-cols-2", len(l.SetupNotices) > 1) }>
+							for _, notice := range l.SetupNotices {
+								<section role="status" data-setup-category={ notice.CategoryKey } class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+									<h2 class="font-semibold text-amber-200">{ l.T.T(notice.CategoryKey) }</h2>
+									<p class="mt-2 text-sm text-slate-300">{ l.T.T(notice.MessageKey) }</p>
+									<div class="mt-3 flex flex-wrap gap-2">
+										<a class="btn-ghost" href={ templ.SafeURL(notice.URL) }>{ l.T.T(notice.ActionKey) }</a>
+										if notice.VirtualAlternative {
+											<a class="btn-ghost" href="/collection">{ l.T.T("setup.virtualAction") }</a>
+										}
+									</div>
+								</section>
+							}
+						</div>
+					}
 					if l.CatalogWarning != "" {
 						<p role="status" class="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
-							if l.SetupRequired {
-								<a href="/settings?tab=metadata">{ l.CatalogWarning }</a>
-							} else {
-								{ l.CatalogWarning }
-							}
+							{ l.CatalogWarning }
 						</p>
 					}
 					@body
