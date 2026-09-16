@@ -55,7 +55,9 @@ Huntarr or Missingarr.
   **Scan now** button.
 - Per-library selection: choose exactly which Jellyfin libraries to scan.
 - Dashboard with grouped findings, sortable columns, a live search box and a
-  per-library quick filter.
+  per-library quick filter. Library labels use `Type · Address · Library` on one
+  line, with horizontal scrolling for long labels on mobile. The desktop
+  dashboard content is 10% wider to give the findings table more room.
 - **Statistics** page: completeness per library, most incomplete series and
   collections, top/lowest rated titles per library — in separate sections for
   owned media and for missing ones (movies *and* series, so you can decide

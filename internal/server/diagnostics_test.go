@@ -131,6 +131,19 @@ func TestPersistedWarningsAndFailuresSurviveRestartWithoutGlobalBanners(t *testi
 			if !strings.Contains(html, `id="health-indicator"`) {
 				t.Fatal("header indicator absent")
 			}
+			if page == "/" && strings.Count(html, s.catalog.For(locale).T("sources.incomplete")) > 1 {
+				t.Fatal("dashboard repeats the incomplete inventory message")
+			}
+		}
+		for _, path := range []string{"/partials/status", "/partials/findings"} {
+			html = diagRequest(s, path, locale, "").Body.String()
+			limit := 1
+			if path == "/partials/status" {
+				limit = 0
+			}
+			if strings.Count(html, s.catalog.For(locale).T("sources.incomplete")) > limit {
+				t.Fatalf("%s restored duplicate inventory notices", path)
+			}
 		}
 	}
 	failed, err := s.store.StartScanRun(ctx)

@@ -10,7 +10,7 @@ templ Dashboard(d DashboardData) {
 }
 
 templ dashboardBody(d DashboardData) {
-	<section class="grid gap-4">
+	<section id="dashboard-content" class="grid min-w-0 gap-4 lg:-mx-[5%]">
 		@StatusCard(d.Layout.T, d.Status)
 
 		<div class="card">
@@ -147,9 +147,9 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 								}
 							</td>
 								<td class="px-3 py-2" data-label={ t.T("finding.col.library") }>
-									<div class="grid gap-1">
+									<div class="grid justify-items-start gap-1 overflow-x-auto sm:overflow-visible">
 										for _, label := range FindingLibraryLabels(t,r.LibraryReferences,r.LibraryID,r.Library) {
-											<span class={ "badge whitespace-normal break-words", label.Color } title={ label.Name }>
+											<span class={ "badge whitespace-nowrap", label.Color } title={ label.Name }>
 												{ label.Text }
 												if label.Stale {
 													<span class="text-amber-200"> · { t.T("sources.stale") }</span>

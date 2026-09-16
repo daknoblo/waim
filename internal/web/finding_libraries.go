@@ -58,7 +58,7 @@ func FindingLibraryLabels(t *i18n.Translator, refs []media.Reference, fallbackID
 			continue
 		}
 		seen[key] = len(labels)
-		labels = append(labels, FindingLibraryLabel{Text: strings.Join(parts, " / "), Name: name, Color: LibraryColor(ref.LibraryID), Stale: ref.Stale})
+		labels = append(labels, FindingLibraryLabel{Text: strings.Join(parts, " \u00b7 "), Name: name, Color: LibraryColor(ref.LibraryID), Stale: ref.Stale})
 	}
 	if len(labels) == 0 {
 		labels = append(labels, FindingLibraryLabel{Text: LibraryDisplayName(t, fallbackID, fallbackName), Color: LibraryColor(fallbackID)})

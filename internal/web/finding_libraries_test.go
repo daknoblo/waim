@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
@@ -28,11 +29,11 @@ func TestFindingLibraryLabelsIncludeTypeServerAndEachLibrary(t *testing.T) {
 		tr := cat.For(locale)
 		labels := FindingLibraryLabels(tr, refs, "", "")
 		want := []string{
-			"Jellyfin / https://jf.example/jellyfin / Films",
-			"Jellyfin / https://jf.example/jellyfin / Series",
-			"Emby / http://emby.example:8096 / Cinema",
-			"Plex / https://plex.example / Movies",
-			tr.T("sources.typeVirtual") + " / " + tr.T("sources.collection"),
+			"Jellyfin \u00b7 https://jf.example/jellyfin \u00b7 Films",
+			"Jellyfin \u00b7 https://jf.example/jellyfin \u00b7 Series",
+			"Emby \u00b7 http://emby.example:8096 \u00b7 Cinema",
+			"Plex \u00b7 https://plex.example \u00b7 Movies",
+			tr.T("sources.typeVirtual") + " \u00b7 " + tr.T("sources.collection"),
 		}
 		if len(labels) != len(want) {
 			t.Fatalf("lost or duplicated memberships: %+v", labels)
@@ -80,8 +81,14 @@ func TestCollectionFindingsShowReferencesOnlyInLibraryColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := b.String()
-	if strings.Count(html, "Jellyfin / https://jf.example / Films") != 1 {
+	if strings.Count(html, "Jellyfin \u00b7 https://jf.example \u00b7 Films") != 1 {
 		t.Fatal("expected one expanded library label")
+	}
+	if !strings.Contains(html, "badge whitespace-nowrap") || strings.Contains(html, "whitespace-normal") || strings.Contains(html, "break-words") {
+		t.Fatal("library labels must remain on a single line")
+	}
+	if !strings.Contains(html, "overflow-x-auto sm:overflow-visible") {
+		t.Fatal("long mobile labels must remain accessible without expanding the page")
 	}
 	for _, forbidden := range []string{tr.T("sources.context"), "/collection/add", "/collection/remove", `href="https://jf.example/web/`} {
 		if strings.Contains(html, forbidden) {
@@ -91,6 +98,45 @@ func TestCollectionFindingsShowReferencesOnlyInLibraryColumn(t *testing.T) {
 	for _, keep := range []string{"Missing movie", "7.5", "tt1234567", "https://www.themoviedb.org/collection/100"} {
 		if !strings.Contains(html, keep) {
 			t.Fatalf("lost existing finding content: %s", keep)
+		}
+	}
+}
+
+func TestDashboardIncompleteInventoryUsesHeaderInsteadOfRepeatedBanners(t *testing.T) {
+	cat, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, locale := range []string{"en", "de"} {
+		tr := cat.For(locale)
+		for _, populated := range []bool{true, false} {
+			d := DashboardData{
+				Layout:    Layout{T: tr, Active: NavDashboard, HealthSeverity: activity.Warning},
+				DataState: DataIncomplete,
+			}
+			wantMessages := 1
+			if populated {
+				d.Findings = []FindingRow{{Title: "Example", Library: "Films"}}
+				wantMessages = 0
+			}
+			var b bytes.Buffer
+			if err := Dashboard(d).Render(context.Background(), &b); err != nil {
+				t.Fatal(err)
+			}
+			html := b.String()
+			if got := strings.Count(html, tr.T("sources.incomplete")); got != wantMessages {
+				t.Fatalf("%s populated=%v: got %d incomplete messages, want %d", locale, populated, got, wantMessages)
+			}
+			if strings.Count(html, `data-health="warning"`) != 1 || strings.Contains(html, tr.T("dashboard.noFindings")) {
+				t.Fatal("incomplete inventory needs one header indicator, never an all-clear message")
+			}
+			b.Reset()
+			if err := StatusCard(tr, d.Status).Render(context.Background(), &b); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(b.String(), tr.T("sources.incomplete")) {
+				t.Fatal("status polling must not restore the duplicate inventory warning")
+			}
 		}
 	}
 }

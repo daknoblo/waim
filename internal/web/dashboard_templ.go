@@ -63,7 +63,7 @@ func dashboardBody(d DashboardData) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"grid gap-4\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section id=\"dashboard-content\" class=\"grid min-w-0 gap-4 lg:-mx-[5%]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -848,12 +848,12 @@ func FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state st
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "\"><div class=\"grid gap-1\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "\"><div class=\"grid justify-items-start gap-1 overflow-x-auto sm:overflow-visible\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, label := range FindingLibraryLabels(t, r.LibraryReferences, r.LibraryID, r.Library) {
-					var templ_7745c5c3_Var45 = []any{"badge whitespace-normal break-words", label.Color}
+					var templ_7745c5c3_Var45 = []any{"badge whitespace-nowrap", label.Color}
 					templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var45...)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
@@ -878,7 +878,7 @@ func FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state st
 					var templ_7745c5c3_Var47 string
 					templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.ResolveAttributeValue(label.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dashboard.templ`, Line: 152, Col: 96}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dashboard.templ`, Line: 152, Col: 84}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var47)
 					if templ_7745c5c3_Err != nil {
