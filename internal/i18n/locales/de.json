@@ -79,6 +79,8 @@
   "activity.status.running": "In Arbeit",
   "activity.status.waiting": "Wartet auf Einrichtung",
   "activity.status.completed": "Abgeschlossen",
+  "activity.status.ok": "OK",
+  "activity.resolved": "Frühere Zuordnungswarnungen sind durch einen neueren, vollständigen Abgleich erledigt.",
   "activity.status.partial": "Mit Warnungen",
   "activity.status.failed": "Fehlgeschlagen",
   "activity.status.cancelled": "Abgebrochen",

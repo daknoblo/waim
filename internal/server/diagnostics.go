@@ -37,9 +37,14 @@ func promote(current, next activity.Severity) activity.Severity {
 }
 
 func (s *Server) diagnostics(ctx context.Context) web.DiagnosticsData {
+	data, _ := s.diagnosticSnapshot(ctx)
+	return data
+}
+
+func (s *Server) diagnosticSnapshot(ctx context.Context) (web.DiagnosticsData, []activity.State) {
 	basis, err := s.store.DiagnosticBasis(ctx)
 	if err != nil {
-		return s.combineDiagnostics(storageDiagnostics(), store.DiagnosticBasis{})
+		return s.combineDiagnostics(storageDiagnostics(), store.DiagnosticBasis{}, time.Time{})
 	}
 	settings := s.cfg.Get()
 	keyBytes, _ := json.Marshal(struct {
@@ -182,10 +187,28 @@ func (s *Server) diagnostics(ctx context.Context) web.DiagnosticsData {
 	persisted := s.diagnosticCache.data
 	persisted.Items = append([]web.DiagnosticView(nil), persisted.Items...)
 	s.diagnosticCache.mu.Unlock()
-	return s.combineDiagnostics(persisted, basis)
+	var resolvedAt time.Time
+	// Only a newer, fully confirmed catalog can retire old identity warnings.
+	// The cached summary includes revision, source freshness and metadata warnings.
+	if persisted.Severity == "" && basis.Successful.ID > 0 && basis.Latest.ID == basis.Successful.ID &&
+		basis.Latest.Status == store.StatusSuccess && !basis.Latest.HasError {
+		resolvedAt, _ = time.Parse(time.RFC3339Nano, basis.Successful.Started)
+	}
+	if s.suggest != nil {
+		confirmedAt, err := s.suggest.ConfirmIdentityResolution(ctx, resolvedAt)
+		if err != nil {
+			s.log.Error("could not persist resolved suggestion diagnostics", "err", err)
+			persisted.Severity = activity.Error
+			persisted.Items = append(persisted.Items, storageDiagnostics().Items...)
+		}
+		if confirmedAt.After(resolvedAt) {
+			resolvedAt = confirmedAt
+		}
+	}
+	return s.combineDiagnostics(persisted, basis, resolvedAt)
 }
 
-func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.DiagnosticBasis) web.DiagnosticsData {
+func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.DiagnosticBasis, resolvedAt time.Time) (web.DiagnosticsData, []activity.State) {
 	out := web.DiagnosticsData{Truncated: persisted.Truncated, Retrying: basis.Latest.Status == store.StatusRunning && persisted.Severity != ""}
 	seen := map[string]bool{}
 	add := func(d web.DiagnosticView) {
@@ -207,7 +230,8 @@ func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.D
 		out.Items = append(out.Items, d)
 	}
 	scanRunning := s.sched != nil && s.sched.Running()
-	for _, state := range s.activities.Snapshot() {
+	states := s.activityStates(resolvedAt)
+	for _, state := range states {
 		scanRunning = scanRunning || (state.Job == activity.Scan && state.Status == activity.Running)
 		if state.Status == activity.Waiting {
 			continue
@@ -226,7 +250,7 @@ func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.D
 		add(d)
 	}
 	if s.suggest != nil {
-		saved := s.suggest.SavedDiagnostics()
+		saved := reconcileIdentityWarnings(s.suggest.SavedDiagnostics(), resolvedAt)
 		out.Truncated = out.Truncated || saved.DiagnosticsTruncated
 		for _, d := range saved.Diagnostics {
 			add(web.DiagnosticView{Diagnostic: d, Job: activity.Suggestions, Persisted: true})
@@ -245,7 +269,7 @@ func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.D
 		out.Items = out.Items[:activity.MaxDiagnostics]
 		out.Truncated = true
 	}
-	return out
+	return out, states
 }
 
 func storageDiagnostics() web.DiagnosticsData {

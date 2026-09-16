@@ -14,12 +14,13 @@ const RefreshInterval = 12 * time.Hour
 const resultCacheKey = "suggestions.result.v1"
 
 type persistedCache struct {
-	Version     int
-	SettingsKey string
-	AttemptedAt time.Time
-	Result      *Result
-	Diagnostics []activity.Diagnostic
-	Truncated   bool
+	Version            int
+	SettingsKey        string
+	AttemptedAt        time.Time
+	Result             *Result
+	Diagnostics        []activity.Diagnostic
+	Truncated          bool
+	IdentityResolvedAt time.Time
 }
 
 func (s *Service) settingsKey() string {
@@ -52,6 +53,7 @@ func (s *Service) loadCache() {
 		return
 	}
 	s.result, s.cacheKey, s.lastAttempt = cached.Result, cached.SettingsKey, cached.AttemptedAt
+	s.identityResolvedAt = cached.IdentityResolvedAt
 	// Revalidate persisted reason codes and labels through the normal bounded
 	// activity API, without pretending a generation ran during startup.
 	tracker := activity.New()
@@ -61,6 +63,12 @@ func (s *Service) loadCache() {
 	}
 	run.Finish(ctx, activity.Completed, 0)
 	s.savedDiagnostics = tracker.Snapshot()[2]
+	s.savedDiagnostics.StartedAt = cached.AttemptedAt
+	if cached.Result != nil {
+		s.savedDiagnostics.StartedAt = cached.Result.GeneratedAt
+	}
+	s.savedDiagnostics.EndedAt = cached.AttemptedAt
+	s.savedDiagnostics.UpdatedAt = cached.AttemptedAt
 	s.savedDiagnostics.DiagnosticsTruncated = s.savedDiagnostics.DiagnosticsTruncated || cached.Truncated
 }
 
@@ -87,6 +95,49 @@ func hasSuggestions(r *Result) bool {
 	return len(r.Trending)+len(r.Similar)+len(r.UpcomingTaste)+len(r.UpcomingRegion)+len(r.AI) > 0
 }
 
+// Record a clean scan's evidence once, without expiring the recommendation
+// cache. Keeping this watermark prevents old warnings returning after a later,
+// unrelated source outage. Callers hold normal maintenance admission.
+func (s *Service) ConfirmIdentityResolution(ctx context.Context, scanStarted time.Time) (time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cacheKey != s.settingsKey() {
+		return time.Time{}, nil
+	}
+	if s.identityResolvedAt.After(s.savedDiagnostics.EndedAt) || !scanStarted.After(s.identityResolvedAt) || !scanStarted.After(s.savedDiagnostics.EndedAt) ||
+		s.savedDiagnostics.EndedAt.IsZero() || s.savedDiagnostics.DiagnosticsTruncated {
+		return s.identityResolvedAt, nil
+	}
+	hasUnresolved := false
+	for _, d := range s.savedDiagnostics.Diagnostics {
+		hasUnresolved = hasUnresolved || (d.Reason == activity.Unresolved && d.Severity == activity.Skip)
+	}
+	if !hasUnresolved {
+		return s.identityResolvedAt, nil
+	}
+	raw, found, err := s.store.GetKV(ctx, resultCacheKey)
+	if err != nil {
+		return s.identityResolvedAt, err
+	}
+	if !found {
+		return s.identityResolvedAt, fmt.Errorf("suggestion cache missing while recording resolved diagnostics")
+	}
+	var cached persistedCache
+	if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+		return s.identityResolvedAt, err
+	}
+	cached.IdentityResolvedAt = scanStarted
+	payload, err := json.Marshal(cached)
+	if err == nil {
+		err = s.store.SetKV(ctx, resultCacheKey, string(payload))
+	}
+	if err != nil {
+		return s.identityResolvedAt, err
+	}
+	s.identityResolvedAt = scanStarted
+	return scanStarted, nil
+}
+
 func (s *Service) publish(ctx context.Context, res *Result, epoch uint64, key string, run *activity.Run) activity.Status {
 	state := s.activities.Snapshot()[2]
 	diagnostics := make([]activity.Diagnostic, 0, len(state.Diagnostics))
@@ -109,6 +160,7 @@ func (s *Service) publish(ctx context.Context, res *Result, epoch uint64, key st
 	cached := persistedCache{
 		Version: 1, SettingsKey: key, AttemptedAt: s.now(),
 		Result: result, Diagnostics: diagnostics, Truncated: state.DiagnosticsTruncated,
+		IdentityResolvedAt: s.identityResolvedAt,
 	}
 	raw, err := json.Marshal(cached)
 	if err == nil {
@@ -121,6 +173,7 @@ func (s *Service) publish(ctx context.Context, res *Result, epoch uint64, key st
 	}
 	s.result, s.cacheKey, s.lastAttempt = result, key, cached.AttemptedAt
 	state.Diagnostics = diagnostics
+	state.EndedAt = cached.AttemptedAt
 	state.PreviousSeverity = ""
 	state.Status = activity.Completed
 	if len(diagnostics) > 0 || state.Warnings > 0 || state.Failures > 0 || state.Skipped > 0 {

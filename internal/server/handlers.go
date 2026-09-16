@@ -26,7 +26,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	d := web.LogPageData{
 		Layout:      s.layout(r, web.NavLogs),
 		Logs:        web.BuildLogViews(s.logs.Entries()),
-		Activities:  s.activityViews(),
+		Activities:  s.activityViews(r.Context()),
 		Diagnostics: s.diagnostics(r.Context()),
 	}
 	s.render(w, r, web.Logs(d))

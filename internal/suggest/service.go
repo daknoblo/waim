@@ -81,17 +81,18 @@ type Service struct {
 	log   *slog.Logger
 	now   func() time.Time
 
-	mu               sync.RWMutex
-	result           *Result
-	cacheKey         string
-	lastAttempt      time.Time
-	savedDiagnostics activity.State
-	running          atomic.Bool
-	ctx              context.Context
-	cancel           context.CancelFunc
-	wg               sync.WaitGroup
-	epoch            uint64
-	activities       *activity.Tracker
+	mu                 sync.RWMutex
+	result             *Result
+	cacheKey           string
+	lastAttempt        time.Time
+	savedDiagnostics   activity.State
+	identityResolvedAt time.Time
+	running            atomic.Bool
+	ctx                context.Context
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
+	epoch              uint64
+	activities         *activity.Tracker
 }
 
 // New creates a suggestion service.
@@ -121,6 +122,7 @@ func (s *Service) Invalidate() {
 	if s.cacheKey != key {
 		s.result = nil
 		s.savedDiagnostics = activity.State{}
+		s.identityResolvedAt = time.Time{}
 		s.cacheKey = key
 	}
 	if s.result == nil {
@@ -136,6 +138,7 @@ func (s *Service) Clear() {
 	s.result = nil
 	s.lastAttempt = time.Time{}
 	s.savedDiagnostics = activity.State{}
+	s.identityResolvedAt = time.Time{}
 	s.cacheKey = ""
 }
 
@@ -188,6 +191,7 @@ func (s *Service) generate(due time.Time, scheduled bool) {
 	if s.cacheKey != key {
 		s.result = nil
 		s.savedDiagnostics = activity.State{}
+		s.identityResolvedAt = time.Time{}
 	}
 	s.lastAttempt = s.now()
 	s.cacheKey = key

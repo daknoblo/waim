@@ -51,6 +51,11 @@ func (v ActivityView) Tone() string {
 			return "activity-warning"
 		}
 		return "activity-running"
+	case activity.Completed:
+		if v.Severity() == "" {
+			return "activity-success"
+		}
+		return "activity-warning"
 	default:
 		return "activity-resting"
 	}
@@ -66,7 +71,12 @@ func (v ActivityView) JobKey() string {
 	}
 	return "activity.job." + string(v.Job)
 }
-func (v ActivityView) StatusKey() string    { return "activity.status." + string(v.Status) }
+func (v ActivityView) StatusKey() string {
+	if v.Status == activity.Completed && v.Severity() == "" {
+		return "activity.status.ok"
+	}
+	return "activity.status." + string(v.Status)
+}
 func (v ActivityView) PhaseKey() string     { return "activity.phase." + string(v.Phase) }
 func (v ActivityView) OperationKey() string { return "activity.operation." + string(v.Operation) }
 

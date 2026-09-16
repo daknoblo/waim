@@ -25,6 +25,9 @@ templ activityCard(t *i18n.Translator, a ActivityView) {
 			<h3 class="min-w-0 text-sm font-semibold text-slate-100">{ t.T(a.JobKey()) }</h3>
 			<span class="activity-status">{ t.T(a.StatusKey()) }</span>
 		</div>
+		if a.Resolved > 0 {
+			<p class="mt-2 text-xs text-emerald-300">{ t.T("activity.resolved") }</p>
+		}
 		if a.IsRunning() {
 			<div class="mt-4 flex min-w-0 items-center gap-4">
 				<div class="activity-ring" role="progressbar" aria-label={ t.T(a.JobKey()) + " · " + t.T("activity.currentPhase") + " · " + t.T(a.PhaseKey()) }

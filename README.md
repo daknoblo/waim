@@ -162,6 +162,17 @@ that job's issues, and later successful scans replace saved scan warnings/errors
 Old ring-buffer log entries alone do not latch the indicator. Full reset also
 clears the diagnostic cache and retained activity details.
 
+A newer, fully verified scan retires earlier unresolved-title warnings from
+Suggestions, including persisted warnings after restart. Cards, counters,
+diagnostic details and the header use the same reconciled status; the suggestion
+cache itself is not regenerated or erased. Independent API/AI errors, truncated
+diagnostics and still-unconfirmed scans are not treated as resolved. The card
+notes when a newer scan resolved old title-matching warnings. That confirmation
+is persisted so an unrelated later outage does not revive the old warning.
+
+Successfully completed activity cards show a green **OK**. Tasks that have never
+run remain **Ready**, rather than claiming a verified success.
+
 ## Suggestions cache
 
 Suggestions are saved in SQLite and restored after restarts and image updates.

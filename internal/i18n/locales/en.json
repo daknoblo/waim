@@ -79,6 +79,8 @@
   "activity.status.running": "Working",
   "activity.status.waiting": "Waiting for setup",
   "activity.status.completed": "Completed",
+  "activity.status.ok": "OK",
+  "activity.resolved": "Earlier title-matching warnings were resolved by a newer, fully verified comparison.",
   "activity.status.partial": "With warnings",
   "activity.status.failed": "Failed",
   "activity.status.cancelled": "Cancelled",

@@ -32,6 +32,9 @@
   .activity-resting {
     @apply text-slate-400;
   }
+  .activity-success {
+    @apply border-emerald-500/30 text-emerald-300;
+  }
   .activity-status {
     @apply shrink-0 rounded-full border border-current px-2 py-0.5 text-[10px] font-medium;
   }

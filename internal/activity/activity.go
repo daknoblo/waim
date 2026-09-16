@@ -80,6 +80,7 @@ type State struct {
 	StartedAt, UpdatedAt, EndedAt time.Time
 	Diagnostics                   []Diagnostic
 	DiagnosticsTruncated          bool
+	Resolved                      int
 	PreviousSeverity              Severity
 }
 
