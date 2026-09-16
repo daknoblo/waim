@@ -16,10 +16,12 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
 	"github.com/daknoblo/waim/internal/scheduler"
+	"github.com/daknoblo/waim/internal/source"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/suggest"
 	"github.com/daknoblo/waim/internal/version"
@@ -33,22 +35,24 @@ const (
 
 // Server holds the dependencies shared by all HTTP handlers.
 type Server struct {
-	cfg      *config.Manager
-	store    *store.Store
-	sched    *scheduler.Scheduler
-	suggest  *suggest.Service
-	logs     *logbuf.Buffer
-	catalog  *i18n.Catalog
-	log      *slog.Logger
-	logLevel *slog.LevelVar
-	info     version.Info
-	assetVer string
+	cfg             *config.Manager
+	store           *store.Store
+	sched           *scheduler.Scheduler
+	suggest         *suggest.Service
+	logs            *logbuf.Buffer
+	catalog         *i18n.Catalog
+	log             *slog.Logger
+	logLevel        *slog.LevelVar
+	info            version.Info
+	assetVer        string
+	activities      *activity.Tracker
+	diagnosticCache diagnosticCache
 }
 
 // New constructs a Server.
-func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *suggest.Service, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger, logLevel *slog.LevelVar) *Server {
+func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *suggest.Service, logs *logbuf.Buffer, catalog *i18n.Catalog, log *slog.Logger, logLevel *slog.LevelVar, activities ...*activity.Tracker) *Server {
 	info := version.Get()
-	return &Server{
+	s := &Server{
 		cfg:      cfg,
 		store:    st,
 		sched:    sched,
@@ -60,6 +64,10 @@ func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *
 		info:     info,
 		assetVer: computeAssetVersion(info),
 	}
+	if len(activities) > 0 {
+		s.activities = activities[0]
+	}
+	return s
 }
 
 // computeAssetVersion returns a token used to cache-bust static assets. It uses
@@ -92,15 +100,27 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /logs", s.handleLogs)
 	mux.HandleFunc("GET /settings", s.handleSettings)
 	mux.HandleFunc("POST /settings", s.handleSaveSettings)
-	mux.HandleFunc("POST /settings/refresh-libraries", s.handleRefreshLibraries)
+	mux.HandleFunc("POST /settings/reset", s.handleReset)
+	mux.HandleFunc("GET /sources", s.handleSources)
+	mux.HandleFunc("POST /sources", s.handleAddSource)
+	mux.HandleFunc("POST /sources/{id}", s.handleUpdateSource)
+	mux.HandleFunc("POST /sources/{id}/remove", s.handleRemoveSource)
+	mux.HandleFunc("POST /sources/{id}/libraries", s.handleSourceLibraries)
+	mux.HandleFunc("POST /sources/{id}/test", s.handleTestSource)
+	mux.HandleFunc("POST /sources/{id}/scan", s.handleScanSource)
+	mux.HandleFunc("GET /collection", s.handleCollection)
+	mux.HandleFunc("POST /collection/add", s.handleWatchAdd)
+	mux.HandleFunc("POST /collection/remove", s.handleWatchRemove)
 	mux.HandleFunc("GET /about", s.handleAbout)
 
-	mux.HandleFunc("POST /locale", s.handleLocale)
 	mux.HandleFunc("POST /scan", s.handleScan)
 
 	mux.HandleFunc("GET /partials/status", s.handlePartialStatus)
 	mux.HandleFunc("GET /partials/findings", s.handlePartialFindings)
 	mux.HandleFunc("GET /partials/log", s.handlePartialLog)
+	mux.HandleFunc("GET /partials/activity", s.handlePartialActivity)
+	mux.HandleFunc("GET /partials/health-indicator", s.handleHealthIndicator)
+	mux.HandleFunc("GET /partials/diagnostics", s.handleDiagnostics)
 	mux.HandleFunc("GET /partials/series-flow", s.handlePartialSeriesDetail)
 	mux.HandleFunc("GET /partials/upcoming", s.handlePartialUpcoming)
 
@@ -111,15 +131,11 @@ func (s *Server) Handler() http.Handler {
 	// requests based on Sec-Fetch-Site / Origin, which protects every POST route
 	// against CSRF without needing per-form tokens.
 	csrf := http.NewCrossOriginProtection()
-	return logRequests(s.log, securityHeaders(limitRequestBody(csrf.Handler(mux))))
+	return logRequests(s.log, securityHeaders(limitRequestBody(csrf.Handler(s.admission(mux)))))
 }
 
-// locale resolves the active locale from the cookie, then the configured
-// default, then the package default.
-func (s *Server) locale(r *http.Request) string {
-	if c, err := r.Cookie(localeCookie); err == nil && s.catalog.Has(c.Value) {
-		return c.Value
-	}
+// The saved interface setting is authoritative for every client and partial.
+func (s *Server) locale(_ *http.Request) string {
 	return config.NormalizeLocale(s.cfg.Get().Locale)
 }
 
@@ -129,7 +145,17 @@ func (s *Server) translator(r *http.Request) *i18n.Translator {
 
 func (s *Server) layout(r *http.Request, active string) web.Layout {
 	t := s.translator(r)
+	settings := s.cfg.Get()
+	entries, _, err := s.store.VirtualEntries(r.Context())
+	count := len(entries)
+	if err != nil {
+		s.log.Error("setup collection lookup failed", "err", err)
+		count = -1
+	}
+	notices := setupNotices(settings, count)
 	return web.Layout{
+		SetupNotices:   notices,
+		HealthSeverity: s.diagnostics(r.Context()).Severity,
 		T:              t,
 		Active:         active,
 		Version:        s.info.Version,
@@ -142,6 +168,7 @@ func (s *Server) layout(r *http.Request, active string) web.Layout {
 
 // render writes a templ component as an HTML response.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, comp templ.Component) {
+	r = s.provenanceRequest(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := comp.Render(r.Context(), w); err != nil {
 		s.log.Error("render failed", "path", r.URL.Path, "err", err)
@@ -158,12 +185,19 @@ const viewTagHeader = "X-Waim-View"
 // 204, so background polling no longer replaces unchanged DOM (which made the
 // dashboard flicker and jump while reading).
 func (s *Server) renderPartial(w http.ResponseWriter, r *http.Request, comp templ.Component) {
+	r = s.provenanceRequest(r)
+	s.renderPartialPlain(w, r, comp)
+}
+
+// Text-only polled components do not need catalog/link enrichment.
+func (s *Server) renderPartialPlain(w http.ResponseWriter, r *http.Request, comp templ.Component) {
 	var buf bytes.Buffer
 	if err := comp.Render(r.Context(), &buf); err != nil {
 		s.log.Error("render failed", "path", r.URL.Path, "err", err)
 		http.Error(w, "render failed", http.StatusInternalServerError)
 		return
 	}
+
 	sum := sha256.Sum256(buf.Bytes())
 	tag := hex.EncodeToString(sum[:16])
 	w.Header().Set(viewTagHeader, tag)
@@ -173,6 +207,22 @@ func (s *Server) renderPartial(w http.ResponseWriter, r *http.Request, comp temp
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
+}
+
+func (s *Server) provenanceRequest(r *http.Request) *http.Request {
+	ctx := web.WithActionTranslator(r.Context(), s.translator(r))
+	ctx = web.WithMutationEpoch(ctx, s.cfg.Gate().Token())
+	catalog, err := source.Catalog(ctx, s.store, s.cfg.Get(), false, nil)
+	if err != nil {
+		s.log.Error("catalog presentation failed", "err", err)
+		return r.WithContext(ctx)
+	}
+	run, err := s.store.LatestSuccessfulRun(ctx)
+	if err != nil {
+		s.log.Error("scan presentation failed", "err", err)
+		return r.WithContext(ctx)
+	}
+	return r.WithContext(web.WithProvenance(ctx, catalog, run))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

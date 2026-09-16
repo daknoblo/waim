@@ -1,6 +1,44 @@
 package web
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/daknoblo/waim/internal/i18n"
+	"github.com/daknoblo/waim/internal/media"
+	"github.com/daknoblo/waim/internal/store"
+)
+
+// LibraryDisplayName translates only the reserved virtual library, never a
+// user-provided source/library name that happens to use the same text.
+func LibraryDisplayName(t *i18n.Translator, id, name string) string {
+	if id == media.VirtualID {
+		return t.T("sources.collection")
+	}
+	return name
+}
+
+func localizedLibraryData(t *i18n.Translator, run *store.ScanRun, findings []store.Finding) (*store.ScanRun, []store.Finding) {
+	localizedFindings := append([]store.Finding(nil), findings...)
+	for i := range localizedFindings {
+		f := &localizedFindings[i]
+		f.LibraryName = LibraryDisplayName(t, f.LibraryID, f.LibraryName)
+	}
+	if run == nil {
+		return nil, localizedFindings
+	}
+	localizedRun := *run
+	localizedRun.Libraries = append([]store.LibrarySummary(nil), run.Libraries...)
+	localizedRun.Media = append([]store.MediaStat(nil), run.Media...)
+	for i := range localizedRun.Libraries {
+		lib := &localizedRun.Libraries[i]
+		lib.Name = LibraryDisplayName(t, lib.ID, lib.Name)
+	}
+	for i := range localizedRun.Media {
+		m := &localizedRun.Media[i]
+		m.LibraryName = LibraryDisplayName(t, m.LibraryID, m.LibraryName)
+	}
+	return &localizedRun, localizedFindings
+}
 
 // languageNames maps the ISO 639-1 codes TMDB reports as a title's original
 // language to a display name. Unknown codes fall back to the upper-cased code.

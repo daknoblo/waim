@@ -1,0 +1,257 @@
+package web
+
+import "strconv"
+import "github.com/daknoblo/waim/internal/media"
+import "github.com/daknoblo/waim/internal/i18n"
+import "github.com/daknoblo/waim/internal/store"
+import "github.com/daknoblo/waim/internal/config"
+
+templ Sources(d SourcesData) {
+	@Page(d.Layout, sourcesBody(d))
+}
+
+templ sourcesBody(d SourcesData) {
+	<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+		<h2 class="text-xl font-semibold">{ d.Layout.T.T("sources.title") }</h2>
+		@sourceAddButton(d.Layout.T)
+	</div>
+	<p class="mb-4 text-sm text-slate-400">{ d.Layout.T.T("sources.hint") }</p>
+	if d.Message != "" && d.OpenID == "" && !d.AddOpen {
+		<p role="status" class={ "card mb-4", templ.KV("alert-error", d.Failed) }>{ d.Message }</p>
+	}
+	<div class="grid gap-4 sm:grid-cols-2" data-source-tiles="true">
+		for _, src := range d.OrderedSources() {
+			<section class="card flex min-h-52 flex-col gap-3" data-source-tile={ src.ID }>
+				if src.Type == media.Virtual {
+					<h2 class="text-lg font-semibold">☆ { d.Layout.T.T("sources.collection") }</h2>
+					<p class="text-sm text-slate-400">{ d.Layout.T.T("sources.permanent") }</p>
+					<p class="text-xs text-slate-500">{ d.Layout.T.T("sources.virtualSchedule") }</p>
+					<a href="/collection" class="btn-ghost mt-auto">{ d.Layout.T.T("sources.open") }</a>
+				} else {
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<h2 class="min-w-0 break-words text-lg font-semibold">▣ <span data-source-name>{ src.Name }</span></h2>
+						<span class={ "badge",SourceProviderTone(src.Type) } data-provider={ src.Type }>{ SourceProviderName(src.Type) }</span>
+					</div>
+					<p class="break-all text-sm text-slate-400" data-source-url>{ src.Jellyfin.URL }</p>
+					<p class="text-sm text-slate-300" data-source-libraries>{ d.Layout.T.T("sources.librarySelection",SelectedLibraryCount(src),len(src.Libraries)) }</p>
+					<p class="text-xs text-slate-400" data-source-schedule>{ SourceScanSummary(d.Layout.T,src,d.DefaultScanMinutes) }</p>
+					<p class="text-xs text-slate-500" data-source-next hidden?={ d.NextRuns[src.ID] == "" }>
+						if next := d.NextRuns[src.ID]; next != "" {
+							{ d.Layout.T.T("dashboard.nextScan") }: { next }
+						}
+					</p>
+					if src.KeyUnreadable {
+						<p class="text-amber-200">{ d.Layout.T.T("warning.keysUnreadable") }</p>
+					}
+					<a href={ templ.SafeURL(SourceSettingsURL(src.ID)) } data-source-dialog={ "source-dialog-"+src.ID } class="btn-ghost mt-auto">{ d.Layout.T.T("sources.configure") }</a>
+				}
+			</section>
+		}
+	</div>
+	for _, src := range d.Sources {
+		if src.Type != media.Virtual {
+			@sourceDialog(d,src)
+		}
+	}
+	<dialog id="source-add-dialog" class="source-dialog" aria-labelledby="source-add-heading" open?={ d.AddOpen } data-source-auto-open={ strconv.FormatBool(d.AddOpen) }>
+		<div class="mb-4 flex items-center justify-between gap-3">
+			<h2 id="source-add-heading" class="text-xl font-semibold">{ d.Layout.T.T("sources.add") }</h2>
+			<a href={ templ.SafeURL(SettingsURL("media")) } class="btn-ghost" data-source-close="true">{ d.Layout.T.T("sources.close") }</a>
+		</div>
+		if d.AddOpen && d.Message != "" {
+			<p role="alert" class={ "mb-4 rounded-lg p-3 text-sm",templ.KV("alert-error",d.Failed),templ.KV("alert-ok",!d.Failed) }>{ d.Message }</p>
+		}
+		<form method="post" action="/sources" class="grid gap-3" data-source-edit="true" data-source-dirty={ strconv.FormatBool(d.AddOpen && d.Failed) } data-unsaved-prompt={ d.Layout.T.T("sources.unsavedPrompt") }>
+			@MutationEpoch()
+			<label class="grid gap-1 text-sm">
+				<span>{ d.Layout.T.T("sources.provider") }</span>
+				<select name="type" class="input" required>
+					<option value="jellyfin" selected>Jellyfin</option>
+					<option value="emby" disabled>{ "Emby · "+d.Layout.T.T("sources.notAvailable") }</option>
+					<option value="plex" disabled>{ "Plex · "+d.Layout.T.T("sources.notAvailable") }</option>
+				</select>
+			</label>
+			@textField(d.Layout.T.T("sources.name"), "name", "text", d.AddDraft.Name, "")
+			@textField(d.Layout.T.T("settings.jellyfinUrl"), "url", "url", d.AddDraft.Jellyfin.URL, "https://jellyfin.example.com")
+			@textField(d.Layout.T.T("settings.jellyfinApiKey"), "key", "password", "", "")
+			@textField(d.Layout.T.T("settings.jellyfinUserId"), "user", "text", d.AddDraft.Jellyfin.UserID, "")
+			@sourceIntervalField(d.Layout.T,d.IntervalValue(d.AddDraft))
+			<button type="submit" class="btn-primary">{ d.Layout.T.T("sources.add") }</button>
+		</form>
+	</dialog>
+}
+
+templ sourceAddButton(t *i18n.Translator) {
+	<a href={ templ.SafeURL(SourceSettingsURL("new")) } data-source-dialog="source-add-dialog" class="btn-primary inline-flex items-center justify-center gap-2">
+		<span aria-hidden="true">+</span> { t.T("sources.add") }
+	</a>
+}
+
+templ sourceIntervalField(t *i18n.Translator,value string) {
+	<label class="grid gap-1 text-sm">
+		<span>{ t.T("settings.interval") }</span>
+		<input class="input" name="scan_interval" type="number" min="0" max={ strconv.Itoa(config.MaxSourceScanIntervalMinutes) } step="1" value={ value } required/>
+	</label>
+	<p class="text-xs text-slate-500">{ t.T("sources.intervalHint") }</p>
+}
+
+templ sourceDialog(d SourcesData,src config.Source) {
+	<dialog id={ "source-dialog-"+src.ID } class="source-dialog" aria-labelledby={ "source-heading-"+src.ID } open?={ d.OpenID == src.ID } data-source-auto-open={ strconv.FormatBool(d.OpenID == src.ID) }>
+		<div class="mb-4 flex items-center justify-between gap-3">
+			<h2 id={ "source-heading-"+src.ID } class="min-w-0 break-words text-xl font-semibold"><span data-source-heading-name>{ src.Name }</span> · { SourceProviderName(src.Type) }</h2>
+			<a href={ templ.SafeURL(SettingsURL("media")) } class="btn-ghost shrink-0" data-source-close="true">{ d.Layout.T.T("sources.close") }</a>
+		</div>
+		if d.OpenID == src.ID && d.Message != "" {
+			<p role="status" class={ "mb-4 rounded-lg p-3 text-sm",templ.KV("alert-error",d.Failed),templ.KV("alert-ok",!d.Failed) }>{ d.Message }</p>
+		}
+		if src.KeyUnreadable {
+			<p class="mb-3 text-amber-200">{ d.Layout.T.T("warning.keysUnreadable") }</p>
+		}
+		<form method="post" action={ "/sources/" + src.ID } class="grid gap-3" data-source-edit="true"
+			data-source-autosave="true" data-source-id={ src.ID }
+			data-saving={ d.Layout.T.T("settings.saving") } data-saved={ d.Layout.T.T("settings.saveSuccess") }
+			data-failed={ d.Layout.T.T("settings.saveRetry") } data-no-libraries={ d.Layout.T.T("sources.noLibraries") }
+			data-source-dirty={ strconv.FormatBool(d.EditDraftID == src.ID) } data-unsaved-prompt={ d.Layout.T.T("sources.unsavedPrompt") }>
+			@MutationEpoch()
+			<input type="hidden" name="revision" value={ strconv.FormatInt(src.Revision,10) }/>
+			@textField(d.Layout.T.T("sources.name"), "name", "text", src.Name, "")
+			@textField(d.Layout.T.T("settings.jellyfinUrl"), "url", "url", src.Jellyfin.URL, "https://jellyfin.example.com")
+			@textField(d.Layout.T.T("settings.jellyfinApiKey"), "key", "password", "", "")
+			<p class="text-xs text-slate-400">{ d.Layout.T.T("sources.keyHint") }</p>
+			@textField(d.Layout.T.T("settings.jellyfinUserId"), "user", "text", src.Jellyfin.UserID, "")
+			@sourceIntervalField(d.Layout.T,d.IntervalValue(src))
+			@checkboxField(d.Layout.T.T("sources.enabled"), "enabled", src.Enabled)
+			<fieldset class="grid gap-2">
+				<legend>{ d.Layout.T.T("settings.libraries") }</legend>
+				<div class="grid gap-2 sm:grid-cols-2" data-source-library-options>
+				for _, lib := range src.Libraries {
+					<label class="flex items-center gap-2"><input type="checkbox" name="library" value={ lib.ID } checked?={ lib.Enabled }/>{ lib.Name }</label>
+				}
+				if len(src.Libraries) == 0 {
+					<p class="text-sm text-slate-400">{ d.Layout.T.T("sources.noLibraries") }</p>
+				}
+				</div>
+			</fieldset>
+			<div class="flex flex-wrap items-center gap-3">
+				<p class="text-sm text-slate-400" role="status" data-source-save-status>{ d.Layout.T.T("settings.autoSaveHint") }</p>
+				<button class="btn-ghost" type="button" data-source-retry hidden>{ d.Layout.T.T("sources.retrySave") }</button>
+			</div>
+			<noscript><button class="btn-primary" type="submit">{ d.Layout.T.T("sources.save") }</button></noscript>
+		</form>
+		<p class="my-3 text-xs text-slate-400">{ d.Layout.T.T("sources.savedActions") }</p>
+		<div class="source-actions flex flex-wrap items-start gap-2">
+			<form method="post" action={ "/sources/" + src.ID + "/scan" }>@MutationEpoch()<button type="submit" class="btn-ghost" disabled?={ !src.Enabled }>{ d.Layout.T.T("sources.scanNow") }</button></form>
+			<form method="post" action={ "/sources/" + src.ID + "/libraries" }>@MutationEpoch()<button type="submit" class="btn-ghost">{ d.Layout.T.T("settings.refreshLibraries") }</button></form>
+			<form method="post" action={ "/sources/" + src.ID + "/test" }>@MutationEpoch()<button type="submit" class="btn-ghost">{ d.Layout.T.T("sources.test") }</button></form>
+			<details class="ml-auto max-w-full text-right">
+				<summary class="btn-danger cursor-pointer">{ d.Layout.T.T("sources.remove") }</summary>
+				<form method="post" action={ "/sources/" + src.ID + "/remove" } class="mt-3 grid max-w-xs gap-2 text-left">
+					@MutationEpoch()
+					<input type="hidden" name="revision" value={ strconv.FormatInt(src.Revision,10) }/>
+					<label class="flex gap-2"><input type="checkbox" name="confirm" value="yes" required/>{ d.Layout.T.T("sources.confirm") }</label>
+					<button type="submit" class="btn-danger">{ d.Layout.T.T("sources.remove") }</button>
+				</form>
+			</details>
+		</div>
+	</dialog>
+}
+
+templ Collection(d CollectionData) {
+	@Page(d.Layout, collectionBody(d))
+}
+
+templ collectionBody(d CollectionData) {
+	<h1 class="mb-4 text-2xl font-semibold">☆ { d.Layout.T.T("sources.collection") }</h1>
+	<p class="mb-4 text-slate-400">{ d.Layout.T.T("sources.watchHint") }</p>
+	if d.Updating && d.Configured {
+		<p role="status" class="mb-4 text-amber-200">{ d.Layout.T.T("sources.updating") }</p>
+	}
+	if d.Configured {
+		<form method="get" action="/collection" class="card mb-4 flex flex-wrap gap-3">
+			<label class="grid flex-1 gap-1">{ d.Layout.T.T("sources.search") }<input class="input" type="search" name="q" maxlength="200" value={ d.Query } required/></label>
+			<label class="grid gap-1">{ d.Layout.T.T("sources.kind") }<select class="input" name="kind"><option value="Movie" selected?={ d.Kind == media.Movie }>{ d.Layout.T.T("sources.movie") }</option><option value="Series" selected?={ d.Kind == media.Series }>{ d.Layout.T.T("sources.series") }</option></select></label>
+			<button class="btn-primary" type="submit">{ d.Layout.T.T("sources.search") }</button>
+		</form>
+	}
+	if d.Message != "" {
+		<p role="alert" class="mb-4 text-red-300">{ d.Message }</p>
+	}
+	if d.Searched {
+		<h2 class="mb-3 text-lg">{ d.Layout.T.T("sources.results") }</h2>
+		if len(d.Results) == 0 {
+			<p class="mb-4">{ d.Layout.T.T("sources.noResults") }</p>
+		}
+		<div class="mb-6 grid gap-3 sm:grid-cols-2">
+			for _, entry := range d.Results {
+				@collectionEntry(d.Layout.T, entry, false, d.Ownership[media.Key(entry.Type,entry.TMDBID)])
+			}
+		</div>
+	}
+	<h2 class="mb-3 text-lg">{ d.Layout.T.T("sources.tracked") } ({ strconv.Itoa(len(d.Entries)) })</h2>
+	if len(d.Entries) == 0 {
+		<p class="card">{ d.Layout.T.T("sources.empty") }</p>
+	}
+	<div class="grid gap-3 sm:grid-cols-2">
+		for _, entry := range d.Entries {
+			@collectionEntry(d.Layout.T, entry, true, d.Ownership[media.Key(entry.Type,entry.TMDBID)])
+		}
+	</div>
+}
+
+templ collectionEntry(t *i18n.Translator, v store.VirtualEntry, remove bool, ownership string) {
+	<article class="card flex gap-3">
+		if v.Poster != "" {
+			<img class="h-24 w-16 rounded object-cover" src={ posterURL(v.Poster) } alt="" loading="lazy"/>
+		}
+		<div class="grid flex-1 gap-2">
+			<a class="font-semibold" href={ templ.SafeURL(WatchURL(v.Type,v.TMDBID)) } target="_blank" rel="noreferrer noopener">{ v.Title }</a>
+			<p class="text-sm text-slate-400">
+				if v.Type == media.Movie {
+					{ t.T("sources.movie") }
+				} else {
+					{ t.T("sources.series") }
+				}
+				if v.Year > 0 {
+					· { strconv.Itoa(v.Year) }
+				}
+			</p>
+			@MediaSources(t, WatchURL(v.Type,v.TMDBID))
+			if ownership == CollectionComplete {
+				<div class="rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-200" data-collection-ownership="complete">
+					<p class="font-semibold">{ t.T("sources.fullyOwned") }</p>
+					if v.Type == media.Series {
+						<p class="mt-1">{ t.T("sources.fullyOwnedSeries") }</p>
+					}
+					<p class="mt-1">{ t.T("sources.removeVirtualHint") }</p>
+				</div>
+			} else if ownership == CollectionPartial {
+				<p class="text-sm text-slate-400" data-collection-ownership="partial">{ t.T("sources.partiallyOwned") }</p>
+			} else if ownership == CollectionUnverified {
+				<p class="text-sm text-amber-200" data-collection-ownership="unverified">{ t.T("sources.ownershipUnverified") }</p>
+			}
+			if v.TMDBID > 0 {
+				@collectionForm(t,v.Type,v.TMDBID,remove || Target(ctx,WatchURL(v.Type,v.TMDBID)).Watching)
+			}
+		</div>
+	</article>
+}
+
+templ collectionForm(t *i18n.Translator,kind string,id int64,remove bool) {
+	<form method="post" action={ watchAction(remove) }>
+		@MutationEpoch()
+		<input type="hidden" name="kind" value={ kind }/>
+		<input type="hidden" name="id" value={ strconv.FormatInt(id,10) }/>
+		<button class="btn-ghost text-xs" type="submit">
+			if remove {
+				{ t.T("sources.unwatch") }
+			} else {
+				{ t.T("sources.watch") }
+			}
+		</button>
+	</form>
+}
+
+func watchAction(remove bool) string {
+	if remove { return "/collection/remove" }
+	return "/collection/add"
+}

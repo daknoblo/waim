@@ -17,7 +17,7 @@
 > golangci-lint, CodeQL and Dependabot, but it is a personal side project — see
 > [Disclaimer](#disclaimer).
 
-**waim** connects to your [Jellyfin](https://jellyfin.org/) server, reads your
+**waim** connects to your named [Jellyfin](https://jellyfin.org/) instances, reads your
 movies and series, and compares them against
 [The Movie Database (TMDB)](https://www.themoviedb.org/) to tell you **what you
 are missing**:
@@ -38,15 +38,34 @@ Huntarr or Missingarr.
 
 ## Features
 
-- Read-only Jellyfin integration (your library is never modified).
+- Multiple independent, named, read-only Jellyfin instances (your libraries are never modified).
+- A permanent **Virtual collection** with TMDB movie/series search. Add titles
+  there or directly from **Suggestions**; already-tracked suggestions link back
+  to the collection instead of offering another add action. Removal stays on
+  the collection page. Dashboard and statistics have no watch buttons.
+  Statistics retain section-level library labels and clickable titles, without
+  repeating server-reference badges next to each item. Works with TMDB alone;
+  no Jellyfin server is required.
+- Global TMDB identity merging and union of real episode ownership across
+  instances. Source badges retain every instance and virtual membership.
+- Atomic source snapshots: failed refreshes retain the last successful inventory,
+  with explicit stale/unknown warnings. Collection edits update immediately and
+  queue a cache-backed recalculation, **not** a media-server rescan.
+- Watch-only ratings, gaps and releases are separate from real ownership,
+  runtime and growth. Plex and Emby adapters are not implemented.
 - TMDB matching that prefers Jellyfin's stored provider IDs and falls back to a
-  title/year search.
+  unique exact title/year search; ambiguous/unresolved titles remain source-local.
 - Detects missing seasons, missing episodes and missing collection entries.
-- Periodic scans (configurable interval), scan-on-startup and a manual
+- Periodic scans with independent intervals per media source, scan-on-startup and a manual
   **Scan now** button.
 - Per-library selection: choose exactly which Jellyfin libraries to scan.
 - Dashboard with grouped findings, sortable columns, a live search box and a
-  per-library quick filter.
+  per-library quick filter. Library labels use `Type · Instance name · Library` on one
+  line; virtual entries simply show **Virtual collection**, without a repeated
+  watch-only note beneath the title. Long labels scroll horizontally on mobile.
+  Each finding shows its TMDB link and a media-server link only when that leads
+  to a different destination; virtual titles do not repeat the TMDB link.
+  The desktop dashboard content is 10% wider to give the findings table more room.
 - **Statistics** page: completeness per library, most incomplete series and
   collections, top/lowest rated titles per library — in separate sections for
   owned media and for missing ones (movies *and* series, so you can decide
@@ -71,14 +90,124 @@ Huntarr or Missingarr.
   suggestions reuse data instead of re-loading everything from TMDB.
 - Settings stored as JSON in the data directory; **API keys are encrypted at
   rest** (AES-256-GCM with a key generated on first start). The settings page
-  saves as you type and verifies each connection immediately.
+  groups settings into **Media management**, **Metadata**, **Interface** and
+  **Other**. Global fields and existing sources autosave; creation and removal
+  remain explicit actions. Source edits retain revision checks, connection
+  tests and library refreshes.
+- The **Metadata** tab uses provider tiles with local TMDB/IMDb wordmarks.
+  TMDB opens an autosaving dialog for its API key, request limits, episode
+  ratings and cache maintenance. IMDb is marked as not yet available; optional
+  AI recommendations remain a separate section below.
+- A guarded **Danger Zone** can reset metadata, imported inventories or all user
+  state. Resets reject active work instead of cancelling it, never delete media
+  on your servers, and keep the persistent encryption key and database file.
 - Export of settings (keys stay encrypted, never plaintext) and of the current
   sync state.
 - Bilingual UI (English / German) with an in-app language switch.
 - **Responsive layout**: on phones the navigation collapses into a menu button
   and wide tables turn into stacked cards.
-- Activity log and live scan status in the dashboard.
+- **Live activity** above the log window, with separate cards for scan/recompute,
+  cache maintenance and suggestions. Source connection/discovery work appears
+  when used. The dashboard retains its existing live scan status.
 - Multi-arch images published to GitHub Container Registry.
+
+## Reading live activity
+
+The activity panel polls every two seconds, independently of the three-second
+log refresh. Unchanged partials return HTTP 204; progress never replaces the log
+window. No extra upstream requests are made to measure progress.
+
+The ring and remaining percentage apply **only to the current phase**, not the
+whole job or the other workers. Metadata evaluation counts unique catalog titles,
+not duplicated library memberships; identity resolution counts the current
+catalog before newly resolved identities are merged. Cache refresh counts the
+actual selected batch; trending counts feeds and recommendations count sampled
+owned titles. Inventory (including library/episode pages), persistence, upcoming
+discovery and the pending AI response are explicitly indeterminate.
+
+Processed counts include failed/skipped units; diagnostic counts span the run
+and a skipped title can also contribute a warning. Identity-resolution skips are
+not counted again when metadata evaluation reaches the same unresolved title.
+Stale source fallback,
+unresolved titles and metadata failures finish **with warnings**, never as fully
+verified success. Cancellation and failure are separate outcomes. Initial missing
+TMDB configuration shows **Waiting for setup**; the global setup banner links to
+settings without repeating setup instructions in each activity card.
+
+Activity is process-local: one bounded running/latest entry per logical job,
+not a persisted history. Concurrent source connection requests show the latest
+request; old handles cannot overwrite a newer run. Logs and persisted scan
+history remain available. Titles/source names are bounded, while metadata paths
+are allowlisted and exclude every query string, credential and response body.
+
+Open **Logs → Warnings, skipped titles & errors**, or follow an activity counter,
+to see concrete subjects, phases and safe reason descriptions. Repeated events
+are deduplicated; each job retains at most 100 details and the combined view is
+also capped at 100, with errors first and an explicit truncation notice. Older
+counter-only attempts say that details are unavailable rather than inventing
+reasons. Known persisted scan/source warnings are localized; unknown legacy
+warning bodies are replaced by an explicit safe fallback notice.
+
+The diagnostic expander is outside the two-second activity swap. Its contents
+poll independently and unchanged details return 204, so reading/expanded state
+does not reset as progress advances. A small circled exclamation after
+**About** (beside the menu button on mobile) links to
+`/logs#diagnostics`: amber means warnings,
+skipped/incomplete work, and red takes precedence for failures or storage errors.
+Operational inventory/legacy/pending notices now live in Logs, not repeated
+page-wide banners. Metadata/media-source setup cards and key-recovery guidance
+remain separate; statistics still mark unverified results as uncertain.
+Suggestion lookup and AI diagnostics also stay in Logs and the header indicator,
+without an additional raw-error banner above the available recommendations.
+
+The header reads only small persisted status/version rows on each poll, plus
+in-memory activity. Warning payloads are cached until the scan/source/config
+version changes; it does not build the catalog or make upstream API requests.
+Saved warnings and failed/unfinished scans survive restart. A retry retains its
+previous issue indication until it finishes; a later completed attempt replaces
+that job's issues, and later successful scans replace saved scan warnings/errors.
+Old ring-buffer log entries alone do not latch the indicator. Full reset also
+clears the diagnostic cache and retained activity details.
+
+A newer, fully verified scan retires earlier unresolved-title warnings from
+Suggestions, including persisted warnings after restart. Cards, counters,
+diagnostic details and the header use the same reconciled status; the suggestion
+cache itself is not regenerated or erased. Independent API/AI errors, truncated
+diagnostics and still-unconfirmed scans are not treated as resolved. The card
+notes when a newer scan resolved old title-matching warnings. That confirmation
+is persisted so an unrelated later outage does not revive the old warning.
+
+Successfully completed activity cards show a green **OK**. Tasks that have never
+run remain **Ready**, rather than claiming a verified success.
+
+The interface language is configured exclusively under **Settings → Interface**.
+It applies to all pages and clients, including partial updates. The header has
+no separate language selector; old browser language cookies no longer override
+the saved setting. TMDB metadata language and region remain separate settings.
+
+## Suggestions cache
+
+Suggestions are saved in SQLite and restored after restarts and image updates.
+Opening the page shows the existing results immediately. Normal scans and
+virtual-collection edits no longer discard them; titles newly present in real
+media sources are filtered from cached TMDB recommendations using the live
+catalog, without new upstream requests.
+
+A background worker refreshes suggestions every 12 hours, even with no browser
+open. It checks once per minute, and the interval starts at the latest attempt.
+The **Refresh** button at the top right starts an additional update; repeated
+clicks cannot create overlapping jobs. Actual refreshes fetch current TMDB
+recommendation data instead of reusing indefinitely cached API responses.
+
+Saved results remain visible while an update is running. Failed refreshes keep
+the previous results; diagnostics remain in Logs and the header indicator,
+including after restart. Failures do not trigger retries on every page visit:
+retry manually or wait for the next scheduled attempt. The timestamp below the
+cards shows when the displayed results were generated.
+
+Changes to TMDB/AI configuration invalidate incompatible cached text and start
+a fresh generation on the next visit or background check. Metadata, media and
+factory resets clear both the in-memory and persisted suggestion cache.
 
 ## Screenshots
 
@@ -101,17 +230,54 @@ serves these pages with sample data.
 curl -fsSL https://raw.githubusercontent.com/daknoblo/waim/main/deploy/docker-compose.example.yml -o docker-compose.yml
 
 # 2. Start it.
+# Docker creates the named data volume; no root user override is needed.
 docker compose up -d
 ```
 
-Then open <http://localhost:8080>, go to **Settings**, and enter your Jellyfin
-URL + API key and your TMDB API key. Everything is saved as you go and each
-connection is tested right away. Use **Refresh libraries from Jellyfin** to
-load your libraries and tick the ones to scan.
+Then open <http://localhost:8080> and enter your TMDB API key on **Settings → Metadata**.
+Use **Virtual collection** immediately, or add Jellyfin instances on **Settings →
+Media management**. Sources appear in a two-column tile grid (one column on
+phones), with the permanent virtual collection first. Open a real source's
+dialog to edit its connection, libraries and scan interval, run a source-only
+scan, refresh libraries, test access or remove it. The add button beside the
+**Media sources** heading opens a provider-selection dialog: Jellyfin is available; Emby and Plex
+are marked as not yet available. Adding a source automatically loads its
+libraries and opens its dialog so you can select the ones to scan.
+Existing sources save changes automatically after a field change. Closing with
+the close button, Escape or a backdrop click waits for pending saves, as do
+scan/test/refresh actions. Failed saves keep the dialog and edits open with a
+retry option; new-source creation and confirmed removal remain explicit.
+Provider badges use Jellyfin purple, Emby green and Plex gold. Source dialogs
+are wider on desktop so their actions can sit side by side, and remain scrollable
+on smaller screens. Manual Save buttons are only shown without JavaScript.
+**Scan now** refreshes all active real sources; watch edits only recalculate
+using saved snapshots.
 
-> **Upgrading from 1.3 or older?** `WAIM_MASTER_KEY` was removed and the
-> encryption key is now generated automatically, so the stored API keys have to
-> be entered once more. See
+The virtual collection marks titles that are fully available in your active
+media sources and offers manual removal of the virtual entry. Movies need real
+ownership; series need every episode released so far, using the union of active
+libraries and the configured specials setting. Future episodes do not prevent
+completion, and unreleased-only series are not marked complete. Removing a
+virtual entry never deletes media-server files or the title's real membership.
+Nothing is removed automatically.
+
+The status uses persisted, verified scan results, not just episode-count
+equality. Failed metadata/source reads, pending changes, a newer failed scan or
+newly due known episodes cannot produce a confirmed complete status. Older
+scans without this assessment need one new scan/recalculation. A clean result
+is required; unrelated unresolved-title warnings also keep completeness
+unconfirmed, consistent with WAIM's existing inventory uncertainty rules.
+
+Existing sources automatically inherit their former global scan interval.
+Each source then keeps its own schedule; 0 disables its periodic scans (manual
+and startup scans remain available). Recalculations and other sources' scans
+leave its deadline unchanged. Changing a source's interval rearms that source;
+the dashboard shows the earliest scheduled source deadline. Nightly
+cache cleanup stays at 03:00 local time across daylight-saving changes.
+
+> **Upgrading from 1.3 or older?** The encryption key is now generated
+> automatically, so API keys stored by those older versions have to be
+> entered once more. See
 > [Upgrading](docs/installation.md#upgrading-from-13-or-older).
 
 ### Image tags
@@ -144,10 +310,14 @@ in the data directory. Only a few environment variables are needed:
 | Variable          | Default        | Description                                           |
 | ----------------- | -------------- | ----------------------------------------------------- |
 | `WAIM_ADDR`       | `:8080`        | Listen address.                                       |
+| `WAIM_DATA_DIR`   | `/data` (image), `./appdata` (local) | Persistent data directory. |
 | `TZ`              | `Etc/UTC`      | Timezone (IANA name) for timestamps and log display.  |
 
-The data directory is fixed at `/appdata` inside the container (mount a
-volume there to persist it). All other configuration lives in the web UI.
+The container uses `/data`; the Compose example mounts a Docker-managed named
+volume there and uses the image's non-root user (UID/GID 65532). A host bind
+mount `./appdata:/data` remains an optional alternative. Older images used `/appdata`
+inside the container; see the [migration instructions](docs/installation.md#upgrading-the-container-data-path)
+before updating an existing deployment. All other configuration lives in the web UI.
 
 See [docs/configuration.md](docs/configuration.md) for the full settings
 reference.
@@ -177,6 +347,12 @@ Bug reports, ideas and pull requests are welcome — see
 [Contributing](.github/CONTRIBUTING.md) for the development setup and the
 conventions this project follows. Participation is governed by the
 [Code of Conduct](.github/CODE_OF_CONDUCT.md).
+
+Run `make coverage` for cross-package Go statement coverage. Reports under
+`coverage/` include both the full codebase and handwritten code excluding
+generated `*_templ.go` files, so template boilerplate does not obscure the
+application's test coverage. These are coverage measurements, not a substitute
+for behavior tests or the JavaScript navigation tests in CI.
 
 Found a security problem? Please report it privately as described in the
 [Security Policy](.github/SECURITY.md) rather than in a public issue.

@@ -54,9 +54,6 @@ jobs:
       - name: "\U0001F4E5 Check out repository"
         uses: actions/checkout@v7
 
-      - name: "\U0001F9F0 Set up QEMU (multi-arch emulation)"
-        uses: docker/setup-qemu-action@v4
-
       - name: "\U0001F3D7\uFE0F Set up Docker Buildx"
         uses: docker/setup-buildx-action@v4
 
@@ -114,7 +111,7 @@ jobs:
           ignore-unfixed: true
 
       - name: "\U0001F4E4 Upload scan results to the Security tab"
-        uses: github/codeql-action/upload-sarif@v4.37.4
+        uses: github/codeql-action/upload-sarif@v4.38.0
         if: always()
         with:
           sarif_file: trivy-results.sarif

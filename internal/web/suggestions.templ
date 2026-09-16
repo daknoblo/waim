@@ -1,5 +1,7 @@
 package web
 
+import "net/url"
+
 import "github.com/daknoblo/waim/internal/i18n"
 import "github.com/daknoblo/waim/internal/suggest"
 
@@ -8,40 +10,39 @@ templ Suggestions(d SuggestionsData) {
 }
 
 templ suggestionsBody(d SuggestionsData) {
-	<section class="grid gap-4">
+	@SuggestionsContent(d)
+}
+
+templ SuggestionsContent(d SuggestionsData) {
+	<section id="suggestions" class="grid gap-4" aria-busy={ boolAttr(d.Running) }>
 		<div class="flex flex-wrap items-center justify-between gap-3">
 			<h1 class="text-lg font-semibold">{ d.Layout.T.T("nav.suggestions") }</h1>
-			<form hx-post="/suggestions/generate" hx-target="#suggestions" hx-swap="outerHTML" class="w-full sm:w-auto">
-				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ d.Running || !d.Configured }>
+			<form method="post" action="/suggestions/generate" hx-post="/suggestions/generate" hx-target="#suggestions" hx-swap="outerHTML" class="w-full sm:w-auto">
+				@MutationEpoch()
+				<button id="suggestion-refresh" type="submit" class="btn-primary inline-flex w-full items-center justify-center gap-2 sm:w-auto" disabled?={ d.Running || !d.Configured }>
+					<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path d="M20 7v5h-5M4 17v-5h5" stroke-linecap="round" stroke-linejoin="round"></path>
+						<path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1" stroke-linecap="round"></path>
+					</svg>
 					{ d.Layout.T.T("suggestions.generate") }
 				</button>
 			</form>
 		</div>
-		if !d.Configured {
-			<p class="rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{ d.Layout.T.T("suggestions.notConfigured") }</p>
-		}
-		@SuggestionsContent(d)
-	</section>
-}
-
-templ SuggestionsContent(d SuggestionsData) {
-	if d.Running {
-		<div id="suggestions" hx-get="/partials/suggestions" hx-trigger="every 3s" hx-swap="outerHTML" class="card flex items-center gap-3 text-sm text-slate-300">
-			<span class="status-dot status-dot-running"></span>
-			{ d.Layout.T.T("suggestions.generating") }
-		</div>
-	} else {
-		<div id="suggestions" class="grid gap-4">
-			if d.Result == nil {
-				<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("suggestions.empty") }</p>
-			} else {
-				if len(d.Result.Errors) > 0 {
-					<div class="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-						for _, e := range d.Result.Errors {
-							<div>{ e }</div>
-						}
-					</div>
+		if d.Running {
+			<div hx-get="/partials/suggestions" hx-trigger="every 3s" hx-target="#suggestions" hx-swap="outerHTML" role="status" class="flex items-center gap-3 text-sm text-slate-300">
+				<span class="status-dot status-dot-running"></span>
+				if d.Result != nil {
+					{ d.Layout.T.T("suggestions.refreshingCached") }
+				} else {
+					{ d.Layout.T.T("suggestions.generating") }
 				}
+			</div>
+		}
+			if d.Result == nil {
+				if d.Configured && !d.Running {
+					<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ d.Layout.T.T("suggestions.empty") }</p>
+				}
+			} else {
 				@suggestionSection(d.Layout.T.T("suggestions.similar"), d.Result.Similar, d.Layout.T.T("suggestions.none"))
 				@suggestionSection(d.Layout.T.T("suggestions.trending"), d.Result.Trending, d.Layout.T.T("suggestions.none"))
 				@upcomingSuggestionSection(d.Layout.T, d.Layout.T.T("suggestions.upcomingTaste"), d.Layout.T.T("suggestions.upcomingTasteHint"), d.Result.UpcomingTaste, d.Layout.T.T("suggestions.none"))
@@ -50,12 +51,13 @@ templ SuggestionsContent(d SuggestionsData) {
 					@aiSection(d, d.Result.AI)
 				}
 				<p class="text-xs text-slate-500">{ d.Layout.T.T("suggestions.generatedAt") }: { FormatTimeValue(d.Result.GeneratedAt) }</p>
+				<p class="text-xs text-slate-500">{ d.Layout.T.T("suggestions.cacheHint") }</p>
 			}
-		</div>
-	}
+	</section>
 }
 
 templ suggestionSection(title string, items []suggest.Item, empty string) {
+	{{ items = unownedSuggestions(ctx, items) }}
 	<div class="card">
 		<h2 class="mb-3 text-lg font-semibold">{ title }</h2>
 		if len(items) == 0 {
@@ -63,6 +65,7 @@ templ suggestionSection(title string, items []suggest.Item, empty string) {
 		} else {
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
 				for _, it := range items {
+					<div>
 					<a href={ templ.SafeURL(it.TMDBLink) } target="_blank" rel="noreferrer noopener" class="group flex gap-3 rounded-lg bg-slate-900/60 p-2 transition hover:bg-slate-800/60">
 						if it.PosterURL != "" {
 							<img src={ it.PosterURL } alt="" loading="lazy" class="h-24 w-16 shrink-0 rounded object-cover"/>
@@ -87,6 +90,10 @@ templ suggestionSection(title string, items []suggest.Item, empty string) {
 							}
 						</div>
 					</a>
+					if t := ActionTranslator(ctx); t != nil {
+						@SuggestionActions(t,it.TMDBLink)
+					}
+					</div>
 				}
 			</div>
 		}
@@ -96,6 +103,7 @@ templ suggestionSection(title string, items []suggest.Item, empty string) {
 // upcomingSuggestionSection shows announced titles with their release date
 // instead of the release year.
 templ upcomingSuggestionSection(t *i18n.Translator, title, hint string, items []suggest.Item, empty string) {
+	{{ items = unownedSuggestions(ctx, items) }}
 	<div class="card">
 		<div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
 			<h2 class="text-lg font-semibold">{ title }</h2>
@@ -106,6 +114,7 @@ templ upcomingSuggestionSection(t *i18n.Translator, title, hint string, items []
 		} else {
 			<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
 				for _, it := range items {
+					<div>
 					<a href={ templ.SafeURL(it.TMDBLink) } target="_blank" rel="noreferrer noopener" class="group min-w-0">
 						if it.PosterURL != "" {
 							<img src={ it.PosterURL } alt="" loading="lazy" class="aspect-[2/3] w-full rounded object-cover"/>
@@ -115,10 +124,25 @@ templ upcomingSuggestionSection(t *i18n.Translator, title, hint string, items []
 						<div class="mt-1 truncate text-xs font-medium text-slate-200 group-hover:underline">{ it.Title }</div>
 						<div class="truncate text-[11px] text-indigo-300">{ orDash(suggestionDate(t, it.ReleaseDate)) }</div>
 					</a>
+					@SuggestionActions(t,it.TMDBLink)
+					</div>
 				}
 			</div>
 		}
 	</div>
+}
+
+templ SuggestionActions(t *i18n.Translator, link string) {
+	@MediaSources(t,link)
+	if target := Target(ctx,link); target.ID > 0 {
+		<div class="suggestion-actions mt-2">
+			if target.Watching {
+				<a href="/collection" class="text-xs text-indigo-300 hover:text-indigo-200">{ t.T("sources.alreadyTracked") }</a>
+			} else {
+				@collectionForm(t,target.Kind,target.ID,false)
+			}
+		</div>
+	}
 }
 
 templ aiSection(d SuggestionsData, items []suggest.AIItem) {
@@ -138,6 +162,7 @@ templ aiSection(d SuggestionsData, items []suggest.AIItem) {
 								}
 							</span>
 						</div>
+						<a href={ templ.SafeURL("/collection?q="+url.QueryEscape(it.Title)) } class="btn-ghost">{ d.Layout.T.T("sources.search") }</a>
 						if it.Reason != "" {
 							<p class="mt-1 text-xs text-slate-400">{ it.Reason }</p>
 						}

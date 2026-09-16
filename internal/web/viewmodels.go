@@ -3,6 +3,7 @@ package web
 import (
 	"strings"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
@@ -28,6 +29,8 @@ type LangOption struct {
 
 // Layout carries data shared by every page (header, navigation, footer).
 type Layout struct {
+	SetupNotices   []SetupNotice
+	HealthSeverity activity.Severity
 	T              *i18n.Translator
 	Active         string
 	Version        string
@@ -37,8 +40,17 @@ type Layout struct {
 	Languages      []LangOption
 }
 
+type SetupNotice struct {
+	CategoryKey        string
+	MessageKey         string
+	ActionKey          string
+	URL                string
+	VirtualAlternative bool
+}
+
 // StatusView is the display model for the scan status card.
 type StatusView struct {
+	SetupRequired    bool
 	State            string
 	StateLabel       string
 	Running          bool
@@ -118,20 +130,27 @@ type SettingsFeedback struct {
 	Pending     []string
 	SaveState   string
 	SaveMessage string
+	Metadata    bool
+	HasTMDBKey  bool
 }
 
 // SettingsData is the full model for the settings page.
 type SettingsData struct {
-	Layout         Layout
-	Settings       config.Settings
-	Libraries      []config.Library
-	HasJellyfinKey bool
-	HasTMDBKey     bool
-	HasAIKey       bool
-	CacheEntries   int
-	Message        string
-	IsError        bool
-	Checks         map[string]ConnCheck
+	Tab          string
+	MetadataOpen bool
+	Demo         bool
+	Sources      SourcesData
+	DataDir      string
+	DBSize       string
+	ConfigSize   string
+	Layout       Layout
+	Settings     config.Settings
+	HasTMDBKey   bool
+	HasAIKey     bool
+	CacheEntries int
+	Message      string
+	IsError      bool
+	Checks       map[string]ConnCheck
 }
 
 // Check returns the connection result of a section, if one was produced.
@@ -161,8 +180,10 @@ type SuggestionsData struct {
 
 // LogPageData is the model for the dedicated activity-log page.
 type LogPageData struct {
-	Layout Layout
-	Logs   []LogEntryView
+	Layout      Layout
+	Logs        []LogEntryView
+	Activities  []ActivityView
+	Diagnostics DiagnosticsData
 }
 
 // LangChoice is a selectable metadata language for TMDB.
@@ -275,7 +296,7 @@ func BuildLogViews(entries []logbuf.Entry) []LogEntryView {
 	return out
 }
 
-// LanguageOptions builds the language switcher options for the given catalog.
+// LanguageOptions builds the interface-language choices used in settings.
 func LanguageOptions(active string) []LangOption {
 	labels := map[string]string{
 		config.LocaleEN: "English",

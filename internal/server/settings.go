@@ -2,9 +2,10 @@ package server
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -12,32 +13,72 @@ import (
 	"github.com/daknoblo/waim/internal/ai"
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
-	"github.com/daknoblo/waim/internal/jellyfin"
 	"github.com/daknoblo/waim/internal/tmdb"
 	"github.com/daknoblo/waim/internal/web"
 )
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
-	s.renderSettings(w, r, "", false)
+	message := ""
+	if r.URL.Query().Get("saved") == "1" {
+		message = s.translator(r).T("settings.saveSuccess")
+	}
+	switch r.URL.Query().Get("reset") {
+	case "media", "metadata", "factory":
+		message = s.translator(r).T("settings.reset.done")
+	}
+	s.renderSettings(w, r, message, false)
 }
 
 func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, message string, isErr bool, checks ...map[string]web.ConnCheck) {
-	cur := s.cfg.Get()
-	cacheEntries, _ := s.store.TMDBCacheCount(r.Context())
-	d := web.SettingsData{
-		Layout:         s.layout(r, web.NavSettings),
-		Settings:       cur,
-		Libraries:      cur.Libraries,
-		HasJellyfinKey: cur.Jellyfin.APIKey != "",
-		HasTMDBKey:     cur.TMDB.APIKey != "",
-		HasAIKey:       cur.AI.APIKey != "",
-		CacheEntries:   cacheEntries,
-		Message:        message,
-		IsError:        isErr,
-		Checks:         map[string]web.ConnCheck{},
+	var check map[string]web.ConnCheck
+	if len(checks) > 0 {
+		check = checks[0]
 	}
-	if len(checks) > 0 && checks[0] != nil {
-		d.Checks = checks[0]
+	s.renderSettingsDraft(w, r, message, isErr, check, nil)
+}
+
+func (s *Server) renderSettingsDraft(w http.ResponseWriter, r *http.Request, message string, isErr bool, checks map[string]web.ConnCheck, draft *config.Settings) {
+	cur := s.cfg.Get()
+	cacheEntries, err := s.store.TMDBCacheCount(r.Context())
+	if err != nil {
+		s.log.Error("settings cache count failed", "err", err)
+		message, isErr = s.translator(r).T("sources.storeError"), true
+	}
+	tab := web.SettingsTab(r.URL.Query().Get("tab"))
+	if r.FormValue("tab") != "" {
+		tab = web.SettingsTab(r.FormValue("tab"))
+	}
+	if strings.HasPrefix(r.URL.Path, "/sources") {
+		tab = "media"
+	}
+	dbPath := s.store.Path()
+	d := web.SettingsData{
+		Tab:          tab,
+		MetadataOpen: tab == "metadata" && r.URL.Query().Get("provider") == "tmdb",
+		DataDir:      filepath.Dir(s.cfg.Path()),
+		DBSize:       web.HumanSize(fileSize(dbPath) + fileSize(dbPath+"-wal") + fileSize(dbPath+"-shm")),
+		ConfigSize:   web.HumanSize(fileSize(s.cfg.Path())),
+		Layout:       s.layout(r, web.NavSettings),
+		Settings:     cur,
+		HasTMDBKey:   cur.TMDB.APIKey != "",
+		HasAIKey:     cur.AI.APIKey != "",
+		CacheEntries: cacheEntries,
+		Message:      message,
+		IsError:      isErr,
+		Checks:       map[string]web.ConnCheck{},
+	}
+	if checks != nil {
+		d.Checks = checks
+	}
+	if draft != nil {
+		d.Settings = draft.Redacted()
+	}
+	if tab == "media" {
+		d.Sources = s.sourceSettingsData(r)
+		if d.Sources.OpenID != "" || d.Sources.AddOpen {
+			d.Sources.Message, d.Sources.Failed = d.Message, d.IsError
+			d.Message = ""
+		}
 	}
 	s.render(w, r, web.Settings(d))
 }
@@ -47,29 +88,50 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	tab := r.PostForm.Get("tab")
+	if tab != "" && web.SettingsTab(tab) != tab {
+		http.Error(w, "unknown settings section", http.StatusBadRequest)
+		return
+	}
 	t := s.translator(r)
-	ns, pending := s.parseSettingsForm(r)
-	localeChanged := ns.Locale != s.cfg.Get().Locale
-
-	if err := s.cfg.Save(ns); err != nil {
-		s.settingsResponse(w, r, t, settingsResult{Err: err})
+	var pending []string
+	var localeChanged, metadataLocaleChanged bool
+	ns, err := s.cfg.UpdateGlobals(func(current *config.Settings) error {
+		next, held := parseSettingsFormFrom(r, *current)
+		localeChanged = (tab == "" || tab == "interface") && next.Locale != t.Locale()
+		metadataLocaleChanged = next.TMDB.Language != current.TMDB.Language || next.TMDB.Region != current.TMDB.Region
+		*current, pending = next, held
+		return validateSettingsNumbers(r, tab)
+	})
+	if err != nil {
+		s.settingsResponse(w, r, t, settingsResult{Settings: ns, Err: err})
 		return
 	}
 	s.applyLogLevel(ns.LogLevel)
-	if s.catalog.Has(ns.Locale) {
-		setLocaleCookie(w, r, ns.Locale)
+	if tab == "" || tab == "media" || tab == "metadata" || metadataLocaleChanged {
+		s.sched.Recompute()
+		s.suggest.Invalidate()
 	}
-	tt := s.catalog.For(ns.Locale)
+	tt := t
+	if (tab == "" || tab == "interface") && s.catalog.Has(ns.Locale) {
+		tt = s.catalog.For(ns.Locale)
+	}
 
 	// Every label changes with the language, so the page has to be rebuilt.
-	if localeChanged && isHTMX(r) {
-		w.Header().Set("HX-Refresh", "true")
-		w.WriteHeader(http.StatusNoContent)
+	if localeChanged {
+		if isHTMX(r) {
+			w.Header().Set("X-Waim-Save", web.SaveOK)
+			w.Header().Set("X-Waim-Redirect", web.SettingsURL("interface"))
+			w.WriteHeader(http.StatusNoContent)
+		} else {
+			http.Redirect(w, r, web.SettingsURL("interface")+"&saved=1", http.StatusSeeOther)
+		}
 		return
 	}
 
 	res := settingsResult{Settings: ns, Pending: pending}
-	res.Checks = s.testConnections(r.Context(), tt, ns, changedSections(r, pending))
+	sections := changedSections(r, pending)
+	res.Checks = s.testConnections(r.Context(), tt, ns, sections)
 	// A held-back section was never contacted; say what it is waiting for.
 	for _, p := range pending {
 		res.Checks[p] = web.ConnCheck{
@@ -95,15 +157,22 @@ type settingsResult struct {
 func (s *Server) settingsResponse(w http.ResponseWriter, r *http.Request, t *i18n.Translator, res settingsResult) {
 	if !isHTMX(r) {
 		if res.Err != nil {
-			s.renderSettings(w, r, t.T("settings.saveError", res.Err.Error()), true)
+			s.renderSettingsDraft(w, r, t.T("settings.saveError", res.Err.Error()), true, res.Checks, &res.Settings)
+			return
+		}
+		if len(res.Pending) > 0 {
+			res.Settings.AI.Endpoint = r.FormValue("ai_endpoint")
+			s.renderSettingsDraft(w, r, t.T("settings.savedPendingKey"), true, res.Checks, &res.Settings)
 			return
 		}
 		s.renderSettings(w, r, t.T("settings.saveSuccess"), false, res.Checks)
 		return
 	}
 	fb := web.SettingsFeedback{
-		Checks:  res.Checks,
-		Pending: res.Pending,
+		Checks:     res.Checks,
+		Pending:    res.Pending,
+		Metadata:   r.FormValue("tab") == "metadata",
+		HasTMDBKey: res.Settings.TMDB.APIKey != "",
 	}
 	switch {
 	case res.Err != nil:
@@ -116,6 +185,7 @@ func (s *Server) settingsResponse(w http.ResponseWriter, r *http.Request, t *i18
 		fb.SaveState = web.SaveOK
 		fb.SaveMessage = t.T("settings.savedAt", time.Now().Format("15:04"))
 	}
+	w.Header().Set("X-Waim-Save", fb.SaveState)
 	s.render(w, r, web.SettingsFeedbackFragment(t, fb))
 }
 
@@ -125,9 +195,8 @@ func isHTMX(r *http.Request) bool { return r.Header.Get("HX-Request") == "true" 
 
 // Sections of the settings form that own a connection.
 const (
-	sectionJellyfin = "jellyfin"
-	sectionTMDB     = "tmdb"
-	sectionAI       = "ai"
+	sectionTMDB = "tmdb"
+	sectionAI   = "ai"
 )
 
 // changedSections decides which connections are worth probing. HTMX names the
@@ -136,17 +205,18 @@ const (
 // can ask for the key.
 func changedSections(r *http.Request, pending []string) map[string]bool {
 	out := map[string]bool{}
+	if tab := r.FormValue("tab"); tab != "" && tab != "metadata" {
+		return out
+	}
 	for _, p := range pending {
 		out[p] = true
 	}
 	if !isHTMX(r) {
 		// A plain form post carries no trigger, so check everything.
-		out[sectionJellyfin], out[sectionTMDB], out[sectionAI] = true, true, true
+		out[sectionTMDB], out[sectionAI] = true, true
 		return out
 	}
 	switch field := r.Header.Get("HX-Trigger-Name"); {
-	case strings.HasPrefix(field, "jellyfin_"):
-		out[sectionJellyfin] = true
 	case strings.HasPrefix(field, "tmdb_"):
 		out[sectionTMDB] = true
 	case strings.HasPrefix(field, "ai_"):
@@ -155,74 +225,7 @@ func changedSections(r *http.Request, pending []string) map[string]bool {
 	return out
 }
 
-func (s *Server) handleRefreshLibraries(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	t := s.translator(r)
-	ns, pending := s.parseSettingsForm(r)
-
-	if len(pending) > 0 {
-		s.settingsResponse(w, r, t, settingsResult{Settings: ns, Pending: pending, Checks: pendingChecks(t, pending)})
-		return
-	}
-	if ns.Jellyfin.URL == "" || ns.Jellyfin.APIKey == "" {
-		s.settingsResponse(w, r, t, settingsResult{Err: errJellyfinIncomplete})
-		return
-	}
-
-	client := jellyfin.New(ns.Jellyfin.URL, ns.Jellyfin.APIKey)
-	libs, err := client.Libraries(r.Context())
-	if err != nil {
-		s.settingsResponse(w, r, t, settingsResult{Err: err})
-		return
-	}
-
-	// Preserve enabled state by library ID.
-	enabled := map[string]bool{}
-	for _, l := range ns.Libraries {
-		enabled[l.ID] = l.Enabled
-	}
-	merged := make([]config.Library, 0, len(libs))
-	for _, l := range libs {
-		merged = append(merged, config.Library{
-			ID:      l.ID,
-			Name:    l.Name,
-			Type:    l.CollectionType,
-			Enabled: enabled[l.ID],
-		})
-	}
-	ns.Libraries = merged
-
-	if err := s.cfg.Save(ns); err != nil {
-		s.settingsResponse(w, r, t, settingsResult{Err: err})
-		return
-	}
-	s.applyLogLevel(ns.LogLevel)
-	if !isHTMX(r) {
-		s.renderSettings(w, r, t.T("settings.saveSuccess"), false)
-		return
-	}
-	// Swap the list itself and update the indicator out of band.
-	s.render(w, r, web.LibraryListWithFeedback(t, merged, web.SettingsFeedback{
-		SaveState:   web.SaveOK,
-		SaveMessage: t.T("settings.savedAt", time.Now().Format("15:04")),
-	}))
-}
-
-var errJellyfinIncomplete = errors.New("jellyfin url and api key are required")
-
-// pendingChecks turns held-back sections into chips asking for the key.
-func pendingChecks(t *i18n.Translator, pending []string) map[string]web.ConnCheck {
-	out := map[string]web.ConnCheck{}
-	for _, p := range pending {
-		out[p] = web.ConnCheck{Checked: true, State: web.ConnNeedsKey, Message: t.T("settings.connNeedsKey")}
-	}
-	return out
-}
-
-// parseSettingsForm builds a Settings value from the submitted form, preserving
+// parseSettingsFormFrom builds settings from a section's form, preserving
 // existing API keys when the corresponding field is left blank.
 //
 // A stored key only stays with an endpoint that keeps addressing the same
@@ -231,59 +234,52 @@ func pendingChecks(t *i18n.Translator, pending []string) map[string]web.ConnChec
 // applying the change would either send the stored credential to an address
 // the user just typed, or silently drop it. The returned slice names the
 // sections that were held back so the caller can ask for the key.
-func (s *Server) parseSettingsForm(r *http.Request) (config.Settings, []string) {
-	cur := s.cfg.Get()
+func parseSettingsFormFrom(r *http.Request, cur config.Settings) (config.Settings, []string) {
 	ns := cur.Clone()
 	var rebound []string
+	tab := r.FormValue("tab")
 
-	ns.Locale = config.NormalizeLocale(r.FormValue("locale"))
-	ns.LogLevel = config.NormalizeLogLevel(r.FormValue("log_level"))
-	ns.Jellyfin.URL = strings.TrimSpace(r.FormValue("jellyfin_url"))
-	ns.Jellyfin.UserID = strings.TrimSpace(r.FormValue("jellyfin_user_id"))
-	if k := strings.TrimSpace(r.FormValue("jellyfin_api_key")); k != "" {
-		ns.Jellyfin.APIKey = k
-	} else if ns.Jellyfin.APIKey != "" && !sameEndpointHost(cur.Jellyfin.URL, ns.Jellyfin.URL) {
-		// Keep the stored address and key together until a key for the new
-		// address arrives; the form still shows what was typed.
-		ns.Jellyfin.URL = cur.Jellyfin.URL
-		rebound = append(rebound, sectionJellyfin)
+	if tab == "" || tab == "interface" {
+		ns.Locale = config.NormalizeLocale(r.FormValue("locale"))
+		ns.TMDB.Language = strings.TrimSpace(r.FormValue("tmdb_language"))
+		ns.TMDB.Region = strings.TrimSpace(r.FormValue("tmdb_region"))
+	}
+	if tab == "" || tab == "other" {
+		ns.LogLevel = config.NormalizeLogLevel(r.FormValue("log_level"))
+	}
+	if tab == "" || tab == "metadata" {
+		if k := strings.TrimSpace(r.FormValue("tmdb_api_key")); k != "" {
+			ns.TMDB.APIKey = k
+		}
+
+		ns.AI.Enabled = r.FormValue("ai_enabled") != ""
+		ns.AI.Endpoint = strings.TrimSpace(r.FormValue("ai_endpoint"))
+		ns.AI.Model = strings.TrimSpace(r.FormValue("ai_model"))
+		if k := strings.TrimSpace(r.FormValue("ai_api_key")); k != "" {
+			ns.AI.APIKey = k
+		} else if ns.AI.APIKey != "" && !sameEndpointHost(cur.AI.Endpoint, ns.AI.Endpoint) {
+			ns.AI.Endpoint = cur.AI.Endpoint
+			rebound = append(rebound, sectionAI)
+		}
 	}
 
-	ns.TMDB.Language = strings.TrimSpace(r.FormValue("tmdb_language"))
-	ns.TMDB.Region = strings.TrimSpace(r.FormValue("tmdb_region"))
-	if k := strings.TrimSpace(r.FormValue("tmdb_api_key")); k != "" {
-		ns.TMDB.APIKey = k
+	if tab == "" || tab == "media" {
+		// Retain the legacy default for migration/new sources; real schedules
+		// are edited only on each source's explicit form.
+		ns.Scan.RunOnStart = r.FormValue("scan_run_on_start") != ""
+		ns.Scan.IncludeSpecials = r.FormValue("scan_include_specials") != ""
+	}
+	if tab == "" || tab == "metadata" {
+		ns.Scan.TMDBRateLimitRPS = atofDefault(r.FormValue("scan_rate"), cur.Scan.TMDBRateLimitRPS)
+		ns.Scan.EpisodeRatings = r.FormValue("scan_episode_ratings") != ""
+
+		ns.Cache.RefreshEnabled = r.FormValue("cache_refresh_enabled") != ""
+		ns.Cache.RefreshIntervalMinutes = atoiDefault(r.FormValue("cache_refresh_interval"), cur.Cache.RefreshIntervalMinutes)
+		ns.Cache.RefreshPercent = atoiDefault(r.FormValue("cache_refresh_percent"), cur.Cache.RefreshPercent)
+		ns.Cache.CleanupEnabled = r.FormValue("cache_cleanup_enabled") != ""
+		ns.Cache.CleanupMaxAgeDays = atoiDefault(r.FormValue("cache_cleanup_max_age"), cur.Cache.CleanupMaxAgeDays)
 	}
 
-	ns.AI.Enabled = r.FormValue("ai_enabled") != ""
-	ns.AI.Endpoint = strings.TrimSpace(r.FormValue("ai_endpoint"))
-	ns.AI.Model = strings.TrimSpace(r.FormValue("ai_model"))
-	if k := strings.TrimSpace(r.FormValue("ai_api_key")); k != "" {
-		ns.AI.APIKey = k
-	} else if ns.AI.APIKey != "" && !sameEndpointHost(cur.AI.Endpoint, ns.AI.Endpoint) {
-		ns.AI.Endpoint = cur.AI.Endpoint
-		rebound = append(rebound, sectionAI)
-	}
-
-	ns.Scan.IntervalMinutes = atoiDefault(r.FormValue("scan_interval"), cur.Scan.IntervalMinutes)
-	ns.Scan.TMDBRateLimitRPS = atofDefault(r.FormValue("scan_rate"), cur.Scan.TMDBRateLimitRPS)
-	ns.Scan.RunOnStart = r.FormValue("scan_run_on_start") != ""
-	ns.Scan.IncludeSpecials = r.FormValue("scan_include_specials") != ""
-	ns.Scan.EpisodeRatings = r.FormValue("scan_episode_ratings") != ""
-
-	ns.Cache.RefreshEnabled = r.FormValue("cache_refresh_enabled") != ""
-	ns.Cache.RefreshIntervalMinutes = atoiDefault(r.FormValue("cache_refresh_interval"), cur.Cache.RefreshIntervalMinutes)
-	ns.Cache.RefreshPercent = atoiDefault(r.FormValue("cache_refresh_percent"), cur.Cache.RefreshPercent)
-	ns.Cache.CleanupEnabled = r.FormValue("cache_cleanup_enabled") != ""
-	ns.Cache.CleanupMaxAgeDays = atoiDefault(r.FormValue("cache_cleanup_max_age"), cur.Cache.CleanupMaxAgeDays)
-
-	selected := map[string]bool{}
-	for _, id := range r.Form["library"] {
-		selected[id] = true
-	}
-	for i := range ns.Libraries {
-		ns.Libraries[i].Enabled = selected[ns.Libraries[i].ID]
-	}
 	return ns, rebound
 }
 
@@ -328,6 +324,33 @@ func atofDefault(s string, def float64) float64 {
 	return def
 }
 
+func validateSettingsNumbers(r *http.Request, tab string) error {
+	fields := map[string]string{
+		"scan_rate":              "metadata",
+		"cache_refresh_interval": "metadata", "cache_refresh_percent": "metadata", "cache_cleanup_max_age": "metadata",
+	}
+	for field, section := range fields {
+		if tab != "" && tab != section {
+			continue
+		}
+		values, present := r.PostForm[field]
+		if !present {
+			continue
+		}
+		if len(values) != 1 {
+			return fmt.Errorf("invalid value for %s", field)
+		}
+		if field == "scan_rate" {
+			if _, err := strconv.ParseFloat(values[0], 64); err != nil {
+				return fmt.Errorf("invalid value for %s", field)
+			}
+		} else if _, err := strconv.Atoi(values[0]); err != nil {
+			return fmt.Errorf("invalid value for %s", field)
+		}
+	}
+	return nil
+}
+
 // applyLogLevel updates the live logging verbosity to match the given level.
 func (s *Server) applyLogLevel(level string) {
 	if s.logLevel != nil {
@@ -335,7 +358,7 @@ func (s *Server) applyLogLevel(level string) {
 	}
 }
 
-// testConnections verifies the Jellyfin and TMDB credentials in ns and returns
+// testConnections verifies the global TMDB and AI credentials and returns
 // localised, display-ready results. A credential that is not configured yields
 // an unchecked (hidden) result.
 // testConnections probes the endpoints of the given sections and returns one
@@ -348,24 +371,6 @@ func (s *Server) testConnections(ctx context.Context, t *i18n.Translator, ns con
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-
-	if want[sectionJellyfin] {
-		var c web.ConnCheck
-		switch {
-		case ns.Jellyfin.URL == "" || ns.Jellyfin.APIKey == "":
-			c = web.ConnCheck{Checked: true, State: web.ConnIncomplete, Message: t.T("settings.connIncomplete")}
-		default:
-			c.Checked = true
-			if info, err := jellyfin.New(ns.Jellyfin.URL, ns.Jellyfin.APIKey).SystemInfo(ctx); err != nil {
-				c.State = web.ConnError
-				c.Message = t.T("settings.connJellyfinFail", err.Error())
-			} else {
-				c.OK, c.State = true, web.ConnOK
-				c.Message = t.T("settings.connJellyfinOk", strings.TrimSpace(info.ServerName+" "+info.Version))
-			}
-		}
-		out[sectionJellyfin] = c
-	}
 
 	if want[sectionTMDB] {
 		var c web.ConnCheck

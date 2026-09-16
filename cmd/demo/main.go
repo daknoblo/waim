@@ -16,6 +16,7 @@ import (
 	"github.com/a-h/templ"
 
 	"github.com/daknoblo/waim/internal/i18n"
+	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/web"
 )
 
@@ -47,17 +48,31 @@ func run(out, locale string) error {
 
 	run := demoRun()
 	findings := demoFindings()
+	mediaCatalog, sources, entries := demoSources(run, findings)
 	pages := map[string]templ.Component{
 		"index.html":       web.Dashboard(demoDashboard(t, run, findings)),
 		"stats.html":       web.Stats(demoStats(t, run, findings)),
 		"suggestions.html": web.Suggestions(demoSuggestions(t)),
 		"logs.html":        web.Logs(demoLogs(t)),
-		"settings.html":    web.Settings(demoSettings(t)),
 		"about.html":       web.About(demoAbout(t)),
+		"collection.html":  web.Collection(web.CollectionData{Layout: demoLayout(t, "collection"), Entries: entries, Configured: true, Ownership: map[string]string{media.Key(media.Movie, 301): web.CollectionComplete, media.Key(media.Series, 406): web.CollectionComplete}}),
+	}
+	for _, tab := range web.SettingsTabs {
+		d := demoSettings(t)
+		d.Tab, d.Demo = tab, true
+		d.Sources = web.SourcesData{Layout: d.Layout, Sources: sources, DefaultScanMinutes: d.Settings.Scan.IntervalMinutes}
+		d.DataDir, d.DBSize, d.ConfigSize = "/data", "18 MiB", "3 KiB"
+		comp := web.Settings(d)
+		pages["settings-"+tab+".html"] = comp
+		if tab == "media" {
+			pages["settings.html"] = comp
+			pages["sources.html"] = comp
+		}
 	}
 	for name, comp := range pages {
 		var sb strings.Builder
-		if err := comp.Render(context.Background(), &sb); err != nil {
+		ctx := web.WithProvenance(web.WithActionTranslator(context.Background(), t), mediaCatalog, run)
+		if err := comp.Render(ctx, &sb); err != nil {
 			return fmt.Errorf("render %s: %w", name, err)
 		}
 		if err := os.WriteFile(filepath.Join(out, name), []byte(staticHTML(sb.String(), t)), 0o644); err != nil {
@@ -91,19 +106,25 @@ var absHref = regexp.MustCompile(`href="/[^"]*"`)
 func staticHTML(html string, t *i18n.Translator) string {
 	html = hxAttr.ReplaceAllString(html, "")
 	html = scriptTag.ReplaceAllString(html, "")
+	for _, tab := range web.SettingsTabs {
+		html = strings.ReplaceAll(html, `href="/settings?tab=`+tab+`"`, `href="settings-`+tab+`.html"`)
+	}
 	html = strings.NewReplacer(
+		`href="/settings?tab=metadata&amp;provider=tmdb"`, `href="settings-metadata.html"`,
 		`href="/static/`, `href="static/`,
 		`src="/static/`, `src="static/`,
 		`href="/"`, `href="index.html"`,
 		`href="/stats"`, `href="stats.html"`,
+		`href="/sources"`, `href="sources.html"`,
+		`href="/collection"`, `href="collection.html"`,
 		`href="/suggestions"`, `href="suggestions.html"`,
 		`href="/logs"`, `href="logs.html"`,
+		`href="/logs#diagnostics"`, `href="logs.html#diagnostics"`,
 		`href="/settings"`, `href="settings.html"`,
 		`href="/about"`, `href="about.html"`,
 		`href="/export/settings"`, `href="`+repoURL+`"`,
 		`href="/export/sync"`, `href="`+repoURL+`"`,
 		`action="/settings"`, `action="#"`,
-		`action="/locale"`, `action="#"`,
 	).Replace(html)
 	// Anything still pointing at a server route would 404 on a static host.
 	html = absAction.ReplaceAllString(html, `$1="#"`)
