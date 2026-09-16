@@ -143,8 +143,9 @@ warning bodies are replaced by an explicit safe fallback notice.
 
 The diagnostic expander is outside the two-second activity swap. Its contents
 poll independently and unchanged details return 204, so reading/expanded state
-does not reset as progress advances. A small circled exclamation in the header
-(also visible on mobile) links to `/logs#diagnostics`: amber means warnings,
+does not reset as progress advances. A small circled exclamation between
+**About** and the language selector (beside the menu button on mobile) links to
+`/logs#diagnostics`: amber means warnings,
 skipped/incomplete work, and red takes precedence for failures or storage errors.
 Operational inventory/legacy/pending notices now live in Logs, not repeated
 page-wide banners. Metadata/media-source setup cards and key-recovery guidance

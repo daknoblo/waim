@@ -11,14 +11,18 @@ templ navLink(t *i18n.Translator, href, id, active, label string) {
 	</a>
 }
 
-// navLinks renders the page links shared by the desktop bar and the mobile panel.
-templ navLinks(l Layout) {
+templ primaryNavLinks(l Layout) {
 	@navLink(l.T, "/", NavDashboard, l.Active, l.T.T("nav.dashboard"))
 	@navLink(l.T, "/suggestions", NavSuggestions, l.Active, l.T.T("nav.suggestions"))
 	@navLink(l.T, "/stats", NavStats, l.Active, l.T.T("nav.stats"))
 	@navLink(l.T, "/collection", "collection", l.Active, l.T.T("sources.collection"))
 	@navLink(l.T, "/logs", NavLogs, l.Active, l.T.T("nav.logs"))
 	@navLink(l.T, "/settings", NavSettings, l.Active, l.T.T("nav.settings"))
+}
+
+// navLinks renders the complete set for the mobile panel.
+templ navLinks(l Layout) {
+	@primaryNavLinks(l)
 	@navLink(l.T, "/about", NavAbout, l.Active, l.T.T("nav.about"))
 }
 
@@ -51,32 +55,39 @@ templ Page(l Layout, body templ.Component) {
 			<div class="mx-auto flex min-h-screen w-full flex-col px-4 sm:px-6 lg:w-2/3 lg:px-4">
 				<header class="sticky top-0 z-30 -mx-4 border-b border-slate-800/80 bg-slate-950/95 px-4 backdrop-blur sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:backdrop-blur-none lg:-mx-4 lg:px-4">
 					<div class="flex items-center justify-between gap-4 py-4 md:flex-wrap md:py-5">
-						<div class="flex items-baseline gap-3">
+						<div class="flex items-center gap-3">
 							<a href="/" class="inline-flex items-center gap-2 text-2xl font-bold tracking-tight text-indigo-400 transition hover:text-indigo-300">
 								<img src={ "/static/waim-icon.svg?v=" + l.AssetVersion } width="32" height="32" class="h-8 w-8 shrink-0" alt="" aria-hidden="true"/>
 								{ l.T.T("app.title") }
 							</a>
-							<div id="health-indicator" hx-get="/partials/health-indicator" hx-trigger="every 3s" hx-swap="innerHTML" class="shrink-0">
-								@HealthIndicator(l.T,l.HealthSeverity)
-							</div>
 							<span class="hidden text-sm text-slate-400 sm:inline">{ l.T.T("app.tagline") }</span>
 						</div>
-						<nav class="hidden items-center gap-1 text-sm md:flex">
-							@navLinks(l)
-							@languageSwitcher(l, "ml-2")
+						<nav class="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1 text-sm">
+							<button
+								type="button"
+								id="nav-toggle"
+								class="nav-toggle"
+								aria-controls="nav-menu"
+								aria-expanded="false"
+								aria-label={ l.T.T("nav.menu") }
+								data-label-open={ l.T.T("nav.menu") }
+								data-label-close={ l.T.T("nav.menuClose") }
+							>
+								@navIcons()
+							</button>
+							<div class="hidden md:contents">
+								@primaryNavLinks(l)
+							</div>
+							<div class="flex items-center gap-1">
+								<div class="hidden md:contents">
+									@navLink(l.T, "/about", NavAbout, l.Active, l.T.T("nav.about"))
+								</div>
+								<div id="health-indicator" hx-get="/partials/health-indicator" hx-trigger="every 3s" hx-swap="innerHTML" class="flex shrink-0 items-center empty:hidden">
+									@HealthIndicator(l.T,l.HealthSeverity)
+								</div>
+								@languageSwitcher(l, "ml-2 hidden md:block")
+							</div>
 						</nav>
-						<button
-							type="button"
-							id="nav-toggle"
-							class="nav-toggle"
-							aria-controls="nav-menu"
-							aria-expanded="false"
-							aria-label={ l.T.T("nav.menu") }
-							data-label-open={ l.T.T("nav.menu") }
-							data-label-close={ l.T.T("nav.menuClose") }
-						>
-							@navIcons()
-						</button>
 					</div>
 					<nav id="nav-menu" class="nav-panel" hidden>
 						@navLinks(l)
