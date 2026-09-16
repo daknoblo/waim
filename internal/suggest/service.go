@@ -198,9 +198,11 @@ func (s *Service) generate(due time.Time, scheduled bool) {
 	run := s.activities.Start(activity.Suggestions)
 	s.mu.Unlock()
 	go func() {
-		defer release()
 		defer s.wg.Done()
 		defer s.running.Store(false)
+		// Completion must not become observable before maintenance admission
+		// is released, otherwise an immediately following reset can fail.
+		defer release()
 		ctx, cancel := context.WithTimeout(s.ctx, generateLimit)
 		defer cancel()
 		ctx = activity.WithRun(ctx, run)
