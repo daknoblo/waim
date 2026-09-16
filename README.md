@@ -94,6 +94,10 @@ Huntarr or Missingarr.
   **Other**. Global fields and existing sources autosave; creation and removal
   remain explicit actions. Source edits retain revision checks, connection
   tests and library refreshes.
+- The **Metadata** tab uses provider tiles with local TMDB/IMDb wordmarks.
+  TMDB opens an autosaving dialog for its API key, request limits, episode
+  ratings and cache maintenance. IMDb is marked as not yet available; optional
+  AI recommendations remain a separate section below.
 - A guarded **Danger Zone** can reset metadata, imported inventories or all user
   state. Resets reject active work instead of cancelling it, never delete media
   on your servers, and keep the persistent encryption key and database file.

@@ -110,6 +110,7 @@ func staticHTML(html string, t *i18n.Translator) string {
 		html = strings.ReplaceAll(html, `href="/settings?tab=`+tab+`"`, `href="settings-`+tab+`.html"`)
 	}
 	html = strings.NewReplacer(
+		`href="/settings?tab=metadata&amp;provider=tmdb"`, `href="settings-metadata.html"`,
 		`href="/static/`, `href="static/`,
 		`src="/static/`, `src="static/`,
 		`href="/"`, `href="index.html"`,

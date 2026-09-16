@@ -130,11 +130,14 @@ type SettingsFeedback struct {
 	Pending     []string
 	SaveState   string
 	SaveMessage string
+	Metadata    bool
+	HasTMDBKey  bool
 }
 
 // SettingsData is the full model for the settings page.
 type SettingsData struct {
 	Tab          string
+	MetadataOpen bool
 	Demo         bool
 	Sources      SourcesData
 	DataDir      string

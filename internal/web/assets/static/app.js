@@ -571,16 +571,63 @@
 
   // A tab navigation waits for the active form's final save, never aborting it.
   // Failed saves keep the form and its draft in place instead of navigating.
+  function settingsDialogs(flush) {
+    var dialogs = document.querySelectorAll("dialog.metadata-dialog");
+    dialogs.forEach(function (dialog) {
+      var backdropStarted = false;
+      function close() { flush(function () { dialog.close(); }); }
+      dialog.settingsClose = close;
+      if (dialog.dataset.settingsAutoOpen === "true" && dialog.showModal) {
+        dialog.removeAttribute("open");
+        dialog.showModal();
+      }
+      dialog.addEventListener("cancel", function (e) { e.preventDefault(); close(); });
+      function outside(e) {
+        var rect = dialog.getBoundingClientRect();
+        return e.target === dialog && (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom);
+      }
+      dialog.addEventListener("pointerdown", function (e) { backdropStarted = e.button === 0 && outside(e); });
+      dialog.addEventListener("pointercancel", function () { backdropStarted = false; });
+      dialog.addEventListener("click", function (e) {
+        var dismiss = backdropStarted && outside(e);
+        backdropStarted = false;
+        if (dismiss) close();
+      });
+    });
+    document.addEventListener("click", function (e) {
+      var open = e.target.closest ? e.target.closest("a[data-settings-dialog]") : null;
+      if (open && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.button === 0) {
+        var dialog = document.getElementById(open.dataset.settingsDialog);
+        if (dialog && dialog.showModal) { e.preventDefault(); dialog.showModal(); }
+      }
+      var close = e.target.closest ? e.target.closest("a[data-settings-dialog-close]") : null;
+      if (close) {
+        var owner = close.closest("dialog");
+        if (owner && owner.close) { e.preventDefault(); owner.settingsClose(); }
+      }
+    });
+  }
+
   function settingsNavigation() {
     var sourceGuard = sourceNavigationGuard();
     sourceDialogs(sourceGuard);
     var form = document.getElementById("settings-form");
-    if (!form || !window.htmx) return;
-    var dirty = false, busy = false, destination = "", field = "";
+    if (!form || !window.htmx) {
+      settingsDialogs(function (done) { done(); });
+      return;
+    }
+    var dirty = false, busy = false, destination = "", field = "", afterSave = null;
     var retry = document.getElementById("settings-retry");
+    var metadataRetry = document.getElementById("metadata-settings-retry");
+    function retryVisible(visible) {
+      if (retry) retry.hidden = !visible;
+      if (metadataRetry) metadataRetry.hidden = !visible;
+    }
     function indicator(message) {
       var el = document.getElementById("save-indicator");
       if (el) el.textContent = message;
+      var metadata = document.getElementById("metadata-save-indicator");
+      if (metadata) metadata.textContent = message;
     }
     form.addEventListener("input", function (e) {
       dirty = true;
@@ -596,7 +643,7 @@
     form.addEventListener("htmx:beforeRequest", function () {
       busy = true;
       dirty = false;
-      if (retry) retry.hidden = true;
+      retryVisible(false);
       indicator(form.dataset.saving);
     });
     form.addEventListener("htmx:afterRequest", function (e) {
@@ -605,19 +652,28 @@
       if (!saved) {
         dirty = true;
         destination = "";
+        afterSave = null;
         sourceGuard.cancelNavigation();
-        if (retry) retry.hidden = false;
+        retryVisible(true);
         if (!e.detail.xhr || !e.detail.xhr.status || e.detail.xhr.status >= 400) indicator(form.dataset.failed);
         return;
       }
-      if (retry) retry.hidden = true;
+      retryVisible(false);
       if (!destination) destination = e.detail.xhr.getResponseHeader("X-Waim-Redirect") || "";
       if (destination) {
         if (dirty) window.htmx.trigger(form, "settings-save");
         else {
           var next = destination;
           destination = "";
+          afterSave = null;
           sourceGuard.run(function () { window.location.assign(next); });
+        }
+      } else if (afterSave) {
+        if (dirty) window.htmx.trigger(form, "settings-save");
+        else {
+          var finish = afterSave;
+          afterSave = null;
+          finish();
         }
       }
     });
@@ -636,7 +692,7 @@
     document.addEventListener("click", function (e) {
       var link = e.target.closest ? e.target.closest("a[href]") || e.target.closest("a[data-settings-tab]") : null;
       if (e.defaultPrevented || !link || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || (!dirty && !busy)) return;
-      if (link.closest("a[data-source-close]") || link.closest("a[data-source-dialog]")) return;
+      if (link.closest("a[data-source-close]") || link.closest("a[data-source-dialog]") || link.closest("a[data-settings-dialog]") || link.closest("a[data-settings-dialog-close]")) return;
       e.preventDefault();
       navigate(link.href);
     });
@@ -644,6 +700,15 @@
       if (!busy && form.reportValidity()) window.htmx.trigger(form, "settings-save");
     }
     if (retry) retry.addEventListener("click", submit);
+    if (metadataRetry) metadataRetry.addEventListener("click", submit);
+    settingsDialogs(function (done) {
+      if (!dirty && !busy) { done(); return; }
+      afterSave = done;
+      if (!busy) {
+        if (!form.reportValidity()) { afterSave = null; retryVisible(true); indicator(form.dataset.failed); return; }
+        window.htmx.trigger(form, "settings-save");
+      }
+    });
     form.addEventListener("submit", function (e) { e.preventDefault(); submit(); });
     window.addEventListener("beforeunload", function (e) {
       if (dirty || busy) {

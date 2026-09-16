@@ -27,7 +27,7 @@ class Events {
   }
 }
 
-function fixture({ htmx = true, draft = false, dialog = false, autosave = false } = {}) {
+function fixture({ htmx = true, draft = false, dialog = false, autosave = false, metadata = false } = {}) {
   if (autosave) dialog = true;
   const source = new Events();
   source.values = autosave ? { revision: "7", name: "Saved source", url: "https://old.example", key: "", library: "old-library", enabled: "on", scan_interval: "60" } : { name: "Saved source" };
@@ -48,6 +48,16 @@ function fixture({ htmx = true, draft = false, dialog = false, autosave = false 
   settings.reportValidity = () => true;
   const settingsRetry = new Events();
   settingsRetry.hidden = true;
+  const metadataRetry = new Events();
+  metadataRetry.hidden = true;
+  const metadataStatus = { textContent: "" };
+  const metadataDialog = new Events();
+  metadataDialog.dataset = { settingsAutoOpen: String(draft) };
+  metadataDialog.open = false;
+  metadataDialog.removeAttribute = () => {};
+  metadataDialog.showModal = () => { metadataDialog.open = true; };
+  metadataDialog.close = () => { metadataDialog.open = false; };
+  metadataDialog.getBoundingClientRect = () => ({ left: 100, right: 300, top: 100, bottom: 300 });
   const document = new Events();
   const diagnosticPanel = { open: false };
   const sourceDialog = new Events();
@@ -65,8 +75,8 @@ function fixture({ htmx = true, draft = false, dialog = false, autosave = false 
   const tileFields = {};
   const tile = { dataset: { sourceTile: 'id"]unsafe' }, querySelector: selector => tileFields[selector] ||= { textContent: "" } };
   document.body = new Events();
-  document.querySelectorAll = selector => selector === "form[data-source-edit]" ? [source] : selector === "dialog.source-dialog" && dialog ? [sourceDialog] : selector === "[data-source-tile]" ? [tile] : [];
-  document.getElementById = id => id === "settings-form" ? settings : id === "settings-retry" ? settingsRetry : id === "diagnostics" ? diagnosticPanel : id === "source-dialog" ? sourceDialog : null;
+  document.querySelectorAll = selector => selector === "form[data-source-edit]" ? [source] : selector === "dialog.source-dialog" && dialog ? [sourceDialog] : selector === "[data-source-tile]" ? [tile] : selector === "dialog.metadata-dialog" && metadata ? [metadataDialog] : [];
+  document.getElementById = id => id === "settings-form" ? settings : id === "settings-retry" ? settingsRetry : id === "diagnostics" ? diagnosticPanel : id === "source-dialog" ? sourceDialog : id === "metadata-dialog" ? metadataDialog : id === "metadata-settings-retry" && metadata ? metadataRetry : id === "metadata-save-indicator" && metadata ? metadataStatus : null;
   const window = new Events();
   const prompts = [], navigations = [], saves = [], requests = [], actions = [];
   let answer = false;
@@ -87,7 +97,19 @@ function fixture({ htmx = true, draft = false, dialog = false, autosave = false 
   const link = { href: "/settings?tab=metadata", closest: selector => selector === "a[data-settings-tab]" ? link : null };
   return {
     source, settings, window, prompts, navigations, saves, diagnosticPanel, sourceDialog,
-    requests, sourceStatus, retry, settingsRetry, actions, deleteRevision, tileFields, heading, scan, libraries,
+    requests, sourceStatus, retry, settingsRetry, actions, deleteRevision, tileFields, heading, scan, libraries, metadataDialog, metadataRetry, metadataStatus,
+    openMetadata() {
+      const link = { dataset: { settingsDialog: "metadata-dialog" }, closest: selector => selector === "a[data-settings-dialog]" ? link : null };
+      return document.emit("click", { target: link, button: 0 });
+    },
+    closeMetadata() {
+      const link = { closest: selector => selector === "a[data-settings-dialog-close]" ? link : selector === "dialog" ? metadataDialog : null };
+      return document.emit("click", { target: link, button: 0 });
+    },
+    metadataBackdrop(start = [50, 50], end = [50, 50]) {
+      metadataDialog.emit("pointerdown", { target: metadataDialog, button: 0, clientX: start[0], clientY: start[1] });
+      return metadataDialog.emit("click", { target: metadataDialog, button: 0, clientX: end[0], clientY: end[1] });
+    },
     openSource() {
       const link = { dataset: { sourceDialog: "source-dialog" }, closest: selector => selector === "a[data-source-dialog]" ? link : null };
       return document.emit("click", { target: link, button: 0 });
@@ -138,6 +160,80 @@ function fixture({ htmx = true, draft = false, dialog = false, autosave = false 
 }
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test("metadata dialogs work in the static demo without HTMX", () => {
+  const f = fixture({ metadata: true, htmx: false });
+  f.openMetadata();
+  assert.equal(f.metadataDialog.open, true);
+  f.closeMetadata();
+  assert.equal(f.metadataDialog.open, false);
+});
+
+test("metadata dialog waits for settings autosave before closing", () => {
+  const f = fixture({ metadata: true });
+  assert.equal(f.openMetadata().defaultPrevented, true);
+  assert.equal(f.metadataDialog.open, true);
+  f.settings.emit("input", { target: { name: "scan_rate" } });
+  f.closeMetadata();
+  assert.equal(f.metadataDialog.open, true);
+  assert.equal(f.saves.length, 1);
+  f.settings.emit("htmx:beforeRequest");
+  assert.equal(f.metadataStatus.textContent, "Saving");
+  f.response("ok");
+  assert.equal(f.metadataDialog.open, false);
+});
+
+test("metadata failure preserves dialog and supports in-dialog retry", () => {
+  const f = fixture({ metadata: true });
+  f.openMetadata();
+  f.settings.emit("input", { target: { name: "cache_refresh_percent" } });
+  f.closeMetadata();
+  f.settings.emit("htmx:beforeRequest");
+  f.response("failed");
+  assert.equal(f.metadataDialog.open, true);
+  assert.equal(f.metadataRetry.hidden, false);
+  f.metadataRetry.emit("click");
+  f.settings.emit("htmx:beforeRequest");
+  assert.equal(f.metadataRetry.hidden, true);
+  f.response("ok");
+  assert.equal(f.metadataDialog.open, true);
+  f.closeMetadata();
+  assert.equal(f.metadataDialog.open, false);
+  assert.equal(f.saves.length, 2);
+});
+
+test("metadata close includes newer edits and validates before submitting", () => {
+  const f = fixture({ metadata: true });
+  f.openMetadata();
+  f.settings.emit("change", { target: { name: "scan_rate" } });
+  f.settings.emit("htmx:beforeRequest");
+  f.closeMetadata();
+  f.settings.emit("input", { target: { name: "cache_refresh_percent" } });
+  f.response("ok");
+  assert.equal(f.metadataDialog.open, true);
+  assert.equal(f.saves.length, 1);
+  f.settings.emit("htmx:beforeRequest");
+  f.response("ok");
+  assert.equal(f.metadataDialog.open, false);
+  f.openMetadata();
+  f.settings.emit("input", { target: { name: "scan_rate" } });
+  f.settings.reportValidity = () => false;
+  f.closeMetadata();
+  assert.equal(f.metadataDialog.open, true);
+  assert.equal(f.metadataStatus.textContent, "Failed");
+});
+
+test("metadata backdrop and Escape use the same safe close path", () => {
+  const f = fixture({ metadata: true });
+  f.openMetadata();
+  f.metadataBackdrop([150, 150], [50, 50]);
+  assert.equal(f.metadataDialog.open, true);
+  f.metadataBackdrop();
+  assert.equal(f.metadataDialog.open, false);
+  f.openMetadata();
+  f.metadataDialog.emit("cancel");
+  assert.equal(f.metadataDialog.open, false);
+});
 
 test("dirty source tab navigation asks locally and never auto-saves the source", () => {
   const f = fixture();

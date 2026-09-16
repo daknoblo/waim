@@ -76,7 +76,7 @@ the key file allows the stored credentials to be decrypted.
 | Tab | Contents |
 | --- | --- |
 | Media management (`/settings?tab=media`) | Source tiles/dialogs, per-source libraries and scan intervals, shared startup/specials. |
-| Metadata (`?tab=metadata`) | TMDB credentials, AI suggestions, shared rate limit, episode ratings and cache maintenance. The provider area currently implements TMDB only. |
+| Metadata (`?tab=metadata`) | Provider tiles: TMDB opens credentials, shared rate limit, episode ratings and cache settings in its own dialog. IMDb is an unavailable placeholder. AI recommendations remain a separate section below. |
 | Interface (`?tab=interface`) | UI language plus metadata language and region. |
 | Other (`?tab=other`) | Database size including WAL/SHM, configuration size, data directory, cache count, exports, log level and Danger Zone. |
 
@@ -246,6 +246,16 @@ use collection search when intentionally adding a title to the virtual collectio
 | User ID  | Optional. If empty, the first available user is used for library queries.   |
 
 ### TMDB
+
+In **Settings → Metadata**, provider tiles use locally served wordmark graphics
+and the same two-column layout as media sources. **Open source** on the TMDB tile
+opens its autosaving dialog; the key status on the tile updates after saving.
+Save feedback and retry controls are visible inside the dialog. Closing via the
+button, Escape or backdrop waits for pending saves; failures preserve the edits.
+The optional AI settings remain below the tile grid and are not part of the
+TMDB dialog. Metadata language and region are still configured under Interface.
+IMDb is only a clearly labeled future-provider placeholder: no IMDb requests,
+credentials, or enabled configuration actions are introduced.
 
 | Field           | Description                                                            |
 | --------------- | --------------------------------------------------------------------- |

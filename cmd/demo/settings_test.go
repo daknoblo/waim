@@ -13,6 +13,11 @@ func TestDemoRendersAllSettingsTabsWithDisabledResets(t *testing.T) {
 		if err := run(dir, locale); err != nil {
 			t.Fatal(err)
 		}
+		for _, asset := range []string{"tmdb-mark.svg", "imdb-mark.svg"} {
+			if _, err := os.Stat(filepath.Join(dir, "static", asset)); err != nil {
+				t.Fatalf("provider logo missing from demo: %s", asset)
+			}
+		}
 
 		for _, tab := range []string{"media", "metadata", "interface", "other"} {
 			raw, err := os.ReadFile(filepath.Join(dir, "settings-"+tab+".html"))
@@ -30,6 +35,9 @@ func TestDemoRendersAllSettingsTabsWithDisabledResets(t *testing.T) {
 			}
 			if tab == "other" && strings.Count(html, `<fieldset disabled`) != 3 {
 				t.Fatal("demo resets not disabled")
+			}
+			if tab == "metadata" && (!strings.Contains(html, `data-settings-dialog="metadata-tmdb-dialog"`) || !strings.Contains(html, `href="settings-metadata.html"`) || strings.Count(html, `data-metadata-provider=`) != 2) {
+				t.Fatal("metadata demo did not preserve provider tiles and local dialog link")
 			}
 		}
 	}

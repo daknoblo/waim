@@ -54,6 +54,7 @@ func (s *Server) renderSettingsDraft(w http.ResponseWriter, r *http.Request, mes
 	dbPath := s.store.Path()
 	d := web.SettingsData{
 		Tab:          tab,
+		MetadataOpen: tab == "metadata" && r.URL.Query().Get("provider") == "tmdb",
 		DataDir:      filepath.Dir(s.cfg.Path()),
 		DBSize:       web.HumanSize(fileSize(dbPath) + fileSize(dbPath+"-wal") + fileSize(dbPath+"-shm")),
 		ConfigSize:   web.HumanSize(fileSize(s.cfg.Path())),
@@ -168,8 +169,10 @@ func (s *Server) settingsResponse(w http.ResponseWriter, r *http.Request, t *i18
 		return
 	}
 	fb := web.SettingsFeedback{
-		Checks:  res.Checks,
-		Pending: res.Pending,
+		Checks:     res.Checks,
+		Pending:    res.Pending,
+		Metadata:   r.FormValue("tab") == "metadata",
+		HasTMDBKey: res.Settings.TMDB.APIKey != "",
 	}
 	switch {
 	case res.Err != nil:
