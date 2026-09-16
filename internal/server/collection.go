@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
@@ -28,12 +29,18 @@ func (s *Server) handleCollection(w http.ResponseWriter, r *http.Request) {
 	if d.Kind != media.Series {
 		d.Kind = media.Movie
 	}
-	run, err := s.store.LatestSuccessfulRun(r.Context())
+	run, err := s.currentRun(r.Context())
 	if err != nil {
 		http.Error(w, t.T("sources.storeError"), 500)
 		return
 	}
-	d.Updating = run == nil || run.Metadata.Revision != revision || s.sched.Running()
+	latest, err := s.store.LatestRun(r.Context())
+	if err != nil {
+		http.Error(w, t.T("sources.storeError"), 500)
+		return
+	}
+	d.Updating = run == nil || run.Metadata.Pending || run.Metadata.Revision != revision || s.sched.Running()
+	d.Ownership = collectionOwnership(entries, run, latest, s.cfg.Get().Scan.IncludeSpecials, d.Updating, time.Now())
 	if d.Query != "" && d.Configured {
 		if len(d.Query) > 200 {
 			d.Message = t.T("sources.searchError")

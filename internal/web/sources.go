@@ -32,4 +32,11 @@ type CollectionData struct {
 	Searched   bool
 	Configured bool
 	Updating   bool
+	Ownership  map[string]string
 }
+
+const (
+	CollectionComplete   = "complete"
+	CollectionPartial    = "partial"
+	CollectionUnverified = "unverified"
+)

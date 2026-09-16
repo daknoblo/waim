@@ -25,25 +25,35 @@ type LibrarySummary struct {
 // MediaStat captures TMDB metadata of an owned title for statistics.
 type MediaStat struct {
 	Provenance
-	MetadataUnavailable bool         `json:"metadataUnavailable,omitempty"`
-	Type                string       `json:"type"` // movie | series
-	Title               string       `json:"title"`
-	Year                int          `json:"year"`
-	Rating              float64      `json:"rating"`
-	Runtime             int          `json:"runtime"` // minutes (per movie, per episode for series)
-	Genres              []string     `json:"genres"`
-	LibraryID           string       `json:"libraryId"`
-	LibraryName         string       `json:"libraryName"`
-	TMDBID              int64        `json:"tmdbId,omitempty"`
-	JellyfinID          string       `json:"jellyfinId,omitempty"`
-	Language            string       `json:"language,omitempty"`      // ISO 639-1 original language
-	Country             string       `json:"country,omitempty"`       // ISO 3166-1 production country
-	Episodes            int          `json:"episodes,omitempty"`      // owned episodes (series)
-	TotalEpisodes       int          `json:"totalEpisodes,omitempty"` // episodes known to TMDB (series)
-	Minutes             int          `json:"minutes,omitempty"`       // runtime of the owned episodes (series)
-	Seasons             []SeasonStat `json:"seasons,omitempty"`       // seasons known to TMDB (series)
-	CollectionID        int64        `json:"collectionId,omitempty"`  // TMDB collection (movies)
-	CollectionName      string       `json:"collectionName,omitempty"`
+	LibraryAvailability *LibraryAvailability `json:"libraryAvailability,omitempty"`
+	MetadataUnavailable bool                 `json:"metadataUnavailable,omitempty"`
+	Type                string               `json:"type"` // movie | series
+	Title               string               `json:"title"`
+	Year                int                  `json:"year"`
+	Rating              float64              `json:"rating"`
+	Runtime             int                  `json:"runtime"` // minutes (per movie, per episode for series)
+	Genres              []string             `json:"genres"`
+	LibraryID           string               `json:"libraryId"`
+	LibraryName         string               `json:"libraryName"`
+	TMDBID              int64                `json:"tmdbId,omitempty"`
+	JellyfinID          string               `json:"jellyfinId,omitempty"`
+	Language            string               `json:"language,omitempty"`      // ISO 639-1 original language
+	Country             string               `json:"country,omitempty"`       // ISO 3166-1 production country
+	Episodes            int                  `json:"episodes,omitempty"`      // owned episodes (series)
+	TotalEpisodes       int                  `json:"totalEpisodes,omitempty"` // episodes known to TMDB (series)
+	Minutes             int                  `json:"minutes,omitempty"`       // runtime of the owned episodes (series)
+	Seasons             []SeasonStat         `json:"seasons,omitempty"`       // seasons known to TMDB (series)
+	CollectionID        int64                `json:"collectionId,omitempty"`  // TMDB collection (movies)
+	CollectionName      string               `json:"collectionName,omitempty"`
+}
+
+// LibraryAvailability records the scanner's released-episode evaluation, not
+// a comparison with TMDB's total count (which can include future episodes).
+// Nil on older scans or failed metadata lookups means not yet confirmed.
+type LibraryAvailability struct {
+	Complete         bool `json:"complete"`
+	ReleasedEpisodes int  `json:"releasedEpisodes,omitempty"`
+	IncludeSpecials  bool `json:"includeSpecials"`
 }
 
 // SeasonStat captures how many episodes of a season are owned and, when episode

@@ -39,10 +39,11 @@ Huntarr or Missingarr.
 ## Features
 
 - Multiple independent, named, read-only Jellyfin instances (your libraries are never modified).
-- A permanent **Virtual collection** with TMDB movie/series search. Add/remove
-  actions are available only on that page, reached via the main menu; other pages
-  show source references without watch buttons. Works with TMDB alone; no
-  Jellyfin server is required.
+- A permanent **Virtual collection** with TMDB movie/series search. Add titles
+  there or directly from **Suggestions**; already-tracked suggestions link back
+  to the collection instead of offering another add action. Removal stays on
+  the collection page. Dashboard and statistics show references without watch
+  buttons. Works with TMDB alone; no Jellyfin server is required.
 - Global TMDB identity merging and union of real episode ownership across
   instances. Source badges retain every instance and virtual membership.
 - Atomic source snapshots: failed refreshes retain the last successful inventory,
@@ -189,6 +190,21 @@ Media management**. Adding a source automatically loads its available libraries;
 the ones to scan and save the source.
 **Scan now** refreshes all active real sources; watch edits only recalculate
 using saved snapshots.
+
+The virtual collection marks titles that are fully available in your active
+media sources and offers manual removal of the virtual entry. Movies need real
+ownership; series need every episode released so far, using the union of active
+libraries and the configured specials setting. Future episodes do not prevent
+completion, and unreleased-only series are not marked complete. Removing a
+virtual entry never deletes media-server files or the title's real membership.
+Nothing is removed automatically.
+
+The status uses persisted, verified scan results, not just episode-count
+equality. Failed metadata/source reads, pending changes, a newer failed scan or
+newly due known episodes cannot produce a confirmed complete status. Older
+scans without this assessment need one new scan/recalculation. A clean result
+is required; unrelated unresolved-title warnings also keep completeness
+unconfirmed, consistent with WAIM's existing inventory uncertainty rules.
 
 Recalculations keep the scheduled source-scan deadline unchanged. Changing the
 scan interval rearms the timer and its displayed deadline together; nightly

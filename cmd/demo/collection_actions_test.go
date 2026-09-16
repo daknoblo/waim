@@ -9,7 +9,7 @@ import (
 	"github.com/daknoblo/waim/internal/i18n"
 )
 
-func TestOnlyCollectionPageOffersWatchButtons(t *testing.T) {
+func TestWatchButtonsStayOnSuggestionsAndCollection(t *testing.T) {
 	catalog, err := i18n.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -20,7 +20,8 @@ func TestOnlyCollectionPageOffersWatchButtons(t *testing.T) {
 			t.Fatal(err)
 		}
 		tr := catalog.For(locale)
-		action := regexp.MustCompile(`<button\b[^>]*>\s*(?:` + regexp.QuoteMeta(tr.T("sources.watch")) + `|` + regexp.QuoteMeta(tr.T("sources.unwatch")) + `)\s*</button>`)
+		add := regexp.MustCompile(`<button\b[^>]*>\s*` + regexp.QuoteMeta(tr.T("sources.watch")) + `\s*</button>`)
+		remove := regexp.MustCompile(`<button\b[^>]*>\s*` + regexp.QuoteMeta(tr.T("sources.unwatch")) + `\s*</button>`)
 		pages, err := filepath.Glob(filepath.Join(dir, "*.html"))
 		if err != nil {
 			t.Fatal(err)
@@ -33,9 +34,12 @@ func TestOnlyCollectionPageOffersWatchButtons(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantActions := filepath.Base(page) == "collection.html"
-			if action.Match(html) != wantActions {
-				t.Fatalf("%s %s: expected collection buttons=%v", locale, filepath.Base(page), wantActions)
+			name := filepath.Base(page)
+			if remove.Match(html) != (name == "collection.html") {
+				t.Fatalf("%s %s: remove action must stay on collection", locale, name)
+			}
+			if add.Match(html) != (name == "suggestions.html") {
+				t.Fatalf("%s %s: demo add actions must appear only on suggestions (collection has saved entries only)", locale, name)
 			}
 		}
 	}

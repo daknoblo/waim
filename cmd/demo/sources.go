@@ -37,6 +37,12 @@ func demoSources(run *store.ScanRun, findings []store.Finding) (media.Catalog, [
 			m.References = append(m.References, second.References...)
 			m.References = append(m.References, v.Item().References...)
 		}
+		if m.Type == store.MediaSeries && m.Episodes > 0 && m.Episodes == m.TotalEpisodes {
+			v := store.VirtualEntry{Type: kind, TMDBID: m.TMDBID, Title: m.Title, Year: m.Year}
+			entries = append(entries, v)
+			catalog.Items = append(catalog.Items, v.Item())
+			m.References = append(m.References, v.Item().References...)
+		}
 	}
 	v := store.VirtualEntry{Type: media.Movie, TMDBID: 999001, Title: "A future adventure (demo)", Year: 2030}
 	entries = append(entries, v)

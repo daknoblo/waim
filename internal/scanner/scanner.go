@@ -410,7 +410,6 @@ func (s *Scanner) scanSeries(ctx context.Context, libID, libName string, item me
 	}
 	stat.Runtime = episodeRuntime(tv, stat.Seasons)
 	stat.Minutes = seriesMinutes(stat.Seasons, stat.Runtime)
-	res.Media = append(res.Media, stat)
 
 	missingTotal := 0
 	for _, season := range tv.Seasons {
@@ -491,7 +490,17 @@ func (s *Scanner) scanSeries(ctx context.Context, libID, libName string, item me
 	s.collectUpcomingEpisodes(tv, item, libID, libName, seasons, res)
 	if seasons.failed {
 		res.Warnings = append(res.Warnings, "Season metadata unavailable: "+item.Name)
+	} else {
+		released := 0
+		for _, episodes := range seasons.airedByNo {
+			released += len(episodes)
+		}
+		stat.LibraryAvailability = &store.LibraryAvailability{
+			Complete:         !item.WatchOnly && released > 0 && missingTotal == 0,
+			ReleasedEpisodes: released, IncludeSpecials: s.settings.Scan.IncludeSpecials,
+		}
 	}
+	res.Media = append(res.Media, stat)
 	return missingTotal
 }
 
@@ -685,17 +694,18 @@ func yearOf(date string) string {
 
 func movieStat(m tmdb.Movie, item media.Item, libID, libName string) store.MediaStat {
 	st := store.MediaStat{
-		Provenance:  provenance(item),
-		Type:        store.MediaMovie,
-		Title:       m.Title,
-		Year:        yearInt(m.ReleaseDate),
-		Rating:      m.VoteAverage,
-		Runtime:     m.Runtime,
-		Genres:      genreNames(m.Genres),
-		LibraryID:   libID,
-		LibraryName: libName,
-		TMDBID:      m.ID,
-		Language:    m.OriginalLanguage,
+		Provenance:          provenance(item),
+		LibraryAvailability: &store.LibraryAvailability{Complete: !item.WatchOnly},
+		Type:                store.MediaMovie,
+		Title:               m.Title,
+		Year:                yearInt(m.ReleaseDate),
+		Rating:              m.VoteAverage,
+		Runtime:             m.Runtime,
+		Genres:              genreNames(m.Genres),
+		LibraryID:           libID,
+		LibraryName:         libName,
+		TMDBID:              m.ID,
+		Language:            m.OriginalLanguage,
 	}
 	if len(m.ProductionCountries) > 0 {
 		st.Country = m.ProductionCountries[0].Code

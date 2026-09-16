@@ -13,7 +13,7 @@ import (
 
 func TestCollectionEntryWithoutIdentityDoesNotOfferMutation(t *testing.T) {
 	var b bytes.Buffer
-	if err := collectionEntry(testTranslator(t), store.VirtualEntry{Type: media.Movie, Title: "Unidentified"}, false).Render(context.Background(), &b); err != nil {
+	if err := collectionEntry(testTranslator(t), store.VirtualEntry{Type: media.Movie, Title: "Unidentified"}, false, "").Render(context.Background(), &b); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "/collection/add") || strings.Contains(b.String(), "/collection/remove") {
@@ -45,7 +45,7 @@ func TestCollectionEntriesKeepExplicitAddAndRemoveActions(t *testing.T) {
 					ctx = WithProvenance(ctx, media.Catalog{Items: []media.Item{entry.Item()}}, nil)
 				}
 				var b bytes.Buffer
-				if err := collectionEntry(tr, entry, tc.saved).Render(ctx, &b); err != nil {
+				if err := collectionEntry(tr, entry, tc.saved, "").Render(ctx, &b); err != nil {
 					t.Fatal(err)
 				}
 				html := b.String()

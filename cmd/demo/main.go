@@ -16,6 +16,7 @@ import (
 	"github.com/a-h/templ"
 
 	"github.com/daknoblo/waim/internal/i18n"
+	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/web"
 )
 
@@ -54,7 +55,7 @@ func run(out, locale string) error {
 		"suggestions.html": web.Suggestions(demoSuggestions(t)),
 		"logs.html":        web.Logs(demoLogs(t)),
 		"about.html":       web.About(demoAbout(t)),
-		"collection.html":  web.Collection(web.CollectionData{Layout: demoLayout(t, "collection"), Entries: entries, Configured: true}),
+		"collection.html":  web.Collection(web.CollectionData{Layout: demoLayout(t, "collection"), Entries: entries, Configured: true, Ownership: map[string]string{media.Key(media.Movie, 301): web.CollectionComplete, media.Key(media.Series, 406): web.CollectionComplete}}),
 	}
 	for _, tab := range web.SettingsTabs {
 		d := demoSettings(t)

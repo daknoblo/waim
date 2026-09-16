@@ -99,7 +99,7 @@ templ collectionBody(d CollectionData) {
 		}
 		<div class="mb-6 grid gap-3 sm:grid-cols-2">
 			for _, entry := range d.Results {
-				@collectionEntry(d.Layout.T, entry, false)
+				@collectionEntry(d.Layout.T, entry, false, d.Ownership[media.Key(entry.Type,entry.TMDBID)])
 			}
 		</div>
 	}
@@ -109,12 +109,12 @@ templ collectionBody(d CollectionData) {
 	}
 	<div class="grid gap-3 sm:grid-cols-2">
 		for _, entry := range d.Entries {
-			@collectionEntry(d.Layout.T, entry, true)
+			@collectionEntry(d.Layout.T, entry, true, d.Ownership[media.Key(entry.Type,entry.TMDBID)])
 		}
 	</div>
 }
 
-templ collectionEntry(t *i18n.Translator, v store.VirtualEntry, remove bool) {
+templ collectionEntry(t *i18n.Translator, v store.VirtualEntry, remove bool, ownership string) {
 	<article class="card flex gap-3">
 		if v.Poster != "" {
 			<img class="h-24 w-16 rounded object-cover" src={ posterURL(v.Poster) } alt="" loading="lazy"/>
@@ -132,6 +132,19 @@ templ collectionEntry(t *i18n.Translator, v store.VirtualEntry, remove bool) {
 				}
 			</p>
 			@MediaSources(t, WatchURL(v.Type,v.TMDBID))
+			if ownership == CollectionComplete {
+				<div class="rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-200" data-collection-ownership="complete">
+					<p class="font-semibold">{ t.T("sources.fullyOwned") }</p>
+					if v.Type == media.Series {
+						<p class="mt-1">{ t.T("sources.fullyOwnedSeries") }</p>
+					}
+					<p class="mt-1">{ t.T("sources.removeVirtualHint") }</p>
+				</div>
+			} else if ownership == CollectionPartial {
+				<p class="text-sm text-slate-400" data-collection-ownership="partial">{ t.T("sources.partiallyOwned") }</p>
+			} else if ownership == CollectionUnverified {
+				<p class="text-sm text-amber-200" data-collection-ownership="unverified">{ t.T("sources.ownershipUnverified") }</p>
+			}
 			if v.TMDBID > 0 {
 				@collectionForm(t,v.Type,v.TMDBID,remove || Target(ctx,WatchURL(v.Type,v.TMDBID)).Watching)
 			}
