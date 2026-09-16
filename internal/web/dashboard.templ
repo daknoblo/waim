@@ -177,8 +177,8 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 										if r.TMDBLink != "" {
 											<a class="link-tmdb" href={ templ.SafeURL(r.TMDBLink) } target="_blank" rel="noreferrer noopener" title="TMDB">TMDB</a>
 										}
-										if r.JellyfinLink != "" {
-											<a class="link-jellyfin" href={ templ.SafeURL(MediaHref(ctx,r.JellyfinLink)) } target="_blank" rel="noreferrer noopener">{ t.T("sources.open") }</a>
+										if href := MediaHref(ctx,r.JellyfinLink); href != "" && href != r.TMDBLink {
+											<a class="link-jellyfin" href={ templ.SafeURL(href) } target="_blank" rel="noreferrer noopener">{ t.T("sources.open") }</a>
 										}
 									</div>
 								</td>

@@ -60,6 +60,8 @@ Huntarr or Missingarr.
   per-library quick filter. Library labels use `Type · Address · Library` on one
   line; virtual entries simply show **Virtual collection**, without a repeated
   watch-only note beneath the title. Long labels scroll horizontally on mobile.
+  Each finding shows its TMDB link and a media-server link only when that leads
+  to a different destination; virtual titles do not repeat the TMDB link.
   The desktop dashboard content is 10% wider to give the findings table more room.
 - **Statistics** page: completeness per library, most incomplete series and
   collections, top/lowest rated titles per library — in separate sections for
