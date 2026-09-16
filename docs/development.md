@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - [templ](https://templ.guide/) CLI (code generation)
 - The Tailwind CSS standalone CLI (CSS generation) — no Node.js required
 
