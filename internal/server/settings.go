@@ -109,7 +109,6 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	tt := t
 	if (tab == "" || tab == "interface") && s.catalog.Has(ns.Locale) {
-		setLocaleCookie(w, r, ns.Locale, s.cfg.Gate().FactoryEpoch())
 		tt = s.catalog.For(ns.Locale)
 	}
 

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/daknoblo/waim/internal/config"
@@ -239,36 +238,6 @@ func (s *Server) handlePartialUpcoming(w http.ResponseWriter, r *http.Request) {
 		findings, _ = s.currentFindings(ctx, run)
 	}
 	s.render(w, r, web.UpcomingContent(t, web.BuildUpcomingSection(t, run, findings, q)))
-}
-
-func (s *Server) handleLocale(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	loc := r.FormValue("locale")
-	if s.catalog.Has(loc) {
-		setLocaleCookie(w, r, loc, s.cfg.Gate().FactoryEpoch())
-	}
-	redirectBack(w, r)
-}
-
-// setLocaleCookie persists the selected UI language for a year. It is HttpOnly
-// (no script needs it), SameSite=Lax and Secure whenever the request arrived
-// over HTTPS.
-func setLocaleCookie(w http.ResponseWriter, r *http.Request, locale string, generations ...int64) {
-	if len(generations) > 0 {
-		http.SetCookie(w, &http.Cookie{Name: localeGenerationCookie, Value: strconv.FormatInt(generations[0], 10), Path: "/", MaxAge: int((365 * 24 * time.Hour).Seconds()), HttpOnly: true, Secure: isSecureRequest(r), SameSite: http.SameSiteLaxMode})
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     localeCookie,
-		Value:    locale,
-		Path:     "/",
-		MaxAge:   int((365 * 24 * time.Hour).Seconds()),
-		HttpOnly: true,
-		Secure:   isSecureRequest(r),
-		SameSite: http.SameSiteLaxMode,
-	})
 }
 
 func (s *Server) dashboardData(r *http.Request) web.DashboardData {

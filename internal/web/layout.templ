@@ -85,13 +85,11 @@ templ Page(l Layout, body templ.Component) {
 								<div id="health-indicator" hx-get="/partials/health-indicator" hx-trigger="every 3s" hx-swap="innerHTML" class="flex shrink-0 items-center empty:hidden">
 									@HealthIndicator(l.T,l.HealthSeverity)
 								</div>
-								@languageSwitcher(l, "ml-2 hidden md:block")
 							</div>
 						</nav>
 					</div>
 					<nav id="nav-menu" class="nav-panel" hidden>
 						@navLinks(l)
-						@languageSwitcher(l, "mt-2")
 					</nav>
 				</header>
 				if l.KeysUnreadable {
@@ -127,19 +125,4 @@ templ Page(l Layout, body templ.Component) {
 			</div>
 		</body>
 	</html>
-}
-
-templ languageSwitcher(l Layout, class string) {
-	<form method="post" action="/locale" class={ class }>
-		@MutationEpoch()
-		<select
-			name="locale"
-			aria-label={ l.T.T("settings.uiLanguage") }
-			class="lang-select w-full sm:w-auto"
-		>
-			for _, lang := range l.Languages {
-				<option value={ lang.Code } selected?={ lang.Active }>{ lang.Label }</option>
-			}
-		</select>
-	</form>
 }

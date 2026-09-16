@@ -32,6 +32,7 @@ func TestSettingsTabsRenderOnlyOwnedFieldsAndSourceRedirect(t *testing.T) {
 		"other":     {"log_level"},
 	}
 	for _, locale := range []string{"en", "de"} {
+		setTestLocale(t, s, locale)
 		for tab, owned := range fields {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/settings?tab="+tab, nil)
@@ -148,14 +149,14 @@ func TestConcurrentTabSavesUseLatestConfigAndPreserveValidationDraft(t *testing.
 	}
 }
 
-func TestLocaleActionPreservesActiveSettingsTab(t *testing.T) {
+func TestLegacyLocaleActionCannotOverrideSettings(t *testing.T) {
 	s := featureServer(t)
 	req := httptest.NewRequest("POST", "/locale", strings.NewReader("locale=de"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Referer", "http://example.com/settings?tab=metadata")
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
-	if w.Header().Get("Location") != "/settings?tab=metadata" {
-		t.Fatal("language switch lost active tab")
+	if w.Code != http.StatusNotFound || s.cfg.Get().Locale != "en" || len(w.Result().Cookies()) != 0 {
+		t.Fatal("removed language endpoint still modifies browser or settings language")
 	}
 }

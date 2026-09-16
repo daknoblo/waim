@@ -124,7 +124,6 @@ func staticHTML(html string, t *i18n.Translator) string {
 		`href="/export/settings"`, `href="`+repoURL+`"`,
 		`href="/export/sync"`, `href="`+repoURL+`"`,
 		`action="/settings"`, `action="#"`,
-		`action="/locale"`, `action="#"`,
 	).Replace(html)
 	// Anything still pointing at a server route would 404 on a static host.
 	html = absAction.ReplaceAllString(html, `$1="#"`)

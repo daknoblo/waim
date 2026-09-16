@@ -145,8 +145,8 @@ warning bodies are replaced by an explicit safe fallback notice.
 
 The diagnostic expander is outside the two-second activity swap. Its contents
 poll independently and unchanged details return 204, so reading/expanded state
-does not reset as progress advances. A small circled exclamation between
-**About** and the language selector (beside the menu button on mobile) links to
+does not reset as progress advances. A small circled exclamation after
+**About** (beside the menu button on mobile) links to
 `/logs#diagnostics`: amber means warnings,
 skipped/incomplete work, and red takes precedence for failures or storage errors.
 Operational inventory/legacy/pending notices now live in Logs, not repeated
@@ -174,6 +174,11 @@ is persisted so an unrelated later outage does not revive the old warning.
 
 Successfully completed activity cards show a green **OK**. Tasks that have never
 run remain **Ready**, rather than claiming a verified success.
+
+The interface language is configured exclusively under **Settings → Interface**.
+It applies to all pages and clients, including partial updates. The header has
+no separate language selector; old browser language cookies no longer override
+the saved setting. TMDB metadata language and region remain separate settings.
 
 ## Suggestions cache
 

@@ -43,6 +43,15 @@ func featureServer(t *testing.T) *Server {
 	return s
 }
 
+func setTestLocale(t *testing.T, s *Server, locale string) {
+	t.Helper()
+	settings := s.cfg.Get()
+	settings.Locale = locale
+	if err := s.cfg.Save(settings); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCollectionEndpointsUseVerifiedMetadataAndProtectMutations(t *testing.T) {
 	s := featureServer(t)
 	ctx := context.Background()
@@ -77,6 +86,7 @@ func TestCollectionEndpointsUseVerifiedMetadataAndProtectMutations(t *testing.T)
 		t.Fatalf("browser metadata trusted or duplicate: %+v", entries)
 	}
 	for _, locale := range []string{"en", "de"} {
+		setTestLocale(t, s, locale)
 		req := httptest.NewRequest("GET", "/collection?q=Verified", nil)
 		req.AddCookie(&http.Cookie{Name: localeCookie, Value: locale})
 		w := httptest.NewRecorder()

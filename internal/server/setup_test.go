@@ -23,6 +23,7 @@ func TestSetupNoticeIsCentralAndLocalized(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, locale := range []string{"en", "de"} {
+		setTestLocale(t, s, locale)
 		tr := s.catalog.For(locale)
 		for _, path := range []string{"/", "/stats", "/collection", "/suggestions"} {
 			t.Run(locale+path, func(t *testing.T) {

@@ -107,15 +107,6 @@
     }
   }
 
-  // Submit the language switcher on selection. Handled here rather than with an
-  // inline onchange attribute so the page works under a strict CSP.
-  function onLangChange(e) {
-    var t = e.target;
-    if (t && t.classList && t.classList.contains("lang-select") && t.form) {
-      t.form.submit();
-    }
-  }
-
   // Mobile navigation panel. The toggle lives here rather than in an inline
   // handler so the strict CSP (script-src 'self') stays intact.
   var desktopNav = window.matchMedia("(min-width: 768px)");
@@ -435,7 +426,5 @@
     }
     // Expandable rated lists on the statistics page (delegated).
     document.body.addEventListener("change", onRatedLimitChange);
-    // Language switcher (delegated).
-    document.body.addEventListener("change", onLangChange);
   });
 })();

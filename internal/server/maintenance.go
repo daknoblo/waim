@@ -3,7 +3,6 @@ package server
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/daknoblo/waim/internal/maintenance"
@@ -94,12 +93,3 @@ func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 }
 
 const localeGenerationCookie = "waim_locale_generation"
-
-func (s *Server) validLocaleGeneration(r *http.Request) bool {
-	generation := s.cfg.Gate().FactoryEpoch()
-	if generation == 0 {
-		return true
-	}
-	cookie, err := r.Cookie(localeGenerationCookie)
-	return err == nil && cookie.Value == strconv.FormatInt(generation, 10)
-}

@@ -11,7 +11,7 @@ import (
 	"github.com/daknoblo/waim/internal/i18n"
 )
 
-func TestHeaderPlacesOneIndicatorBetweenAboutAndLanguage(t *testing.T) {
+func TestHeaderPlacesOneIndicatorAfterAboutWithoutLanguageControl(t *testing.T) {
 	catalog, err := i18n.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -26,9 +26,11 @@ func TestHeaderPlacesOneIndicatorBetweenAboutAndLanguage(t *testing.T) {
 			html := b.String()
 			about := strings.Index(html, `href="/about"`)
 			indicator := strings.Index(html, `id="health-indicator"`)
-			language := strings.Index(html, `action="/locale"`)
-			if about < 0 || indicator <= about || language <= indicator {
-				t.Fatal("indicator must follow About and precede the language selector")
+			if about < 0 || indicator <= about {
+				t.Fatal("indicator must follow About")
+			}
+			if strings.Contains(html, `action="/locale"`) || strings.Contains(html, "<select") {
+				t.Fatal("header/mobile menu must not offer a language override")
 			}
 			if strings.Count(html, `id="health-indicator"`) != 1 || strings.Count(html, `hx-get="/partials/health-indicator"`) != 1 {
 				t.Fatal("responsive header must not duplicate the indicator or its polling")

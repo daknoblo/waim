@@ -69,6 +69,7 @@ func TestAddSourceDiscoveryFailureKeepsOneSavedSourceAndExplainsRetry(t *testing
 	for _, locale := range []string{"en", "de"} {
 		t.Run(locale, func(t *testing.T) {
 			s := featureServer(t)
+			setTestLocale(t, s, locale)
 			jf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "private-upstream-response", http.StatusUnauthorized)
 			}))

@@ -25,6 +25,7 @@ func TestActivityLogsAndIndependentPartialLocalized(t *testing.T) {
 	suggestions := s.activities.Start(activity.Suggestions)
 	suggestions.Phase(activity.AI, -1)
 	for _, locale := range []string{"en", "de"} {
+		setTestLocale(t, s, locale)
 		tr := s.catalog.For(locale)
 		for _, path := range []string{"/logs", "/partials/activity"} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -99,6 +100,7 @@ func TestActivityWaitingSetupAndIdleLocalization(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, locale := range []string{"en", "de"} {
+			setTestLocale(t, s, locale)
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "/partials/activity", nil)
 			r.AddCookie(&http.Cookie{Name: localeCookie, Value: locale})

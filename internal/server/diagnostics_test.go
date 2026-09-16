@@ -19,6 +19,13 @@ import (
 )
 
 func diagRequest(s *Server, path, locale, tag string) *httptest.ResponseRecorder {
+	settings := s.cfg.Get()
+	if settings.Locale != locale {
+		settings.Locale = locale
+		if err := s.cfg.Save(settings); err != nil {
+			panic(err)
+		}
+	}
 	r := httptest.NewRequest("GET", path, nil)
 	r.AddCookie(&http.Cookie{Name: localeCookie, Value: locale})
 	r.Header.Set(viewTagHeader, tag)

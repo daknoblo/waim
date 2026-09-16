@@ -293,7 +293,7 @@ func BuildLogViews(entries []logbuf.Entry) []LogEntryView {
 	return out
 }
 
-// LanguageOptions builds the language switcher options for the given catalog.
+// LanguageOptions builds the interface-language choices used in settings.
 func LanguageOptions(active string) []LangOption {
 	labels := map[string]string{
 		config.LocaleEN: "English",

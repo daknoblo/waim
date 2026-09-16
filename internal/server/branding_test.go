@@ -29,6 +29,7 @@ func TestBrandingAndDevelopmentTabTitles(t *testing.T) {
 		{"demo", false},
 	} {
 		for _, locale := range []string{"en", "de"} {
+			setTestLocale(t, s, locale)
 			for _, path := range []string{"/", "/logs", "/settings?tab=media", "/collection", "/about"} {
 				t.Run(build.version+"/"+locale+path, func(t *testing.T) {
 					s.info = version.Info{Version: build.version}

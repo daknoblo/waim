@@ -112,7 +112,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /collection/remove", s.handleWatchRemove)
 	mux.HandleFunc("GET /about", s.handleAbout)
 
-	mux.HandleFunc("POST /locale", s.handleLocale)
 	mux.HandleFunc("POST /scan", s.handleScan)
 
 	mux.HandleFunc("GET /partials/status", s.handlePartialStatus)
@@ -134,12 +133,8 @@ func (s *Server) Handler() http.Handler {
 	return logRequests(s.log, securityHeaders(limitRequestBody(csrf.Handler(s.admission(mux)))))
 }
 
-// locale resolves the active locale from the cookie, then the configured
-// default, then the package default.
-func (s *Server) locale(r *http.Request) string {
-	if c, err := r.Cookie(localeCookie); err == nil && s.catalog.Has(c.Value) && s.validLocaleGeneration(r) {
-		return c.Value
-	}
+// The saved interface setting is authoritative for every client and partial.
+func (s *Server) locale(_ *http.Request) string {
 	return config.NormalizeLocale(s.cfg.Get().Locale)
 }
 
