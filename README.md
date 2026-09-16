@@ -42,8 +42,10 @@ Huntarr or Missingarr.
 - A permanent **Virtual collection** with TMDB movie/series search. Add titles
   there or directly from **Suggestions**; already-tracked suggestions link back
   to the collection instead of offering another add action. Removal stays on
-  the collection page. Dashboard and statistics show references without watch
-  buttons. Works with TMDB alone; no Jellyfin server is required.
+  the collection page. Dashboard and statistics have no watch buttons.
+  Statistics retain section-level library labels and clickable titles, without
+  repeating server-reference badges next to each item. Works with TMDB alone;
+  no Jellyfin server is required.
 - Global TMDB identity merging and union of real episode ownership across
   instances. Source badges retain every instance and virtual membership.
 - Atomic source snapshots: failed refreshes retain the last successful inventory,

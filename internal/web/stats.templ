@@ -187,9 +187,6 @@ templ titleLink(title, link string) {
 	} else {
 		<span class="min-w-0 truncate font-medium text-slate-100">{ title }</span>
 	}
-	if t := ActionTranslator(ctx); t != nil {
-		@MediaSources(t,link)
-	}
 }
 
 templ ratedListLib(libName string, color []string, kind string, items []StatsRated, empty, showLabel string) {
@@ -845,9 +842,6 @@ templ upcomingTile(it UpcomingEntry) {
 		<div class="truncate text-[10px] text-slate-500">{ it.Sub }</div>
 		<div class="truncate text-[10px] text-indigo-300">{ it.DateLabel }</div>
 	</a>
-	if t := ActionTranslator(ctx); t != nil {
-		@MediaSources(t,it.Link)
-	}
 	</div>
 }
 
