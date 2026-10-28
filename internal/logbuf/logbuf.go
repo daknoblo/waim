@@ -3,8 +3,11 @@
 package logbuf
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 )
@@ -57,10 +60,12 @@ func (b *Buffer) Entries() []Entry {
 }
 
 // Handler is an slog.Handler that records messages into a Buffer while
-// delegating formatting/output to a wrapped handler.
+// delegating the same sanitized record to the container output handler.
 type Handler struct {
-	inner slog.Handler
-	buf   *Buffer
+	inner  slog.Handler
+	buf    *Buffer
+	attrs  []slog.Attr
+	groups []string
 }
 
 // NewHandler wraps inner so that every record is also captured in buf.
@@ -75,20 +80,65 @@ func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 
 // Handle implements slog.Handler.
 func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
+	record := slog.NewRecord(r.Time, r.Level, safeText(r.Message), r.PC)
+	record.AddAttrs(h.attrs...)
+	attrs := make([]slog.Attr, 0, r.NumAttrs())
+	r.Attrs(func(a slog.Attr) bool {
+		attrs = append(attrs, safeAttr(a))
+		return true
+	})
+	record.AddAttrs(groupAttrs(h.groups, attrs)...)
+	var formatted bytes.Buffer
+	formatter := slog.NewTextHandler(&formatted, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if len(groups) == 0 && (a.Key == slog.TimeKey || a.Key == slog.LevelKey || a.Key == slog.MessageKey) {
+				return slog.Attr{}
+			}
+			return a
+		},
+	})
+	formatErr := formatter.Handle(ctx, record)
+	message := record.Message
+	if fields := strings.TrimSpace(formatted.String()); fields != "" {
+		message += " " + fields
+	}
 	h.buf.Add(Entry{
 		Time:    r.Time,
 		Level:   r.Level.String(),
-		Message: r.Message,
+		Message: message,
 	})
-	return h.inner.Handle(ctx, r)
+	return errors.Join(formatErr, h.inner.Handle(ctx, record))
 }
 
 // WithAttrs implements slog.Handler.
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &Handler{inner: h.inner.WithAttrs(attrs), buf: h.buf}
+	cleaned := make([]slog.Attr, 0, len(attrs))
+	for _, a := range attrs {
+		cleaned = append(cleaned, safeAttr(a))
+	}
+	bound := append([]slog.Attr(nil), h.attrs...)
+	bound = append(bound, groupAttrs(h.groups, cleaned)...)
+	return &Handler{inner: h.inner, buf: h.buf, attrs: bound, groups: h.groups}
 }
 
 // WithGroup implements slog.Handler.
 func (h *Handler) WithGroup(name string) slog.Handler {
-	return &Handler{inner: h.inner.WithGroup(name), buf: h.buf}
+	if name == "" {
+		return h
+	}
+	groups := append(append([]string(nil), h.groups...), safeText(name))
+	return &Handler{inner: h.inner, buf: h.buf, attrs: h.attrs, groups: groups}
 }
+
+func groupAttrs(groups []string, attrs []slog.Attr) []slog.Attr {
+	if len(attrs) == 0 {
+		return nil
+	}
+	for i := len(groups) - 1; i >= 0; i-- {
+		attrs = []slog.Attr{safeAttr(slog.Attr{Key: groups[i], Value: slog.GroupValue(attrs...)})}
+	}
+	return attrs
+}
+
+func (b *Buffer) Capacity() int { return b.max }

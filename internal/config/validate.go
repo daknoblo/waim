@@ -51,7 +51,7 @@ func validateEndpoint(name, raw string) error {
 		return nil
 	}
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 		return fmt.Errorf("config: invalid %s %q (expected an absolute http(s) URL)", name, raw)
 	}
 	return nil

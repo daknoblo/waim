@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="reel" x1="8" y1="8" x2="51" y2="53" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#aa5cc3"/>
+      <stop offset=".5" stop-color="#7468ee"/>
+      <stop offset="1" stop-color="#00a4dc"/>
+    </linearGradient>
+    <linearGradient id="question" x1="34" y1="32" x2="59" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c4b5fd"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="62" height="62" rx="16" fill="#0b1025" stroke="#313753" stroke-width="2"/>
+  <path d="M14 42c0 11 11 15 23 13" fill="none" stroke="url(#reel)" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="27" cy="27" r="21" fill="url(#reel)"/>
+  <g fill="#0b1025">
+    <circle cx="27" cy="13" r="4.5"/>
+    <circle cx="13" cy="27" r="4.5"/>
+    <circle cx="27" cy="41" r="4.5"/>
+    <circle cx="41" cy="27" r="4.5"/>
+    <circle cx="27" cy="27" r="3"/>
+  </g>
+  <circle cx="46" cy="46" r="16" fill="#0b1025" stroke="url(#question)" stroke-width="2.5"/>
+  <path d="M41 40a5 5 0 0 1 10 0c0 4-5 4-5 8" fill="none" stroke="#f8fafc" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="46" cy="54" r="2" fill="#f8fafc"/>
+</svg>

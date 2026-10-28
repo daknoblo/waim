@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/httpx"
 )
 
@@ -93,8 +94,8 @@ func (c *Client) Users(ctx context.Context) ([]User, error) {
 
 // ResolveUserID resolves the configured user value to a Jellyfin user ID.
 // The configured value may be an actual user ID (GUID) or a username; usernames
-// are matched case-insensitively. When nothing is configured (or no match is
-// found), the first available user is used.
+// are matched case-insensitively. Only an empty configured value selects the
+// first available user; an unknown configured user fails closed.
 func (c *Client) ResolveUserID(ctx context.Context, configured string) (string, error) {
 	configured = strings.TrimSpace(configured)
 	users, err := c.Users(ctx)
@@ -122,8 +123,7 @@ func (c *Client) ResolveUserID(ctx context.Context, configured string) (string, 
 				return u.ID, nil
 			}
 		}
-		// Configured value matched neither an ID nor a username; fall back to
-		// the first available user below.
+		return "", fmt.Errorf("jellyfin: configured user not found")
 	}
 	return users[0].ID, nil
 }
@@ -147,7 +147,10 @@ type itemsResultLibraries struct {
 func (c *Client) ItemsInLibrary(ctx context.Context, userID, libraryID string) ([]Item, error) {
 	var all []Item
 	start := 0
+	page := 0
 	for {
+		page++
+		activity.FromContext(ctx).Page(page)
 		q := url.Values{}
 		q.Set("ParentId", libraryID)
 		q.Set("Recursive", "true")
@@ -165,6 +168,9 @@ func (c *Client) ItemsInLibrary(ctx context.Context, userID, libraryID string) (
 		}
 		all = append(all, res.Items...)
 		start += len(res.Items)
+		if len(res.Items) == 0 && start < res.TotalRecordCount {
+			return nil, fmt.Errorf("jellyfin: incomplete library response")
+		}
 		if len(res.Items) == 0 || start >= res.TotalRecordCount {
 			break
 		}
@@ -175,14 +181,30 @@ func (c *Client) ItemsInLibrary(ctx context.Context, userID, libraryID string) (
 // Episodes returns all episodes of a series with their season/episode numbers.
 func (c *Client) Episodes(ctx context.Context, userID, seriesID string) ([]Item, error) {
 	q := url.Values{}
+	q.Set("IsMissing", "false")
 	q.Set("Fields", "ProviderIds")
 	q.Set("EnableImages", "false")
 	if userID != "" {
 		q.Set("userId", userID)
 	}
-	var res itemsResult
-	if err := c.get(ctx, "/Shows/"+url.PathEscape(seriesID)+"/Episodes", q, &res); err != nil {
-		return nil, err
+	var all []Item
+	page := 0
+	for start := 0; ; {
+		page++
+		activity.FromContext(ctx).Page(page)
+		q.Set("StartIndex", strconv.Itoa(start))
+		q.Set("Limit", strconv.Itoa(pageSize))
+		var res itemsResult
+		if err := c.get(ctx, "/Shows/"+url.PathEscape(seriesID)+"/Episodes", q, &res); err != nil {
+			return nil, err
+		}
+		all = append(all, res.Items...)
+		start += len(res.Items)
+		if len(res.Items) == 0 && start < res.TotalRecordCount {
+			return nil, fmt.Errorf("jellyfin: incomplete episode response")
+		}
+		if len(res.Items) == 0 || start >= res.TotalRecordCount {
+			return all, nil
+		}
 	}
-	return res.Items, nil
 }

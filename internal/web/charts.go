@@ -202,7 +202,7 @@ const (
 func buildSeriesFlowData(t *i18n.Translator, series []store.MediaStat, selected, jellyfinURL string) ([]SeriesOption, SeriesDetail) {
 	withSeasons := make([]store.MediaStat, 0, len(series))
 	for _, s := range series {
-		if s.Episodes > 0 {
+		if s.Episodes > 0 || len(s.Seasons) > 0 {
 			withSeasons = append(withSeasons, s)
 		}
 	}
@@ -415,7 +415,7 @@ func buildSeriesFlow(t *i18n.Translator, s store.MediaStat) SeriesFlow {
 	flow := SeriesFlow{
 		Available: true,
 		Title:     s.Title,
-		Library:   s.LibraryName,
+		Library:   LibraryDisplayName(t, s.LibraryID, s.LibraryName),
 		Color:     LibraryColor(s.LibraryID),
 		Height:    int(math.Ceil(height)),
 		Summary:   t.T("stats.seasonsEpisodes", ownedSeasonCount(s), total),

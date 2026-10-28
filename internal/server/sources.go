@@ -1,0 +1,376 @@
+package server
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/daknoblo/waim/internal/activity"
+	"github.com/daknoblo/waim/internal/config"
+	"github.com/daknoblo/waim/internal/media"
+	"github.com/daknoblo/waim/internal/source"
+	"github.com/daknoblo/waim/internal/web"
+)
+
+func (s *Server) changedCatalog() {
+	s.sched.Recompute()
+	s.suggest.Invalidate()
+}
+
+func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
+}
+
+type sourceDraftKey struct{}
+
+func (s *Server) renderSources(w http.ResponseWriter, r *http.Request, message string, failed bool, drafts ...*config.Source) {
+	if len(drafts) > 0 {
+		r = r.WithContext(context.WithValue(r.Context(), sourceDraftKey{}, drafts[0]))
+	}
+	q := r.URL.Query()
+	q.Set("tab", "media")
+	r.URL.RawQuery = q.Encode()
+	s.renderSettings(w, r, message, failed)
+}
+
+func (s *Server) sourceSettingsData(r *http.Request) web.SourcesData {
+	settings := s.cfg.Get()
+	d := web.SourcesData{Layout: s.layout(r, web.NavSettings), Sources: settings.Redacted().Sources,
+		DefaultScanMinutes: settings.Scan.IntervalMinutes, NextRuns: map[string]string{}}
+	d.OpenID = r.URL.Query().Get("source")
+	if id := r.PathValue("id"); id != "" {
+		d.OpenID = id
+	}
+	if d.OpenID == "new" {
+		d.OpenID, d.AddOpen = "", true
+	}
+	if d.OpenID != "" {
+		src, ok := settings.Source(d.OpenID)
+		if !ok || src.Type == media.Virtual {
+			d.OpenID = ""
+		}
+	}
+	for _, src := range d.Sources {
+		if next := s.sched.SourceNextRun(src.ID); next != nil {
+			d.NextRuns[src.ID] = web.FormatTimeValue(*next)
+		}
+	}
+	if draft, ok := r.Context().Value(sourceDraftKey{}).(*config.Source); ok {
+		found := false
+		for i := range d.Sources {
+			if d.Sources[i].ID == draft.ID {
+				d.Sources[i] = *draft
+				d.EditDraftID = draft.ID
+				d.OpenID = draft.ID
+				found = true
+			}
+		}
+		if !found {
+			d.AddDraft = *draft
+			d.OpenID, d.AddOpen = "", true
+		}
+		d.IntervalDraft = r.FormValue("scan_interval")
+		_, d.HasIntervalDraft = r.PostForm["scan_interval"]
+	}
+	return d
+}
+
+func (s *Server) handleAddSource(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", 400)
+		return
+	}
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		http.Error(w, "ID generation failed", 500)
+		return
+	}
+	src := config.Source{ID: hex.EncodeToString(id[:]), Type: media.Jellyfin, Name: strings.TrimSpace(r.FormValue("name")), Enabled: true, Jellyfin: config.JellyfinSettings{URL: strings.TrimRight(strings.TrimSpace(r.FormValue("url")), "/"), APIKey: strings.TrimSpace(r.FormValue("key")), UserID: strings.TrimSpace(r.FormValue("user"))}}
+	if provider := r.FormValue("type"); provider != "" && provider != media.Jellyfin {
+		src.Jellyfin.APIKey = ""
+		s.renderSources(w, r, s.translator(r).T("sources.unsupportedProvider"), true, &src)
+		return
+	}
+	minutes, err := parseSourceInterval(r, s.cfg.Get().Scan.IntervalMinutes)
+	if err != nil {
+		src.Jellyfin.APIKey = ""
+		s.renderSources(w, r, s.translator(r).T("sources.invalidInterval"), true, &src)
+		return
+	}
+	src.ScanIntervalMinutes = &minutes
+	if err := s.cfg.AddSource(src); err != nil {
+		src.Jellyfin.APIKey = ""
+		s.renderSources(w, r, err.Error(), true, &src)
+		return
+	}
+	s.changedCatalog()
+	saved, ok := s.cfg.Get().Source(src.ID)
+	if !ok {
+		http.Error(w, "source not found", http.StatusNotFound)
+		return
+	}
+	if err := s.refreshSourceLibraries(r.Context(), saved); err != nil {
+		s.log.Warn("initial library discovery failed", "sourceId", src.ID, "err", err)
+		r.SetPathValue("id", src.ID)
+		s.renderSources(w, r, s.translator(r).T("sources.addedLibrariesFailed"), true)
+		return
+	}
+	s.changedCatalog()
+	http.Redirect(w, r, web.SourceSettingsURL(src.ID), http.StatusSeeOther)
+}
+
+func parseSourceInterval(r *http.Request, fallback int) (int, error) {
+	values, present := r.PostForm["scan_interval"]
+	if !present {
+		return fallback, nil
+	}
+	if len(values) != 1 {
+		return 0, errors.New("invalid source interval")
+	}
+	value, err := strconv.Atoi(values[0])
+	if err != nil || value < 0 || value > config.MaxSourceScanIntervalMinutes {
+		return 0, errors.New("invalid source interval")
+	}
+	return value, nil
+}
+func sourceRevision(r *http.Request) (int64, error) {
+	if err := r.ParseForm(); err != nil {
+		return 0, err
+	}
+	return strconv.ParseInt(r.FormValue("revision"), 10, 64)
+}
+
+func (s *Server) handleUpdateSource(w http.ResponseWriter, r *http.Request) {
+	autosave := r.Header.Get("X-Waim-Source-Autosave") == "true"
+	rev, err := sourceRevision(r)
+	if err != nil {
+		if autosave {
+			s.sourceSaveError(w, r, http.StatusBadRequest, "sources.autosaveFailed")
+			return
+		}
+		http.Error(w, "invalid revision", 400)
+		return
+	}
+	defaultInterval := s.cfg.Get().Scan.IntervalMinutes
+	invalidInterval := s.translator(r).T("sources.invalidInterval")
+	errInterval := errors.New(invalidInterval)
+	errNewKey := errors.New(s.translator(r).T("sources.addressNeedsKey"))
+	var saved config.Source
+	var librariesChanged bool
+	err = s.cfg.UpdateSourceWithKey(r.PathValue("id"), rev, strings.TrimSpace(r.FormValue("key")), func(src *config.Source) error {
+		minutes, err := parseSourceInterval(r, src.ScanInterval(defaultInterval))
+		if err != nil {
+			return errInterval
+		}
+		address := strings.TrimRight(strings.TrimSpace(r.FormValue("url")), "/")
+		key := strings.TrimSpace(r.FormValue("key"))
+		if address != src.Jellyfin.URL && key == "" {
+			return errNewKey
+		}
+		src.Name = strings.TrimSpace(r.FormValue("name"))
+		src.ScanIntervalMinutes = &minutes
+		src.Enabled = r.FormValue("enabled") == "on"
+		if address != src.Jellyfin.URL {
+			src.Libraries = nil
+			librariesChanged = true
+		}
+		src.Jellyfin.URL, src.Jellyfin.UserID = address, strings.TrimSpace(r.FormValue("user"))
+		if key != "" {
+			src.Jellyfin.APIKey = key
+		}
+		selected := map[string]bool{}
+		for _, id := range r.Form["library"] {
+			selected[id] = true
+		}
+		for i := range src.Libraries {
+			src.Libraries[i].Enabled = selected[src.Libraries[i].ID]
+		}
+		saved = *src
+		saved.Revision = rev + 1
+		return nil
+	})
+	if err != nil {
+		if autosave {
+			s.log.Warn("source autosave failed", "sourceId", r.PathValue("id"), "err", err)
+			code, key := http.StatusBadRequest, "sources.autosaveFailed"
+			switch {
+			case errors.Is(err, errInterval):
+				key = "sources.invalidInterval"
+			case errors.Is(err, errNewKey):
+				key = "sources.addressNeedsKey"
+			default:
+				current, found := s.cfg.Get().Source(r.PathValue("id"))
+				if !found || current.Revision != rev {
+					code, key = http.StatusConflict, "sources.sourceConflict"
+				}
+			}
+			s.sourceSaveError(w, r, code, key)
+			return
+		}
+		draft, _ := s.cfg.Get().Source(r.PathValue("id"))
+		draft.Name, draft.Revision, draft.Enabled = r.FormValue("name"), rev, r.FormValue("enabled") == "on"
+		draft.Jellyfin = config.JellyfinSettings{URL: r.FormValue("url"), UserID: r.FormValue("user")}
+		selected := map[string]bool{}
+		for _, id := range r.Form["library"] {
+			selected[id] = true
+		}
+		for i := range draft.Libraries {
+			draft.Libraries[i].Enabled = selected[draft.Libraries[i].ID]
+		}
+		s.renderSources(w, r, err.Error(), true, &draft)
+		return
+	}
+	s.changedCatalog()
+	if autosave {
+		t := s.translator(r)
+		response := sourceSaveResult{
+			Revision: saved.Revision, Name: saved.Name, URL: saved.Jellyfin.URL,
+			Enabled: saved.Enabled, ScanInterval: saved.ScanInterval(defaultInterval),
+			LibrarySummary: t.T("sources.librarySelection", web.SelectedLibraryCount(saved), len(saved.Libraries)),
+			ScanSummary:    web.SourceScanSummary(t, saved, defaultInterval), LibrariesChanged: librariesChanged,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Waim-Save", web.SaveOK)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			s.log.Error("source autosave response failed", "err", err)
+		}
+		return
+	}
+	http.Redirect(w, r, web.SourceSettingsURL(r.PathValue("id")), http.StatusSeeOther)
+}
+
+type sourceSaveResult struct {
+	Revision         int64  `json:"revision"`
+	Name             string `json:"name"`
+	URL              string `json:"url"`
+	Enabled          bool   `json:"enabled"`
+	ScanInterval     int    `json:"scanInterval"`
+	LibrarySummary   string `json:"librarySummary"`
+	ScanSummary      string `json:"scanSummary"`
+	LibrariesChanged bool   `json:"librariesChanged"`
+}
+
+func (s *Server) sourceSaveError(w http.ResponseWriter, r *http.Request, status int, key string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Waim-Save", web.SaveFailed)
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(map[string]string{"error": s.translator(r).T(key)}); err != nil {
+		s.log.Error("source autosave error response failed", "err", err)
+	}
+}
+
+func (s *Server) handleRemoveSource(w http.ResponseWriter, r *http.Request) {
+	rev, err := sourceRevision(r)
+	if err != nil || r.FormValue("confirm") != "yes" {
+		http.Error(w, "explicit confirmation required", 400)
+		return
+	}
+	if err := s.cfg.RemoveSource(r.PathValue("id"), rev); err != nil {
+		s.renderSources(w, r, err.Error(), true)
+		return
+	}
+	s.changedCatalog()
+	http.Redirect(w, r, web.SettingsURL("media"), http.StatusSeeOther)
+}
+
+func (s *Server) handleScanSource(w http.ResponseWriter, r *http.Request) {
+	if err := s.sched.TriggerSource(r.PathValue("id")); err != nil {
+		s.log.Warn("source scan request rejected", "sourceId", r.PathValue("id"), "err", err)
+		s.renderSources(w, r, s.translator(r).T("sources.scanRejected"), true)
+		return
+	}
+	s.renderSources(w, r, s.translator(r).T("sources.scanQueued"), false)
+}
+
+func (s *Server) handleSourceLibraries(w http.ResponseWriter, r *http.Request) {
+	src, ok := s.cfg.Get().Source(r.PathValue("id"))
+	if !ok || src.Type == media.Virtual {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.refreshSourceLibraries(r.Context(), src); err != nil {
+		s.log.Warn("library refresh failed", "sourceId", src.ID, "err", err)
+		s.renderSources(w, r, s.translator(r).T("sources.librariesFailed"), true)
+		return
+	}
+	s.changedCatalog()
+	http.Redirect(w, r, web.SourceSettingsURL(src.ID), http.StatusSeeOther)
+}
+
+func (s *Server) refreshSourceLibraries(ctx context.Context, src config.Source) (resultErr error) {
+	release, err := s.cfg.Gate().Enter()
+	if err != nil {
+		return err
+	}
+	defer release()
+	run := s.activities.Start(activity.Sources)
+	ctx = activity.WithRun(ctx, run)
+	run.Phase(activity.Inventory, -1)
+	run.Subject(src.Name)
+	run.Operation(activity.Libraries)
+	defer func() {
+		status := activity.Completed
+		if resultErr != nil {
+			status = activity.Failed
+			run.Report(activity.Diagnostic{Reason: activity.SourceUnavailable, Severity: activity.Error, Subject: src.Name})
+		}
+		run.Finish(ctx, status, 0)
+	}()
+	adapter, err := source.New(src)
+	var libs []media.Library
+	if err == nil {
+		libs, err = adapter.Libraries(ctx)
+	}
+	if err != nil {
+		return err
+	}
+	run.Phase(activity.Persistence, -1)
+	run.Subject(src.Name)
+	return s.cfg.UpdateSource(src.ID, src.Revision, func(current *config.Source) error {
+		enabled := map[string]bool{}
+		for _, lib := range current.Libraries {
+			enabled[lib.ID] = lib.Enabled
+		}
+		current.Libraries = nil
+		for _, lib := range libs {
+			current.Libraries = append(current.Libraries, config.Library{ID: lib.ID, Name: lib.Name, Type: lib.Type, Enabled: enabled[lib.ID]})
+		}
+		return nil
+	})
+}
+
+func (s *Server) handleTestSource(w http.ResponseWriter, r *http.Request) {
+	src, ok := s.cfg.Get().Source(r.PathValue("id"))
+	if !ok || src.Type == media.Virtual {
+		http.NotFound(w, r)
+		return
+	}
+	run := s.activities.Start(activity.Sources)
+	run.Phase(activity.Inventory, -1)
+	run.Subject(src.Name)
+	run.Operation(activity.Test)
+	status := activity.Failed
+	defer func() {
+		if status == activity.Failed {
+			run.Report(activity.Diagnostic{Reason: activity.SourceUnavailable, Severity: activity.Error, Subject: src.Name})
+		}
+		run.Finish(r.Context(), status, 0)
+	}()
+	adapter, err := source.New(src)
+	if err == nil {
+		err = adapter.(source.Tester).Test(r.Context())
+	}
+	if err != nil {
+		s.renderSources(w, r, s.translator(r).T("sources.connectionError"), true)
+		return
+	}
+	status = activity.Completed
+	s.renderSources(w, r, s.translator(r).T("sources.connectionOK"), false)
+}

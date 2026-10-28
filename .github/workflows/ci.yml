@@ -34,7 +34,7 @@ jobs:
           cache: true
 
       - name: "\U0001F4E6 Install templ code generator"
-        run: go install github.com/a-h/templ/cmd/templ@v0.3.1020
+        run: go install github.com/a-h/templ/cmd/templ@v0.3.1100
 
       - name: "\U0001F50D Check generated templ code is committed"
         run: |
@@ -55,6 +55,9 @@ jobs:
 
       - name: Test release channel guards
         run: bash scripts/test-release-channels.sh
+
+      - name: Test settings navigation and unsaved-source guards
+        run: node --test scripts/settings-navigation.test.cjs scripts/collection-actions.test.cjs
 
       - name: "\U0001F9EA Static analysis (go vet)"
         run: go vet ./...

@@ -3,8 +3,7 @@
 > This project is "vibe-coded" (AI-assisted). Review before relying on it.
 
 waim is a single Go binary that serves a server-rendered web UI and runs
-background scans. It has no external service dependencies beyond your Jellyfin
-server and the TMDB API.
+background scans. TMDB is required for metadata; Jellyfin instances are optional.
 
 ## Component overview
 
@@ -23,7 +22,7 @@ server and the TMDB API.
    +--------+--------+          +-----------------+
             |
    +--------v--------+
-   |    Scanner      |  comparison logic
+   | Catalog/Scanner |  source snapshots + comparison logic
    | internal/scanner|
    +----+-------+----+
         |       |
@@ -39,10 +38,14 @@ server and the TMDB API.
 | --------------------- | --------------------------------------------------------------------- |
 | `cmd/waim`            | Entry point, wiring, graceful shutdown, container healthcheck mode.   |
 | `internal/config`     | Settings model, JSON load/save, transparent API-key encryption.       |
+| `internal/maintenance` | Shared nonblocking admission gate, reset epochs and stale-work protection. |
+| `internal/reset`      | Transactional reset orchestration and idempotent factory-reset recovery. |
 | `internal/crypto`     | Key file handling + AES-256-GCM encrypt/decrypt.                       |
 | `internal/httpx`      | Shared upstream HTTP behaviour: redirect policy and error sanitising.  |
 | `internal/store`      | SQLite persistence (scan runs, findings, key/value) + migrations.     |
 | `internal/jellyfin`   | Read-only Jellyfin API client (libraries, items, episodes).           |
+| `internal/media`      | Credential-free instances, occurrences, qualified identities and global episode union. |
+| `internal/source`     | Small adapter factory, atomic snapshot acquisition, catalog loading and shared identity resolution. |
 | `internal/tmdb`       | TMDB API client with a client-side rate limiter.                      |
 | `internal/ai`         | OpenAI/Azure-compatible chat client for AI suggestions.               |
 | `internal/scanner`    | Core comparison logic producing findings.                             |
@@ -58,23 +61,112 @@ server and the TMDB API.
 
 1. The **scheduler** triggers a scan (startup, interval, or the *Scan now*
    button) and records a new run in the store.
-2. The **scanner** asks the **Jellyfin client** for items in each enabled
-   library.
-3. For each movie/series it resolves a TMDB ID (provider ID first, then a
-   title/year search) via the **TMDB client** (rate-limited).
+2. **source.Catalog** invokes adapters for all enabled real instances. A complete
+   successful snapshot replaces that instance's previous one atomically. Failures
+   retain same-identity data with stale warnings; first-fetch failures are unknown.
+   Saved snapshots and current virtual entries form the normalized catalog.
+3. The source layer resolves each movie/series TMDB ID (provider ID first, then a
+   unique exact title/year search) via the **TMDB client** (shared process-wide rate
+   budget). Verified resolutions are stored in the source snapshot before catalog
+   evaluation. Live views and recommendations therefore reuse the same identity
+   and episode union without repeating a search.
 4. It compares TMDB's seasons/episodes and collection parts against what is
    present in Jellyfin. Episodes and collection parts that have not been
    released yet are recorded as *upcoming* releases instead of gaps — they come
    from the same TMDB responses, so this costs no additional requests.
-5. Findings are written to **SQLite**; the run is marked complete.
+5. Findings, metadata, summaries and success are committed in one transaction,
+   conditional on the virtual revision still matching. Source revisions are
+   checked before publishing. Changes during work queue a follow-up computation.
 6. The **dashboard** displays the latest run's findings, status and log,
    refreshed via HTMX polling.
 
 The **statistics** and **suggestions** pages are derived from the same persisted
 scan data. Suggestions additionally query TMDB (trending, recommendations and
 the discover endpoints for upcoming titles) and, when enabled, the configured AI
-endpoint, building the "owned" set live from Jellyfin so already-present titles
-are filtered out.
+endpoint. Their real-owned set comes from the same saved catalog/resolution,
+never from a separate Jellyfin scan. Purely watched titles remain recommendable.
+
+## Recalculation and current membership
+
+Virtual mutations persist immediately and queue a coalesced scheduler job.
+Recalculation reads snapshots/TMDB cache, without a Jellyfin request. Title
+actions/badges read current membership even while derived results are pending.
+Source disablement, removal and identity changes cannot lend ownership or links
+to current views. Series episodes are unioned by season/episode, movie and series
+TMDB IDs occupy different namespaces, and unresolved items remain source-local.
+Collection parts and individually watched movies share missing/release units.
+Resolved identities are bound to the source fingerprint plus the original local
+ID, media type, title, year and provider IDs. A refresh preserves an alias only
+when those inputs still match; address changes and local-ID reuse cannot inherit
+an unrelated identity. The aliases live in the latest snapshot, not an unbounded
+history. Snapshots created before this binding was introduced acquire bindings
+on their next scan or recalculation.
+The source fingerprint hashes only public identity metadata, including a
+manager-owned credential-generation token rather than API-key material.
+Credential replacement and readability changes advance that persisted token;
+ordinary source renames do not invalidate inventory.
+
+Watch-only titles have ratings and gap/release evaluations but contribute no
+owned count, runtime or growth. Source/library memberships overlap; global owned
+counts do not. New growth points use `owned-v1` and complete real refresh jobs only;
+legacy runs remain readable but are not synthetic source snapshots or directly
+comparable growth points. Legacy and incomplete states are visibly labelled.
+Per-library gap titles and rating indexes use distinct provenance memberships;
+shared titles appear once in each participating library, but once globally.
+Retention independently keeps the latest 20 result snapshots and the latest 20
+complete refresh runs (at most 40 runs). Repeated virtual recalculations cannot
+erase real refresh growth history.
+
+Scheduler, refresher and suggestion workers are cancelled/joined before SQLite
+closes. No plugin framework, Plex/Emby implementation or media write API is added.
+
+## Settings and maintenance boundaries
+
+Settings use four server-rendered link tabs (`media`, `metadata`, `interface`,
+`other`). Only the active global form posts; `config.Manager.UpdateGlobals`
+applies its owned fields to the latest configuration under the manager mutex.
+Sources keep their independent revision-checked forms and existing POST routes;
+their page/feedback now lives in the media tab. Autosave navigation waits for
+`X-Waim-Save: ok`; failed or pending-key saves preserve the draft. Forms carry
+`_epoch`, a per-process nonce plus persisted reset generation. Legacy unversioned
+POSTs are accepted only before the database has ever been reset.
+
+All runtime services share `cfg.Gate()`. `Gate.Enter()` returns a release
+function or rejects immediately. HTTP data reads/exports also hold admission,
+so they cannot observe half of a reset. Scheduler, refresher and suggestion
+admission spans actual work and final publication, including goroutine startup.
+`Gate.TryReset()` succeeds only with no admitted work or other reset; it never
+cancels workers. Manual scan queues carry the epoch and timers use
+`EnterScheduled`, which discards pre-reset ticks instead of immediately
+refilling data after maintenance.
+
+Startup must call `reset.New(cfg, st).Recover(ctx)` before workers or HTTP.
+For a confirmed reset, `Service.Apply(ctx, scope, token, after)` owns the
+exclusive lease. The `after` callback clears suggestions, scheduler queues/status
+and activity; factory resets additionally clear retained logs and restore the
+log level. Tokens are checked while exclusive, so concurrent confirmed requests
+cannot apply the same reset twice.
+
+`Store.ResetData` transactionally deletes scoped data and increments both the
+catalog revision and the persistent reset epoch. Factory deletion also commits
+a `factory_pending` flag before `Manager.FactoryDefaults` replaces and flushes
+configuration. The marker is cleared only after configuration durability is
+established. A committed but incomplete factory reset returns failure, closes
+ordinary admission, and can only be finished by a confirmed factory retry or
+startup recovery. A failed DB transaction leaves the original configuration
+untouched. Reset transactions use SQLite `synchronous=FULL`; that connection
+remains in the stronger durability mode until reopened.
+
+Both deletion and marker completion explicitly promote and pin their own
+connection to `FULL` through commit. Recovery does not rely on deletion having
+set a previous connection's mode: a reopened Store starts at `NORMAL`. Ordinary
+admission is reopened only after the completion marker has durably committed.
+
+The marker contains no credentials or configuration backup. Reset recovery is
+idempotent and does not rerun committed deletion. `master.key`, the database
+file, migration records and monotonic epochs remain infrastructure. See
+[the scope matrix](configuration.md#danger-zone) for retained data and the
+distinction between logical deletion and secure disk erasure.
 
 ## Encryption model
 
@@ -92,10 +184,21 @@ are filtered out.
 
 ## Persistence
 
+The image sets `WAIM_DATA_DIR=/data`. Compose mounts a Docker-managed named
+volume there and inherits the image's non-root UID/GID 65532. A bind mount
+from `./appdata` is optional; without an override, local execution uses
+`./appdata`. Container detection does not depend on the existence of `/app`.
+
 - `config.json` — settings (encrypted keys).
 - `master.key` — generated encryption key.
 - `waim.db` — SQLite database. Older scan runs are pruned automatically (the
   most recent runs are kept).
+- `source_snapshots` — one last-success payload per source plus attempt/success,
+  safe failure text and identity fingerprint (including configuration boundary).
+- `virtual_entries` / `catalog_revision` — unique `(media_type, tmdb_id)` watch
+  membership and monotonic mutation revision.
+- Scan metadata records basis, refresh/recompute mode, source token, virtual
+  revision and warnings. Findings and media/release payloads retain provenance.
 
 ## Runtime & deployment
 

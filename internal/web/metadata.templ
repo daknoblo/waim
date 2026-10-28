@@ -1,0 +1,88 @@
+package web
+
+import "strconv"
+import "github.com/daknoblo/waim/internal/i18n"
+
+templ metadataConfigured(t *i18n.Translator, configured bool) {
+	if configured {
+		<span class="text-xs text-emerald-300">{ t.T("metadata.configured") }</span>
+	} else {
+		<span class="text-xs text-amber-200">{ t.T("metadata.needsKey") }</span>
+	}
+}
+
+templ metadataProviders(d SettingsData) {
+	<section aria-labelledby="metadata-heading">
+		<h2 id="metadata-heading" class="mb-3 text-xl font-semibold">{ d.Layout.T.T("metadata.sources") }</h2>
+		<p class="mb-4 text-sm text-slate-400">{ d.Layout.T.T("metadata.hint") }</p>
+		<div class="grid gap-4 sm:grid-cols-2" data-metadata-tiles>
+			<article class="card flex min-h-52 flex-col gap-3" data-metadata-provider="tmdb">
+				<div class="flex items-center justify-between gap-3">
+					<img src={ "/static/tmdb-mark.svg?v="+d.Layout.AssetVersion } alt="" aria-hidden="true" class="h-10 w-28" width="112" height="40"/>
+					<h3 class="text-lg font-semibold">TMDB</h3>
+				</div>
+				<p class="text-sm text-slate-400">{ d.Layout.T.T("metadata.tmdbDescription") }</p>
+				<div id="metadata-tmdb-status">@metadataConfigured(d.Layout.T,d.HasTMDBKey)</div>
+				<a href="/settings?tab=metadata&amp;provider=tmdb" data-settings-dialog="metadata-tmdb-dialog" class="btn-ghost mt-auto">{ d.Layout.T.T("metadata.configure") }</a>
+			</article>
+			<article class="card flex min-h-52 flex-col gap-3" data-metadata-provider="imdb">
+				<div class="flex items-center justify-between gap-3">
+					<img src={ "/static/imdb-mark.svg?v="+d.Layout.AssetVersion } alt="" aria-hidden="true" class="h-10 w-20" width="80" height="40"/>
+					<h3 class="text-lg font-semibold">IMDb</h3>
+				</div>
+				<p class="text-sm text-slate-400">{ d.Layout.T.T("metadata.imdbDescription") }</p>
+				<button type="button" class="btn-ghost mt-auto opacity-50" disabled>{ d.Layout.T.T("sources.notAvailable") }</button>
+			</article>
+		</div>
+	</section>
+	<dialog id="metadata-tmdb-dialog" class="metadata-dialog" aria-labelledby="metadata-tmdb-heading" open?={ d.MetadataOpen } data-settings-auto-open={ strconv.FormatBool(d.MetadataOpen) }>
+		<div class="mb-5 flex items-center justify-between gap-4">
+			<div class="flex flex-wrap items-center gap-3">
+				<img src={ "/static/tmdb-mark.svg?v="+d.Layout.AssetVersion } alt="" aria-hidden="true" class="h-10 w-28" width="112" height="40"/>
+				<h2 id="metadata-tmdb-heading" class="text-xl font-semibold">{ d.Layout.T.T("settings.tmdb") }</h2>
+			</div>
+			<a href="/settings?tab=metadata" data-settings-dialog-close class="btn-ghost shrink-0">{ d.Layout.T.T("sources.close") }</a>
+		</div>
+		if d.Message != "" {
+			<p role="status" class={ "mb-4 rounded-lg p-3 text-sm",templ.KV("alert-error",d.IsError),templ.KV("alert-ok",!d.IsError) }>{ d.Message }</p>
+		}
+		<div class="grid gap-5">
+			<section class="grid gap-3">
+				@secretField(d.Layout.T,"tmdb_api_key",d.Layout.T.T("settings.tmdbApiKey"),d.HasTMDBKey)
+				@connStatusBlock("conn-tmdb",d.Check("tmdb"))
+			</section>
+			<section class="grid gap-3 border-t border-slate-800 pt-4">
+				<h3 class="text-lg font-semibold">{ d.Layout.T.T("settings.tmdbUsage") }</h3>
+				<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.tmdbUsageHint") }</p>
+				<div class="grid gap-3 sm:grid-cols-2">
+					@numberField(d.Layout.T.T("settings.rateLimit"),"scan_rate",strconv.FormatFloat(d.Settings.Scan.TMDBRateLimitRPS,'f',-1,64),"0.1")
+				</div>
+				<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.rateLimitHint") }</p>
+				<p id="tmdb-rate-estimate" class="text-xs text-indigo-300" data-tpl={ d.Layout.T.T("settings.rateEstimate") }></p>
+				@checkboxField(d.Layout.T.T("settings.episodeRatings"),"scan_episode_ratings",d.Settings.Scan.EpisodeRatings)
+				<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.episodeRatingsHint") }</p>
+			</section>
+			<section class="grid gap-3 border-t border-slate-800 pt-4">
+				<h3 class="text-lg font-semibold">{ d.Layout.T.T("settings.cache") }</h3>
+				<p class="text-sm text-slate-400">{ d.Layout.T.T("settings.cacheHint") }</p>
+				@checkboxField(d.Layout.T.T("settings.cacheEnabled"),"cache_refresh_enabled",d.Settings.Cache.RefreshEnabled)
+				<div class="grid gap-3 sm:grid-cols-2">
+					@numberField(d.Layout.T.T("settings.cacheInterval"),"cache_refresh_interval",strconv.Itoa(d.Settings.Cache.RefreshIntervalMinutes),"1")
+					@numberField(d.Layout.T.T("settings.cachePercent"),"cache_refresh_percent",strconv.Itoa(d.Settings.Cache.RefreshPercent),"1")
+				</div>
+				<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.cachePercentHint") }</p>
+				<p id="cache-estimate" class="text-xs text-indigo-300" data-entries={ strconv.Itoa(d.CacheEntries) } data-tpl={ d.Layout.T.T("settings.cacheEstimate") } data-tpl-off={ d.Layout.T.T("settings.cacheEstimateOff") }></p>
+				@checkboxField(d.Layout.T.T("settings.cacheCleanupEnabled"),"cache_cleanup_enabled",d.Settings.Cache.CleanupEnabled)
+				<div class="grid gap-3 sm:grid-cols-2">
+					@numberField(d.Layout.T.T("settings.cacheCleanupMaxAge"),"cache_cleanup_max_age",strconv.Itoa(d.Settings.Cache.CleanupMaxAgeDays),"1")
+				</div>
+				<p class="text-xs text-slate-500">{ d.Layout.T.T("settings.cacheCleanupHint") }</p>
+			</section>
+			<div class="flex flex-wrap items-center justify-end gap-3 border-t border-slate-800 pt-4">
+				<div id="metadata-save-indicator" role="status" class="text-sm text-slate-400">{ d.Layout.T.T("settings.autoSaveHint") }</div>
+				<button id="metadata-settings-retry" type="button" class="btn-ghost" hidden>{ d.Layout.T.T("sources.retrySave") }</button>
+				<noscript><button class="btn-primary" type="submit" formaction="/settings?tab=metadata&amp;provider=tmdb">{ d.Layout.T.T("settings.save") }</button></noscript>
+			</div>
+		</div>
+	</dialog>
+}

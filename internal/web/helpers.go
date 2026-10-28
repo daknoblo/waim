@@ -100,15 +100,21 @@ func LibraryColor(id string) []string {
 // statement about the library itself; the others mean the data simply is not
 // there yet, which must never be presented as "nothing found".
 const (
-	DataUnconfigured = "unconfigured"  // Jellyfin, TMDB or the library selection is missing
+	DataUnconfigured = "unconfigured"  // TMDB credentials are missing
 	DataScanning     = "scanning"      // a scan is running and no successful one finished yet
 	DataNeverScanned = "never-scanned" // configured, but no successful scan yet
 	DataReady        = "ready"         // a successful scan is available
+	DataIncomplete   = "incomplete"
+	DataLegacy       = "legacy"
 )
 
 // dataStateKey maps a data state to the message explaining why a view is empty.
 func dataStateKey(state string) string {
 	switch state {
+	case DataIncomplete:
+		return "sources.incomplete"
+	case DataLegacy:
+		return "sources.legacy"
 	case DataUnconfigured:
 		return "common.stateUnconfigured"
 	case DataScanning:

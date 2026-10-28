@@ -10,54 +10,60 @@ import (
 	"time"
 
 	"github.com/daknoblo/waim/internal/i18n"
+	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/store"
 )
 
 // StatsData is the model for the statistics page.
 type StatsData struct {
-	Layout         Layout
-	HasData        bool
-	DataState      string
-	LastScan       string
-	Duration       string
-	ItemsScanned   int
-	LibrariesCount int
-	TotalGaps      int
-	MissingUnits   int
-	MoviesScanned  int
-	SeriesScanned  int
-	SeriesEpisodes int
-	Completeness   int
-	Libraries      []StatsLibrary
-	ByKind         StatsByKind
-	TopSeries      []StatsTop
-	TopCollections []StatsTop
-	LibraryRatings []StatsLibraryRatings
-	FindingRatings []StatsLibraryRatings
-	SeriesFindings []StatsLibraryRatings
-	LongestMovies  []StatsRuntime
-	ShortestMovies []StatsRuntime
-	LongestSeries  []StatsRuntime
-	ShortestSeries []StatsRuntime
-	Sagas          []StatsRuntime
-	Facts          []StatsFact
-	Niches         []StatsNiche
-	Genres         []StatsBar
-	Years          []StatsBar
-	RatingSpread   []StatsBar
-	Languages      []StatsBar
-	Countries      []StatsBar
-	GenrePie       []PieSlice
-	YearPie        []PieSlice
-	LanguagePie    []PieSlice
-	GenreRatings   []StatsRatedGroup
-	SeasonRatings  []StatsSeasonRatings
-	Completion     []StatsCompletion
-	EpisodePct     int
-	Growth         []StatsGrowth
-	SeriesOptions  []SeriesOption
-	Detail         SeriesDetail
-	Upcoming       StatsUpcoming
+	Unresolved      []StatsRated
+	Unconfirmed     bool
+	TrackingTitles  int
+	TrackingMissing int
+	TrackingRatings []StatsRated
+	Layout          Layout
+	HasData         bool
+	DataState       string
+	LastScan        string
+	Duration        string
+	ItemsScanned    int
+	LibrariesCount  int
+	TotalGaps       int
+	MissingUnits    int
+	MoviesScanned   int
+	SeriesScanned   int
+	SeriesEpisodes  int
+	Completeness    int
+	Libraries       []StatsLibrary
+	ByKind          StatsByKind
+	TopSeries       []StatsTop
+	TopCollections  []StatsTop
+	LibraryRatings  []StatsLibraryRatings
+	FindingRatings  []StatsLibraryRatings
+	SeriesFindings  []StatsLibraryRatings
+	LongestMovies   []StatsRuntime
+	ShortestMovies  []StatsRuntime
+	LongestSeries   []StatsRuntime
+	ShortestSeries  []StatsRuntime
+	Sagas           []StatsRuntime
+	Facts           []StatsFact
+	Niches          []StatsNiche
+	Genres          []StatsBar
+	Years           []StatsBar
+	RatingSpread    []StatsBar
+	Languages       []StatsBar
+	Countries       []StatsBar
+	GenrePie        []PieSlice
+	YearPie         []PieSlice
+	LanguagePie     []PieSlice
+	GenreRatings    []StatsRatedGroup
+	SeasonRatings   []StatsSeasonRatings
+	Completion      []StatsCompletion
+	EpisodePct      int
+	Growth          []StatsGrowth
+	SeriesOptions   []SeriesOption
+	Detail          SeriesDetail
+	Upcoming        StatsUpcoming
 }
 
 // StatsCompletion is one series row of the season completion heatmap.
@@ -223,24 +229,66 @@ type StatsInput struct {
 // BuildStats computes the statistics view from the latest run and its findings.
 func BuildStats(t *i18n.Translator, in StatsInput) StatsData {
 	sd := StatsData{}
-	run, findings := in.Run, in.Findings
+	run, findings := localizedLibraryData(t, in.Run, in.Findings)
 	if run == nil {
 		return sd
 	}
+	if run.Metadata.Basis != "" {
+		run.Media = distinctMediaStats(run.Media)
+	}
+	sd.Unconfirmed = run.Metadata.Pending || len(run.Metadata.Warnings) > 0
+	originalRun := run
+	ownedRun := *run
+	ownedRun.Media = nil
+	ownedRun.Libraries = nil
+	var tracking []store.MediaStat
+	for _, m := range run.Media {
+		if m.TMDBID <= 0 || m.MetadataUnavailable {
+			sd.Unresolved = append(sd.Unresolved, StatsRated{Title: m.Title, Year: m.Year, Link: mediaLink(m, in.JellyfinURL)})
+		}
+		if m.WatchOnly {
+			tracking = append(tracking, m)
+			sd.TrackingTitles++
+			continue
+		}
+		ownedRun.Media = append(ownedRun.Media, m)
+	}
+	for _, lib := range run.Libraries {
+		if lib.ID != media.VirtualID {
+			ownedRun.Libraries = append(ownedRun.Libraries, lib)
+		}
+	}
+	ownedFindings := []store.Finding{}
+	for _, f := range findings {
+		if f.WatchOnly {
+			_, n, _ := findingMissing(f)
+			sd.TrackingMissing += n
+			continue
+		}
+		ownedFindings = append(ownedFindings, f)
+	}
+	findings = ownedFindings
+	run = &ownedRun
+	sd.TrackingRatings = toRated(tracking, len(tracking), in.JellyfinURL)
 	sd.HasData = true
 	sd.LastScan = FormatRelative(t, run.FinishedAt)
 	sd.Duration = orDash(FormatDuration(run.Duration()))
 	sd.ItemsScanned = run.ItemsScanned
+	if run.Metadata.Basis != "" {
+		sd.ItemsScanned = len(run.Media)
+	}
 	sd.LibrariesCount = len(run.Libraries)
 	sd.TotalGaps = len(findings)
 
 	// Distinct titles with gaps per library.
 	libGapTitles := map[string]map[string]bool{}
 	for _, f := range findings {
-		if libGapTitles[f.LibraryID] == nil {
-			libGapTitles[f.LibraryID] = map[string]bool{}
+		for _, lib := range libraryMemberships(f.Provenance, f.LibraryID, f.LibraryName) {
+			if libGapTitles[lib.ID] == nil {
+				libGapTitles[lib.ID] = map[string]bool{}
+			}
+			libGapTitles[lib.ID][findingTitleIdentity(f)] = true
 		}
-		libGapTitles[f.LibraryID][f.Title] = true
 	}
 
 	// Per-library missing units (from the persisted summary) and totals.
@@ -276,7 +324,7 @@ func BuildStats(t *i18n.Translator, in StatsInput) StatsData {
 	if totalItems > 0 {
 		sd.Completeness = int(float64(totalItems-itemsWithGapsAll) / float64(totalItems) * 100)
 	} else {
-		sd.Completeness = 100
+		sd.Completeness = 0
 	}
 
 	// Findings by kind, plus top incomplete series/collections.
@@ -322,14 +370,47 @@ func BuildStats(t *i18n.Translator, in StatsInput) StatsData {
 	sd.TopCollections = topN(collections, 5)
 
 	computeMediaStats(&sd, run, t, in.JellyfinURL)
-	sd.FindingRatings = buildFindingRatings(findings)
-	sd.SeriesFindings = buildSeriesFindingRatings(findings, run.Media, in.JellyfinURL)
+	if run.Metadata.Basis != "" {
+		sd.MoviesScanned, sd.SeriesScanned = 0, 0
+		sd.MissingUnits = 0
+		gaps := map[string]bool{}
+		for _, f := range findings {
+			_, n, _ := findingMissing(f)
+			sd.MissingUnits += n
+			for _, m := range run.Media {
+				if (f.MediaType == m.Type && f.Kind != store.KindMissingCollection && f.TMDBID == m.TMDBID) || (f.Kind == store.KindMissingCollection && m.Type == store.MediaMovie && m.CollectionID == f.TMDBID) {
+					gaps[media.Key(m.Type, m.TMDBID)] = true
+				}
+			}
+		}
+		if len(run.Media) > 0 {
+			sd.Completeness = (len(run.Media) - len(gaps)) * 100 / len(run.Media)
+		}
+		for _, m := range run.Media {
+			if m.Type == store.MediaMovie {
+				sd.MoviesScanned++
+			} else {
+				sd.SeriesScanned++
+			}
+		}
+	}
+	allSeries := []store.MediaStat{}
+	for _, m := range originalRun.Media {
+		if m.Type == store.MediaSeries {
+			allSeries = append(allSeries, m)
+		}
+	}
+	sd.SeriesOptions, sd.Detail = buildSeriesFlowData(t, allSeries, "", in.JellyfinURL)
+	sd.SeasonRatings = seasonRatingRows(t, allSeries, in.JellyfinURL)
+	perLibraryFindings := membershipFindings(findings, run.Libraries)
+	sd.FindingRatings = buildFindingRatings(perLibraryFindings)
+	sd.SeriesFindings = buildSeriesFindingRatings(perLibraryFindings, run.Media, in.JellyfinURL)
 	sd.Growth = buildGrowth(in.History)
 	now := in.Now
 	if now.IsZero() {
 		now = time.Now()
 	}
-	sd.Upcoming = buildUpcoming(t, run.Upcoming, now, NormalizeUpcomingQuery("", "", ""))
+	sd.Upcoming = buildUpcoming(t, originalRun.Upcoming, now, NormalizeUpcomingQuery("", "", ""))
 
 	return sd
 }
@@ -337,6 +418,9 @@ func BuildStats(t *i18n.Translator, in StatsInput) StatsData {
 // mediaLink points at the item in Jellyfin when the server URL is known, and at
 // TMDB otherwise.
 func mediaLink(m store.MediaStat, jellyfinURL string) string {
+	if link := media.Link(m.References); link != "" {
+		return link
+	}
 	if link := jellyfinItemURL(jellyfinURL, m.JellyfinID); link != "" {
 		return link
 	}
@@ -348,6 +432,9 @@ func mediaLink(m store.MediaStat, jellyfinURL string) string {
 
 // findingLink points at the owned item a finding belongs to.
 func findingLink(f store.Finding, jellyfinURL string) string {
+	if link := media.Link(f.References); link != "" {
+		return link
+	}
 	if link := jellyfinItemURL(jellyfinURL, f.JellyfinID); link != "" {
 		return link
 	}
@@ -413,7 +500,9 @@ func computeMediaStats(sd *StatsData, run *store.ScanRun, t *i18n.Translator, je
 			series = append(series, m)
 			sd.SeriesEpisodes += m.Episodes
 		}
-		byLib[m.LibraryID] = append(byLib[m.LibraryID], m)
+		for _, lib := range libraryMemberships(m.Provenance, m.LibraryID, m.LibraryName) {
+			byLib[lib.ID] = append(byLib[lib.ID], m)
+		}
 		for _, g := range m.Genres {
 			genreCounts[g]++
 		}
@@ -896,6 +985,7 @@ func buildFindingRatings(findings []store.Finding) []StatsLibraryRatings {
 		tmdbID int64
 	}
 	byLib := map[string][]ratedPart{}
+	seen := map[string]bool{}
 	names := map[string]string{}
 	var order []string
 	for _, f := range findings {
@@ -910,6 +1000,11 @@ func buildFindingRatings(findings []store.Finding) []StatsLibraryRatings {
 			if p.Rating <= 0 {
 				continue
 			}
+			key := f.LibraryID + "\x00" + titleIdentity(store.MediaMovie, p.TMDBID, "", "", p.Title+" "+p.Year)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
 			if _, ok := byLib[f.LibraryID]; !ok {
 				order = append(order, f.LibraryID)
 				names[f.LibraryID] = f.LibraryName
@@ -960,7 +1055,10 @@ func buildSeriesFindingRatings(findings []store.Finding, media []store.MediaStat
 	stats := map[string]store.MediaStat{}
 	for _, m := range media {
 		if m.Type == store.MediaSeries {
-			stats[m.LibraryID+"\x00"+m.Title] = m
+			key := titleIdentity(m.Type, m.TMDBID, m.CatalogID, m.JellyfinID, m.Title)
+			for _, lib := range libraryMemberships(m.Provenance, m.LibraryID, m.LibraryName) {
+				stats[lib.ID+"\x00"+key] = m
+			}
 		}
 	}
 
@@ -971,7 +1069,8 @@ func buildSeriesFindingRatings(findings []store.Finding, media []store.MediaStat
 		if f.Kind != store.KindMissingSeason && f.Kind != store.KindMissingEpisodes {
 			continue
 		}
-		m, ok := stats[f.LibraryID+"\x00"+f.Title]
+		key := findingTitleIdentity(f)
+		m, ok := stats[f.LibraryID+"\x00"+key]
 		if !ok || m.Rating <= 0 {
 			continue
 		}
@@ -980,10 +1079,10 @@ func buildSeriesFindingRatings(findings []store.Finding, media []store.MediaStat
 			names[f.LibraryID] = f.LibraryName
 			order = append(order, f.LibraryID)
 		}
-		entry := byLib[f.LibraryID][f.Title]
+		entry := byLib[f.LibraryID][key]
 		if entry == nil {
 			entry = &ratedSeries{title: f.Title, year: m.Year, rating: m.Rating, link: mediaLink(m, jellyfinURL)}
-			byLib[f.LibraryID][f.Title] = entry
+			byLib[f.LibraryID][key] = entry
 		}
 		_, count, _ := findingMissing(f)
 		entry.missing += count
@@ -1106,6 +1205,8 @@ func findingMissing(f store.Finding) (kind string, count int, title string) {
 		_ = json.Unmarshal([]byte(f.Details), &d)
 	}
 	switch f.Kind {
+	case store.KindMissingMovie:
+		return f.Kind, 1, f.Title
 	case store.KindMissingCollection:
 		return f.Kind, len(d.MissingParts), f.Title
 	default:

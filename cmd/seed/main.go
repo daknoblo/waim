@@ -45,6 +45,9 @@ func main() {
 	out := flag.String("out", "appdata", "data directory to write waim.db into")
 	force := flag.Bool("force", false, "overwrite an existing database")
 	flag.Parse()
+	if _, err := os.Stat(filepath.Join(*out, "config.json")); err == nil {
+		log.Fatal("seed: use a fresh directory; an existing config is never overwritten")
+	}
 
 	path := filepath.Join(*out, "waim.db")
 	if _, err := os.Stat(path); err == nil && !*force {
@@ -213,15 +216,11 @@ func seed(ctx context.Context, st *store.Store, path string) error {
 	if err != nil {
 		return err
 	}
-	if err := st.AddFindings(ctx, runID, findings); err != nil {
+	media, findings, upcoming, libs, metadata, err := sourceFixtures(ctx, st, path, media, findings, upcoming)
+	if err != nil {
 		return err
 	}
-	libs := []store.LibrarySummary{
-		{ID: libMovies, Name: "Movies", Scanned: len(movieTitles), Total: len(movieTitles), Missing: 1},
-		{ID: libSeries, Name: "Series", Scanned: len(seriesTitles), Total: len(seriesTitles), Missing: len(findings) - 1},
-	}
-	if err := st.FinishScanRun(ctx, runID, store.StatusSuccess, "", 2,
-		len(media), len(findings), libs, media, upcoming); err != nil {
+	if err := st.PublishScan(ctx, runID, findings, libs, media, upcoming, metadata); err != nil {
 		return err
 	}
 

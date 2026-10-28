@@ -34,7 +34,11 @@ type Item struct {
 	SeriesID          string            `json:"SeriesId"`
 	SeriesName        string            `json:"SeriesName"`
 	IndexNumber       *int              `json:"IndexNumber"`       // episode number
+	IndexNumberEnd    *int              `json:"IndexNumberEnd"`    // last episode in a combined file
 	ParentIndexNumber *int              `json:"ParentIndexNumber"` // season number
+	IsMissing         bool              `json:"IsMissing"`
+	IsVirtualItem     bool              `json:"IsVirtualItem"`
+	LocationType      string            `json:"LocationType"`
 }
 
 // itemsResult is the common envelope returned by item queries.

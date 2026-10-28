@@ -6,23 +6,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/daknoblo/waim/internal/crypto"
+	"github.com/daknoblo/waim/internal/maintenance"
+	"github.com/daknoblo/waim/internal/media"
 )
 
 // stored is the on-disk representation of the configuration. API keys are
 // stored only in their encrypted form.
 type stored struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	Locale        string `json:"locale"`
-	LogLevel      string `json:"logLevel"`
+	Sources       []storedSource `json:"sources"`
+	SchemaVersion int            `json:"schemaVersion"`
+	Locale        string         `json:"locale"`
+	LogLevel      string         `json:"logLevel"`
 
 	Jellyfin struct {
 		URL       string `json:"url"`
 		APIKeyEnc string `json:"apiKeyEnc"`
 		UserID    string `json:"userId"`
-	} `json:"jellyfin"`
+	} `json:"jellyfin,omitempty,omitzero"`
 
 	TMDB struct {
 		APIKeyEnc string `json:"apiKeyEnc"`
@@ -39,7 +43,24 @@ type stored struct {
 
 	Scan      ScanSettings  `json:"scan"`
 	Cache     CacheSettings `json:"cache"`
-	Libraries []Library     `json:"libraries"`
+	Libraries []Library     `json:"libraries,omitempty"`
+}
+
+type storedSource struct {
+	ScanIntervalMinutes  *int      `json:"scanIntervalMinutes,omitempty"`
+	CredentialGeneration string    `json:"credentialGeneration,omitempty"`
+	KeyUnreadable        bool      `json:"keyUnreadable,omitempty"`
+	ID                   string    `json:"id"`
+	Type                 string    `json:"type"`
+	Name                 string    `json:"name"`
+	Enabled              bool      `json:"enabled"`
+	Revision             int64     `json:"revision"`
+	Libraries            []Library `json:"libraries,omitempty"`
+	Jellyfin             struct {
+		URL       string `json:"url"`
+		UserID    string `json:"userId"`
+		APIKeyEnc string `json:"apiKeyEnc"`
+	} `json:"jellyfin,omitempty,omitzero"`
 }
 
 // KeyFileName is the name of the file inside the data directory that holds the
@@ -56,6 +77,8 @@ type Manager struct {
 	keyCreated     bool
 	keysUnreadable bool
 	settings       Settings
+	disk           stored
+	gate           *maintenance.Gate
 }
 
 // Load reads (or initialises) the configuration in dataDir.
@@ -72,7 +95,7 @@ func Load(dataDir string) (*Manager, error) {
 	}
 	path := filepath.Join(dataDir, "config.json")
 
-	m := &Manager{path: path, keyPath: filepath.Join(dataDir, KeyFileName)}
+	m := &Manager{path: path, keyPath: filepath.Join(dataDir, KeyFileName), gate: maintenance.New()}
 
 	cipher, created, err := crypto.LoadOrCreateKeyFile(m.keyPath)
 	if err != nil {
@@ -89,8 +112,40 @@ func Load(dataDir string) (*Manager, error) {
 	case err != nil:
 		return nil, err
 	}
+	if st.SchemaVersion > SchemaVersion {
+		return nil, fmt.Errorf("config: schema %d is newer than supported schema %d", st.SchemaVersion, SchemaVersion)
+	}
 
+	// Copy ciphertext, not decrypted values, while migrating legacy settings.
+	if len(st.Sources) == 0 && (st.Jellyfin.URL != "" || st.Jellyfin.APIKeyEnc != "" || len(st.Libraries) > 0) {
+		src := storedSource{ID: LegacySourceID, Type: "jellyfin", Name: "Jellyfin", Enabled: true, Revision: 1, Libraries: st.Libraries}
+		src.Jellyfin.URL, src.Jellyfin.UserID, src.Jellyfin.APIKeyEnc = st.Jellyfin.URL, st.Jellyfin.UserID, st.Jellyfin.APIKeyEnc
+		st.Sources = append(st.Sources, src)
+	}
+	foundVirtual := false
+	for i, src := range st.Sources {
+		if src.ID == "virtual" {
+			foundVirtual = true
+			st.Sources[i] = storedSource{ID: "virtual", Type: "virtual", Name: media.VirtualName, Enabled: true}
+		} else if src.ScanIntervalMinutes == nil {
+			st.Sources[i].ScanIntervalMinutes = cloneInt(&st.Scan.IntervalMinutes)
+		}
+	}
+	if !foundVirtual {
+		st.Sources = append(st.Sources, storedSource{ID: "virtual", Type: "virtual", Name: media.VirtualName, Enabled: true})
+	}
+	// The source entry now owns the ciphertext; do not retain a second writable
+	// legacy connection or a second unreadable-key warning.
+	st.Jellyfin.URL, st.Jellyfin.UserID, st.Jellyfin.APIKeyEnc = "", "", ""
+	st.Libraries = nil
 	m.settings, m.keysUnreadable = m.decryptStored(st)
+	if err := validateSources(m.settings); err != nil {
+		return nil, err
+	}
+	if err := m.initializeCredentialGenerations(&st); err != nil {
+		return nil, err
+	}
+	m.disk = st
 
 	// Persist on first run and to upgrade the on-disk schema.
 	if err := m.persist(st); err != nil {
@@ -129,19 +184,26 @@ func (m *Manager) Get() Settings {
 
 // Save validates and persists new settings, encrypting API keys at rest.
 func (m *Manager) Save(s Settings) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.saveLocked(s)
+}
+
+func (m *Manager) saveLocked(s Settings, replacedCredentials ...string) error {
+	s = s.Clone()
+	s.Jellyfin = JellyfinSettings{}
+	s.Libraries = nil
+	normalizeSources(&s)
 	s.Locale = NormalizeLocale(s.Locale)
 	if err := validate(s); err != nil {
 		return err
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	if err := validateSources(s); err != nil {
+		return err
+	}
 
 	st := storedFromSettings(s)
 
-	jEnc, err := m.cipher.Encrypt(s.Jellyfin.APIKey)
-	if err != nil {
-		return fmt.Errorf("config: encrypt jellyfin key: %w", err)
-	}
 	tEnc, err := m.cipher.Encrypt(s.TMDB.APIKey)
 	if err != nil {
 		return fmt.Errorf("config: encrypt tmdb key: %w", err)
@@ -150,16 +212,55 @@ func (m *Manager) Save(s Settings) error {
 	if err != nil {
 		return fmt.Errorf("config: encrypt ai key: %w", err)
 	}
-	st.Jellyfin.APIKeyEnc = jEnc
 	st.TMDB.APIKeyEnc = tEnc
 	st.AI.APIKeyEnc = aEnc
+	// A missing master key must never erase unreadable ciphertext on an
+	// unrelated save. Keep it until a replacement key is explicitly supplied.
+	preserve := func(plain, old string, enc *string) {
+		if plain == "" && old != "" {
+			if _, err := m.cipher.Decrypt(old); err != nil {
+				*enc = old
+			}
+		}
+	}
+	preserve(s.TMDB.APIKey, m.disk.TMDB.APIKeyEnc, &st.TMDB.APIKeyEnc)
+	preserve(s.AI.APIKey, m.disk.AI.APIKeyEnc, &st.AI.APIKeyEnc)
+	for i, src := range s.Sources {
+		if src.ID == "virtual" {
+			continue
+		}
+		enc, err := m.cipher.Encrypt(src.Jellyfin.APIKey)
+		if err != nil {
+			return err
+		}
+		for _, old := range m.disk.Sources {
+			if old.ID == src.ID && old.Jellyfin.URL == src.Jellyfin.URL {
+				preserve(src.Jellyfin.APIKey, old.Jellyfin.APIKeyEnc, &enc)
+			}
+		}
+		st.Sources[i].Jellyfin.APIKeyEnc = enc
+		_, decryptErr := m.cipher.Decrypt(enc)
+		unreadable := decryptErr != nil
+		old, exists := m.settings.Source(src.ID)
+		// Ignore submitted generations: even a stale full Settings save can
+		// only retain the current token or mint a fresh, unrelated generation.
+		generation := old.CredentialGeneration
+		if !exists || generation == "" || old.Jellyfin.APIKey != src.Jellyfin.APIKey ||
+			old.KeyUnreadable != unreadable || slices.Contains(replacedCredentials, src.ID) {
+			generation, err = newCredentialGeneration()
+			if err != nil {
+				return err
+			}
+		}
+		st.Sources[i].CredentialGeneration = generation
+		st.Sources[i].KeyUnreadable = unreadable
+	}
 
 	if err := m.persist(st); err != nil {
 		return err
 	}
-	m.settings = s.Clone()
-	// Every stored ciphertext has just been rewritten with the current key.
-	m.keysUnreadable = false
+	m.disk = st
+	m.settings, m.keysUnreadable = m.decryptStored(st)
 	return nil
 }
 
@@ -169,16 +270,8 @@ func (m *Manager) Save(s Settings) error {
 func (m *Manager) ExportStored() ([]byte, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	st := storedFromSettings(m.settings)
-	if jEnc, err := m.cipher.Encrypt(m.settings.Jellyfin.APIKey); err == nil {
-		st.Jellyfin.APIKeyEnc = jEnc
-	}
-	if tEnc, err := m.cipher.Encrypt(m.settings.TMDB.APIKey); err == nil {
-		st.TMDB.APIKeyEnc = tEnc
-	}
-	if aEnc, err := m.cipher.Encrypt(m.settings.AI.APIKey); err == nil {
-		st.AI.APIKeyEnc = aEnc
-	}
+	st := m.disk
+	st.SchemaVersion = SchemaVersion
 	return json.MarshalIndent(st, "", "  ")
 }
 
@@ -214,6 +307,13 @@ func (m *Manager) decryptStored(st stored) (Settings, bool) {
 	s.Jellyfin.APIKey = decrypt(st.Jellyfin.APIKeyEnc)
 	s.TMDB.APIKey = decrypt(st.TMDB.APIKeyEnc)
 	s.AI.APIKey = decrypt(st.AI.APIKeyEnc)
+	for _, src := range st.Sources {
+		key, err := m.cipher.Decrypt(src.Jellyfin.APIKeyEnc)
+		if err != nil {
+			unreadable = true
+		}
+		s.Sources = append(s.Sources, Source{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, ScanIntervalMinutes: cloneInt(src.ScanIntervalMinutes), Revision: src.Revision, CredentialGeneration: src.CredentialGeneration, Libraries: append([]Library(nil), src.Libraries...), Jellyfin: JellyfinSettings{URL: src.Jellyfin.URL, UserID: src.Jellyfin.UserID, APIKey: key}, KeyUnreadable: err != nil})
+	}
 
 	// Backfill defaults for zero values that should not be empty.
 	def := Defaults()
@@ -309,8 +409,6 @@ func storedFromSettings(s Settings) stored {
 	st.SchemaVersion = SchemaVersion
 	st.Locale = s.Locale
 	st.LogLevel = s.LogLevel
-	st.Jellyfin.URL = s.Jellyfin.URL
-	st.Jellyfin.UserID = s.Jellyfin.UserID
 	st.TMDB.Language = s.TMDB.Language
 	st.TMDB.Region = s.TMDB.Region
 	st.AI.Enabled = s.AI.Enabled
@@ -318,6 +416,10 @@ func storedFromSettings(s Settings) stored {
 	st.AI.Model = s.AI.Model
 	st.Scan = s.Scan
 	st.Cache = s.Cache
-	st.Libraries = append([]Library(nil), s.Libraries...)
+	for _, src := range s.Sources {
+		ss := storedSource{ID: src.ID, Type: src.Type, Name: src.Name, Enabled: src.Enabled, ScanIntervalMinutes: cloneInt(src.ScanIntervalMinutes), Revision: src.Revision, CredentialGeneration: src.CredentialGeneration, Libraries: append([]Library(nil), src.Libraries...)}
+		ss.Jellyfin.URL, ss.Jellyfin.UserID = src.Jellyfin.URL, src.Jellyfin.UserID
+		st.Sources = append(st.Sources, ss)
+	}
 	return st
 }

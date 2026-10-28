@@ -1,4 +1,4 @@
-// Package suggest builds media recommendations from the user's Jellyfin library
+// Package suggest builds media recommendations from the shared real-owned catalog
 // using TMDB (trending + per-title recommendations) and, optionally, a remote
 // AI endpoint.
 package suggest
@@ -15,9 +15,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/ai"
 	"github.com/daknoblo/waim/internal/config"
-	"github.com/daknoblo/waim/internal/jellyfin"
+	"github.com/daknoblo/waim/internal/media"
+	"github.com/daknoblo/waim/internal/source"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
 	"github.com/daknoblo/waim/internal/tmdbcache"
@@ -36,6 +38,8 @@ const (
 
 // Item is a display-ready TMDB suggestion.
 type Item struct {
+	TMDBID      int64
+	References  []media.Reference
 	MediaType   string
 	Title       string
 	Year        string
@@ -57,6 +61,8 @@ type AIItem struct {
 
 // Result is a cached set of suggestions.
 type Result struct {
+	SourcesToken   string
+	Revision       int64
 	Trending       []Item
 	Similar        []Item
 	UpcomingTaste  []Item
@@ -73,19 +79,67 @@ type Service struct {
 	cfg   *config.Manager
 	store *store.Store
 	log   *slog.Logger
-	ttl   time.Duration
+	now   func() time.Time
 
-	mu      sync.RWMutex
-	result  *Result
-	running atomic.Bool
+	mu                 sync.RWMutex
+	result             *Result
+	cacheKey           string
+	lastAttempt        time.Time
+	savedDiagnostics   activity.State
+	identityResolvedAt time.Time
+	running            atomic.Bool
+	ctx                context.Context
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
+	epoch              uint64
+	activities         *activity.Tracker
 }
 
 // New creates a suggestion service.
-func New(cfg *config.Manager, st *store.Store, log *slog.Logger) *Service {
+func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*activity.Tracker) *Service {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Service{cfg: cfg, store: st, log: log, ttl: 6 * time.Hour}
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &Service{cfg: cfg, store: st, log: log, now: time.Now, ctx: ctx, cancel: cancel, activities: activity.New()}
+	if len(activities) > 0 && activities[0] != nil {
+		s.activities = activities[0]
+	}
+	s.loadCache()
+	return s
+}
+
+// Close cooperatively cancels and joins background work before the store closes.
+func (s *Service) Close() { s.mu.Lock(); s.cancel(); s.mu.Unlock(); s.wg.Wait() }
+
+// Catalog edits invalidate in-flight work, not the displayed recommendations.
+// Incompatible metadata/AI settings discard the old presentation instead.
+func (s *Service) Invalidate() {
+	key := s.settingsKey()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.epoch++
+	if s.cacheKey != key {
+		s.result = nil
+		s.savedDiagnostics = activity.State{}
+		s.identityResolvedAt = time.Time{}
+		s.cacheKey = key
+	}
+	if s.result == nil {
+		s.lastAttempt = time.Time{}
+	}
+}
+
+// Clear is called under exclusive reset admission, after SQLite KV is cleared.
+func (s *Service) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.epoch++
+	s.result = nil
+	s.lastAttempt = time.Time{}
+	s.savedDiagnostics = activity.State{}
+	s.identityResolvedAt = time.Time{}
+	s.cacheKey = ""
 }
 
 // Running reports whether a generation is in progress.
@@ -93,63 +147,97 @@ func (s *Service) Running() bool { return s.running.Load() }
 
 // Result returns the cached result (may be nil) and whether it is still fresh.
 func (s *Service) Result() (*Result, bool) {
+	key := s.settingsKey()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.result == nil {
+	if s.result == nil || s.cacheKey != key {
 		return nil, false
 	}
-	return s.result, time.Since(s.result.GeneratedAt) < s.ttl
+	return s.result, s.now().Sub(s.result.GeneratedAt) < RefreshInterval
 }
 
-// NeedsRefresh reports whether suggestions should be (re)generated: when there
-// is no cached result yet, or a newer successful scan exists than the one the
-// cached suggestions were based on.
-func (s *Service) NeedsRefresh(ctx context.Context) bool {
+// NeedsRefresh uses the last attempt, so failures do not retry on every visit.
+// New scans and virtual-collection edits do not expire this independent cache.
+func (s *Service) NeedsRefresh(_ context.Context) bool {
+	key := s.settingsKey()
 	s.mu.RLock()
-	res := s.result
-	s.mu.RUnlock()
-	if res == nil {
-		return true
-	}
-	var latest int64
-	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
-		latest = run.ID
-	}
-	return res.BasedOnRunID != latest
+	defer s.mu.RUnlock()
+	return s.cacheKey != key || s.lastAttempt.IsZero() || !s.now().Before(s.lastAttempt.Add(RefreshInterval))
 }
 
 // Generate rebuilds suggestions in the background, ignoring overlapping calls.
-func (s *Service) Generate() {
-	if !s.running.CompareAndSwap(false, true) {
+func (s *Service) Generate() { s.generate(time.Time{}, false) }
+
+func (s *Service) generate(due time.Time, scheduled bool) {
+	release, err := s.cfg.Gate().EnterScheduled(due)
+	if err != nil {
+		s.log.Warn("suggestions skipped during maintenance")
 		return
 	}
-	go func() {
-		defer s.running.Store(false)
-		ctx, cancel := context.WithTimeout(context.Background(), generateLimit)
-		defer cancel()
-		res := s.build(ctx)
-		s.mu.Lock()
-		s.result = res
+	s.mu.Lock()
+	key := s.settingsKey()
+	if s.ctx.Err() != nil || (scheduled && s.cacheKey == key && !s.lastAttempt.IsZero() && s.now().Before(s.lastAttempt.Add(RefreshInterval))) {
 		s.mu.Unlock()
+		release()
+		return
+	}
+	if !s.running.CompareAndSwap(false, true) {
+		s.mu.Unlock()
+		release()
+		return
+	}
+	s.wg.Add(1)
+	epoch := s.epoch
+	if s.cacheKey != key {
+		s.result = nil
+		s.savedDiagnostics = activity.State{}
+		s.identityResolvedAt = time.Time{}
+	}
+	s.lastAttempt = s.now()
+	s.cacheKey = key
+	run := s.activities.Start(activity.Suggestions)
+	s.mu.Unlock()
+	go func() {
+		defer s.wg.Done()
+		defer s.running.Store(false)
+		// Completion must not become observable before maintenance admission
+		// is released, otherwise an immediately following reset can fail.
+		defer release()
+		ctx, cancel := context.WithTimeout(s.ctx, generateLimit)
+		defer cancel()
+		ctx = activity.WithRun(ctx, run)
+		res := s.build(ctx)
+		run.Phase(activity.Persistence, -1)
+		outcome := s.publish(ctx, res, epoch, key, run)
+		if s.cfg.Get().TMDB.APIKey == "" {
+			outcome = activity.Waiting
+		}
+		warnings := len(res.Errors)
+		if outcome == activity.Waiting {
+			warnings = 0
+		}
+		run.Finish(ctx, outcome, warnings)
 		s.log.Info("suggestions generated", "trending", len(res.Trending), "similar", len(res.Similar),
 			"upcoming", len(res.UpcomingTaste)+len(res.UpcomingRegion), "ai", len(res.AI))
 	}()
 }
 
 func (s *Service) build(ctx context.Context) *Result {
-	res := &Result{GeneratedAt: time.Now()}
+	run := activity.FromContext(ctx)
+	run.Phase(activity.Inventory, -1)
+	res := &Result{GeneratedAt: s.now()}
 	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
 		res.BasedOnRunID = run.ID
 	}
 	settings := s.cfg.Get()
+	res.SourcesToken = settings.SourcesToken()
 
-	if settings.Jellyfin.URL == "" || settings.Jellyfin.APIKey == "" || settings.TMDB.APIKey == "" {
-		res.Errors = append(res.Errors, "jellyfin and tmdb must be configured")
+	if settings.TMDB.APIKey == "" {
+		res.Errors = append(res.Errors, "TMDB must be configured")
 		return res
 	}
 	res.AIEnabled = settings.AI.Enabled && settings.AI.Endpoint != "" && settings.AI.APIKey != ""
 
-	jf := jellyfin.New(settings.Jellyfin.URL, settings.Jellyfin.APIKey)
 	td := tmdb.New(settings.TMDB.APIKey, settings.TMDB.Language, settings.TMDB.Region, settings.Scan.TMDBRateLimitRPS).
 		WithCache(tmdbcache.New(s.store))
 
@@ -157,49 +245,73 @@ func (s *Service) build(ctx context.Context) *Result {
 	ownedMovie := map[int64]bool{}
 	var sampleTV, sampleMovie []int64
 	var seriesNames, movieNames []string
+	titles := map[string]string{}
 
-	userID, err := jf.ResolveUserID(ctx, settings.Jellyfin.UserID)
+	catalog, err := source.Catalog(ctx, s.store, settings, false, nil)
 	if err != nil {
-		res.Errors = append(res.Errors, "jellyfin: "+err.Error())
+		res.Errors = append(res.Errors, "Catalog unavailable")
+		run.Problem(activity.StorageUnavailable, activity.Error)
+		run.Finish(ctx, activity.Failed, 1)
 		return res
 	}
-	for _, lib := range settings.EnabledLibraryIDs() {
-		items, err := jf.ItemsInLibrary(ctx, userID, lib)
-		if err != nil {
-			res.Errors = append(res.Errors, "jellyfin: "+err.Error())
+	res.Revision = catalog.Revision
+	catalog, err = source.ResolveSavedCatalog(ctx, s.store, settings, catalog, td)
+	if err != nil {
+		s.log.Error("catalog resolution failed", "err", err)
+		res.Errors = append(res.Errors, "Catalog resolution unavailable")
+		run.Problem(activity.StorageUnavailable, activity.Error)
+		run.Finish(ctx, activity.Failed, 1)
+		return res
+	}
+	res.Errors = append(res.Errors, catalog.Warnings...)
+	for _, warning := range catalog.Warnings {
+		if !strings.HasPrefix(warning, "Unresolved title: ") {
+			run.ReportLegacy(warning, "")
+		}
+	}
+	run.Warnings(len(res.Errors))
+	for _, it := range catalog.Items {
+		if it.WatchOnly {
 			continue
 		}
-		for _, it := range items {
-			id := providerTMDB(it)
-			switch it.Type {
-			case "Series":
-				if id != 0 {
-					ownedTV[id] = true
-					if len(sampleTV) < sampleSize {
-						sampleTV = append(sampleTV, id)
-					}
+		id := it.TMDBID()
+		titles[fmt.Sprintf("%s:%d", it.Type, id)] = it.Name
+		switch it.Type {
+		case "Series":
+			if id != 0 {
+				ownedTV[id] = true
+				if len(sampleTV) < sampleSize {
+					sampleTV = append(sampleTV, id)
 				}
-				if len(seriesNames) < aiOwnedNames {
-					seriesNames = append(seriesNames, it.Name)
+			}
+			if len(seriesNames) < aiOwnedNames {
+				seriesNames = append(seriesNames, it.Name)
+			}
+		case "Movie":
+			if id != 0 {
+				ownedMovie[id] = true
+				if len(sampleMovie) < sampleSize {
+					sampleMovie = append(sampleMovie, id)
 				}
-			case "Movie":
-				if id != 0 {
-					ownedMovie[id] = true
-					if len(sampleMovie) < sampleSize {
-						sampleMovie = append(sampleMovie, id)
-					}
-				}
-				if len(movieNames) < aiOwnedNames {
-					movieNames = append(movieNames, it.Name)
-				}
+			}
+			if len(movieNames) < aiOwnedNames {
+				movieNames = append(movieNames, it.Name)
 			}
 		}
 	}
 
+	// The result cache controls refresh frequency. Recommendation endpoints
+	// must be fetched afresh when a refresh actually runs.
+	td.WithCache(nil)
+	run.Phase(activity.Trending, 2)
 	res.Trending = s.buildTrending(ctx, td, ownedTV, ownedMovie, res)
-	res.Similar = s.buildSimilar(ctx, td, sampleTV, sampleMovie, ownedTV, ownedMovie, res)
+	run.Phase(activity.Similar, len(sampleTV)+len(sampleMovie))
+	res.Similar = s.buildSimilar(ctx, td, sampleTV, sampleMovie, ownedTV, ownedMovie, res, titles)
+	run.Phase(activity.Upcoming, -1)
 	res.UpcomingTaste, res.UpcomingRegion = s.buildUpcoming(ctx, td, ownedTV, ownedMovie, res)
+	run.Warnings(len(res.Errors))
 	if res.AIEnabled {
+		run.Phase(activity.AI, -1)
 		res.AI = s.buildAI(ctx, settings.AI, seriesNames, movieNames, res)
 	}
 	return res
@@ -207,14 +319,21 @@ func (s *Service) build(ctx context.Context) *Result {
 
 func (s *Service) buildTrending(ctx context.Context, td *tmdb.Client, ownedTV, ownedMovie map[int64]bool, res *Result) []Item {
 	var out []Item
+	run := activity.FromContext(ctx)
 	if tv, err := td.TrendingTV(ctx); err != nil {
-		res.Errors = append(res.Errors, "tmdb trending tv: "+err.Error())
+		run.Problem(activity.SuggestionsUnavailable, activity.Error)
+		run.Advance(true, false)
+		res.Errors = append(res.Errors, "tmdb trending tv: request failed")
 	} else {
+		run.Advance(false, false)
 		out = append(out, dedupeTake(tv, "series", ownedTV, trendingTake)...)
 	}
 	if mv, err := td.TrendingMovie(ctx); err != nil {
-		res.Errors = append(res.Errors, "tmdb trending movies: "+err.Error())
+		run.Problem(activity.SuggestionsUnavailable, activity.Error)
+		run.Advance(true, false)
+		res.Errors = append(res.Errors, "tmdb trending movies: request failed")
 	} else {
+		run.Advance(false, false)
 		out = append(out, dedupeTake(mv, "movie", ownedMovie, trendingTake)...)
 	}
 	return out
@@ -225,11 +344,19 @@ type scored struct {
 	count int
 }
 
-func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, sampleMovie []int64, ownedTV, ownedMovie map[int64]bool, res *Result) []Item {
+func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, sampleMovie []int64, ownedTV, ownedMovie map[int64]bool, res *Result, titles map[string]string) []Item {
+	run := activity.FromContext(ctx)
 	tvScores := map[int64]*scored{}
 	for _, id := range sampleTV {
+		if ctx.Err() != nil {
+			return nil
+		}
+		run.Current(titles[fmt.Sprintf("Series:%d", id)])
 		recs, err := td.TVRecommendations(ctx, id)
+		run.Advance(err != nil, false)
 		if err != nil {
+			run.Problem(activity.SuggestionsUnavailable, activity.Error)
+			res.Errors = append(res.Errors, "TV recommendations unavailable")
 			continue
 		}
 		for _, r := range recs {
@@ -244,8 +371,15 @@ func (s *Service) buildSimilar(ctx context.Context, td *tmdb.Client, sampleTV, s
 	}
 	movieScores := map[int64]*scored{}
 	for _, id := range sampleMovie {
+		if ctx.Err() != nil {
+			return nil
+		}
+		run.Current(titles[fmt.Sprintf("Movie:%d", id)])
 		recs, err := td.MovieRecommendations(ctx, id)
+		run.Advance(err != nil, false)
 		if err != nil {
+			run.Problem(activity.SuggestionsUnavailable, activity.Error)
+			res.Errors = append(res.Errors, "Movie recommendations unavailable")
 			continue
 		}
 		for _, r := range recs {
@@ -272,26 +406,30 @@ func (s *Service) buildUpcoming(ctx context.Context, td *tmdb.Client, ownedTV, o
 
 	if ids := genreIDs(ctx, td.TVGenres, tvNames, res, "tmdb tv genres"); len(ids) > 0 || len(tvNames) == 0 {
 		if tv, err := td.DiscoverUpcomingTV(ctx, ids, from); err != nil {
-			res.Errors = append(res.Errors, "tmdb upcoming tv: "+err.Error())
+			activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+			res.Errors = append(res.Errors, "tmdb upcoming tv: request failed")
 		} else {
 			taste = append(taste, dedupeTake(tv, "series", ownedTV, upcomingTake/2)...)
 		}
 	}
 	if ids := genreIDs(ctx, td.MovieGenres, movieNames, res, "tmdb movie genres"); len(ids) > 0 || len(movieNames) == 0 {
 		if mv, err := td.DiscoverUpcomingMovies(ctx, ids, from); err != nil {
-			res.Errors = append(res.Errors, "tmdb upcoming movies: "+err.Error())
+			activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+			res.Errors = append(res.Errors, "tmdb upcoming movies: request failed")
 		} else {
 			taste = append(taste, dedupeTake(mv, "movie", ownedMovie, upcomingTake/2)...)
 		}
 	}
 
 	if mv, err := td.UpcomingMovies(ctx); err != nil {
-		res.Errors = append(res.Errors, "tmdb movie releases: "+err.Error())
+		activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+		res.Errors = append(res.Errors, "tmdb movie releases: request failed")
 	} else {
 		region = append(region, dedupeTake(mv, "movie", ownedMovie, upcomingTake/2)...)
 	}
 	if tv, err := td.OnTheAirTV(ctx); err != nil {
-		res.Errors = append(res.Errors, "tmdb on the air: "+err.Error())
+		activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+		res.Errors = append(res.Errors, "tmdb on the air: request failed")
 	} else {
 		region = append(region, dedupeTake(tv, "series", ownedTV, upcomingTake/2)...)
 	}
@@ -344,7 +482,8 @@ func genreIDs(ctx context.Context, list func(context.Context) ([]tmdb.Genre, err
 	}
 	all, err := list(ctx)
 	if err != nil {
-		res.Errors = append(res.Errors, label+": "+err.Error())
+		activity.FromContext(ctx).Problem(activity.SuggestionsUnavailable, activity.Error)
+		res.Errors = append(res.Errors, label+": request failed")
 		return nil
 	}
 	byName := make(map[string]int, len(all))
@@ -365,7 +504,8 @@ func (s *Service) buildAI(ctx context.Context, cfg config.AISettings, seriesName
 	prompt := buildAIPrompt(seriesNames, movieNames)
 	suggestions, err := client.Suggest(ctx, prompt)
 	if err != nil {
-		res.Errors = append(res.Errors, "ai: "+err.Error())
+		activity.FromContext(ctx).Problem(activity.AIUnavailable, activity.Error)
+		res.Errors = append(res.Errors, "ai: recommendation request failed")
 		return nil
 	}
 	out := make([]AIItem, 0, len(suggestions))
@@ -386,7 +526,7 @@ func (s *Service) buildAI(ctx context.Context, cfg config.AISettings, seriesName
 
 func buildAIPrompt(seriesNames, movieNames []string) string {
 	var b strings.Builder
-	b.WriteString("My Jellyfin library.\n")
+	b.WriteString("My owned media catalog.\n")
 	if len(seriesNames) > 0 {
 		b.WriteString("TV series I own: ")
 		b.WriteString(strings.Join(seriesNames, ", "))
@@ -438,6 +578,7 @@ func rankScores(m map[int64]*scored, mediaType string, n int) []Item {
 
 func toItem(m tmdb.MediaResult, mediaType string) Item {
 	it := Item{
+		TMDBID:    m.ID,
 		MediaType: mediaType,
 		Title:     m.DisplayTitle(),
 		Year:      m.Year(),
@@ -459,15 +600,6 @@ func toItem(m tmdb.MediaResult, mediaType string) Item {
 	}
 	it.TMDBLink = "https://www.themoviedb.org/" + kind + "/" + strconv.FormatInt(m.ID, 10)
 	return it
-}
-
-func providerTMDB(it jellyfin.Item) int64 {
-	if v, ok := it.ProviderID("Tmdb"); ok {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return id
-		}
-	}
-	return 0
 }
 
 func truncate(s string, n int) string {
