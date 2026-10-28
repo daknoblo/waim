@@ -46,6 +46,11 @@ Huntarr or Missingarr.
   Statistics retain section-level library labels and clickable titles, without
   repeating server-reference badges next to each item. Works with TMDB alone;
   no Jellyfin server is required.
+- With JavaScript enabled, **Watch** adds the title in the background without
+  reloading the page or changing your scroll position. Duplicate appearances of
+  the same title update together. Collection search results update their controls,
+  the tracked count and the saved list in place; errors stay beside the button
+  and can be retried. Without JavaScript, the existing form/redirect flow remains.
 - Global TMDB identity merging and union of real episode ownership across
   instances. Source badges retain every instance and virtual membership.
 - Atomic source snapshots: failed refreshes retain the last successful inventory,

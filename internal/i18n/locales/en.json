@@ -191,6 +191,7 @@
   "sources.watch": "Watch",
   "sources.unwatch": "Stop watching",
   "sources.alreadyTracked": "Already in the virtual collection",
+  "sources.watchFailed": "The title could not be added to the virtual collection. Please try again.",
   "sources.fullyOwned": "Fully available in media sources",
   "sources.fullyOwnedSeries": "The last confirmed comparison found all episodes released so far, including across multiple sources. Your specials setting is respected.",
   "sources.removeVirtualHint": "You can remove the virtual entry below and track this title through your media sources only. Files in your media libraries remain unchanged.",

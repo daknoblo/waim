@@ -105,6 +105,7 @@ func (d SourcesData) IntervalValue(src config.Source) string {
 }
 
 type CollectionData struct {
+	Revision   int64
 	Layout     Layout
 	Entries    []store.VirtualEntry
 	Results    []store.VirtualEntry

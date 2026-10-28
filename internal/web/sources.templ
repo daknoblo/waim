@@ -187,11 +187,11 @@ templ collectionBody(d CollectionData) {
 			}
 		</div>
 	}
-	<h2 class="mb-3 text-lg">{ d.Layout.T.T("sources.tracked") } ({ strconv.Itoa(len(d.Entries)) })</h2>
+	<h2 class="mb-3 text-lg">{ d.Layout.T.T("sources.tracked") } (<span id="virtual-entry-count">{ strconv.Itoa(len(d.Entries)) }</span>)</h2>
 	if len(d.Entries) == 0 {
-		<p class="card">{ d.Layout.T.T("sources.empty") }</p>
+		<p id="virtual-entries-empty" class="card">{ d.Layout.T.T("sources.empty") }</p>
 	}
-	<div class="grid gap-3 sm:grid-cols-2">
+	<div id="virtual-entries" data-collection-revision={ strconv.FormatInt(d.Revision,10) } class="grid gap-3 sm:grid-cols-2">
 		for _, entry := range d.Entries {
 			@collectionEntry(d.Layout.T, entry, true, d.Ownership[media.Key(entry.Type,entry.TMDBID)])
 		}
@@ -199,7 +199,7 @@ templ collectionBody(d CollectionData) {
 }
 
 templ collectionEntry(t *i18n.Translator, v store.VirtualEntry, remove bool, ownership string) {
-	<article class="card flex gap-3">
+	<article class="card flex gap-3" data-collection-entry={ media.Key(v.Type,v.TMDBID) }>
 		if v.Poster != "" {
 			<img class="h-24 w-16 rounded object-cover" src={ posterURL(v.Poster) } alt="" loading="lazy"/>
 		}
@@ -237,18 +237,43 @@ templ collectionEntry(t *i18n.Translator, v store.VirtualEntry, remove bool, own
 }
 
 templ collectionForm(t *i18n.Translator,kind string,id int64,remove bool) {
-	<form method="post" action={ watchAction(remove) }>
+	@watchControl(t,kind,id,remove,false)
+}
+
+templ watchControl(t *i18n.Translator,kind string,id int64,watching,suggestion bool) {
+	<div data-watch-control data-kind={ kind } data-id={ strconv.FormatInt(id,10) } data-watch-context={ watchContext(suggestion) }
+		data-failed={ t.T("sources.watchFailed") } data-added={ t.T("sources.alreadyTracked") }
+		if !suggestion {
+			data-remove={ t.T("sources.unwatch") }
+		}
+	>
+	if suggestion && watching {
+		<a href="/collection" class="btn-ghost w-full text-xs" title={ t.T("sources.alreadyTracked") }><span class="truncate">{ t.T("sources.alreadyTracked") }</span></a>
+	} else {
+	<form method="post" action={ watchAction(watching) } data-watch-add?={ !watching }>
 		@MutationEpoch()
 		<input type="hidden" name="kind" value={ kind }/>
 		<input type="hidden" name="id" value={ strconv.FormatInt(id,10) }/>
 		<button class="btn-ghost text-xs" type="submit">
-			if remove {
+			if watching {
 				{ t.T("sources.unwatch") }
 			} else {
 				{ t.T("sources.watch") }
 			}
 		</button>
 	</form>
+	}
+	<p data-watch-feedback role="status" class="mt-1 text-xs text-rose-300" hidden></p>
+	</div>
+}
+
+templ CollectionAddedEntry(t *i18n.Translator,v store.VirtualEntry) {
+	@collectionEntry(t,v,true,"")
+}
+
+func watchContext(suggestion bool) string {
+	if suggestion { return "suggestions" }
+	return "collection"
 }
 
 func watchAction(remove bool) string {

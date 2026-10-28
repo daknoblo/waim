@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,7 +27,7 @@ func (s *Server) handleCollection(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, t.T("sources.storeError"), 500)
 		return
 	}
-	d := web.CollectionData{Layout: s.layout(r, "collection"), Entries: entries, Query: strings.TrimSpace(r.URL.Query().Get("q")), Kind: r.URL.Query().Get("kind"), Configured: s.cfg.Get().TMDB.APIKey != ""}
+	d := web.CollectionData{Layout: s.layout(r, "collection"), Entries: entries, Revision: revision, Query: strings.TrimSpace(r.URL.Query().Get("q")), Kind: r.URL.Query().Get("kind"), Configured: s.cfg.Get().TMDB.APIKey != ""}
 	if d.Kind != media.Series {
 		d.Kind = media.Movie
 	}
@@ -109,7 +111,45 @@ func (s *Server) handleWatchAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.changedCatalog()
+	if r.Header.Get("X-Waim-Collection-Async") == "true" {
+		s.respondWatchAdded(w, r, entry)
+		return
+	}
 	redirectBack(w, r)
+}
+
+func (s *Server) respondWatchAdded(w http.ResponseWriter, r *http.Request, entry store.VirtualEntry) {
+	entries, revision, err := s.store.VirtualEntries(r.Context())
+	if err != nil {
+		s.log.Error("collection add response could not load saved entries", "err", err)
+		http.Error(w, s.translator(r).T("sources.storeError"), http.StatusInternalServerError)
+		return
+	}
+	// Idempotent additions must use the existing saved metadata, not overwrite
+	// a previously tracked entry with a newly fetched display title.
+	for _, saved := range entries {
+		if saved.Type == entry.Type && saved.TMDBID == entry.TMDBID {
+			entry = saved
+			break
+		}
+	}
+	var html bytes.Buffer
+	if err := web.CollectionAddedEntry(s.translator(r), entry).Render(s.provenanceRequest(r).Context(), &html); err != nil {
+		s.log.Error("collection add response render failed", "err", err)
+		http.Error(w, s.translator(r).T("sources.storeError"), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := json.NewEncoder(w).Encode(struct {
+		Kind      string `json:"kind"`
+		ID        int64  `json:"id"`
+		Count     int    `json:"count"`
+		Revision  int64  `json:"revision"`
+		EntryHTML string `json:"entryHTML"`
+	}{entry.Type, entry.TMDBID, len(entries), revision, html.String()}); err != nil {
+		s.log.Error("collection add response failed", "err", err)
+	}
 }
 
 func (s *Server) handleWatchRemove(w http.ResponseWriter, r *http.Request) {

@@ -718,7 +718,101 @@
     });
   }
 
+  function collectionActions() {
+    var pending = new Set();
+    function controls(kind, id) {
+      return Array.from(document.querySelectorAll("[data-watch-control]")).filter(function (el) {
+        return el.dataset.kind === kind && el.dataset.id === id;
+      });
+    }
+    document.addEventListener("submit", async function (e) {
+      var form = e.target;
+      if (!form.matches || !form.matches("form[data-watch-add]") || form.getAttribute("action") !== "/collection/add") return;
+      e.preventDefault();
+      var control = form.closest("[data-watch-control]");
+      if (!control || !form.reportValidity()) return;
+      var kind = control.dataset.kind, id = control.dataset.id, key = kind + ":" + id;
+      var failureMessage = control.dataset.failed;
+      if (pending.has(key)) return;
+      pending.add(key);
+      controls(kind, id).forEach(function (el) {
+        var button = el.querySelector("button");
+        if (button) button.disabled = true;
+        var feedback = el.querySelector("[data-watch-feedback]");
+        if (feedback) { feedback.hidden = true; feedback.textContent = ""; }
+      });
+      try {
+        var response = await fetch(form.action, {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Waim-Collection-Async": "true" },
+          body: new URLSearchParams(new FormData(form))
+        });
+        if (!response.ok) {
+          failureMessage = await response.text() || control.dataset.failed;
+          throw new Error(failureMessage);
+        }
+        var result = await response.json();
+        if (result.kind !== kind || String(result.id) !== id || !Number.isSafeInteger(result.count) ||
+            result.count < 0 || !Number.isSafeInteger(result.revision) || result.revision < 0 || typeof result.entryHTML !== "string") {
+          throw new Error(control.dataset.failed);
+        }
+        var x = window.scrollX, y = window.scrollY;
+        controls(kind, id).forEach(function (el) {
+          var current = el.querySelector("form");
+          if (!current) return;
+          if (el.dataset.watchContext === "suggestions") {
+            var link = document.createElement("a");
+            link.href = "/collection";
+            link.className = "btn-ghost w-full text-xs";
+            link.title = el.dataset.added;
+            var label = document.createElement("span");
+            label.className = "truncate";
+            label.textContent = el.dataset.added;
+            link.appendChild(label);
+            current.replaceWith(link);
+          } else {
+            current.action = "/collection/remove";
+            current.removeAttribute("data-watch-add");
+            var button = current.querySelector("button");
+            button.textContent = el.dataset.remove;
+            button.disabled = false;
+          }
+        });
+        var list = document.getElementById("virtual-entries");
+        if (list) {
+          var entryKey = kind.toLowerCase() + ":" + id;
+          if (!Array.from(list.querySelectorAll("[data-collection-entry]")).some(function (el) { return el.dataset.collectionEntry === entryKey; })) {
+            var template = document.createElement("template");
+            template.innerHTML = result.entryHTML;
+            list.appendChild(template.content);
+          }
+          if (result.revision >= Number(list.dataset.collectionRevision || 0)) {
+            list.dataset.collectionRevision = String(result.revision);
+            var count = document.getElementById("virtual-entry-count");
+            if (count) count.textContent = String(result.count);
+          }
+          var empty = document.getElementById("virtual-entries-empty");
+          if (empty) empty.remove();
+        }
+        window.scrollTo(x, y);
+      } catch (error) {
+        var feedback = control.querySelector("[data-watch-feedback]");
+        if (feedback) {
+          feedback.textContent = failureMessage;
+          feedback.hidden = false;
+        }
+      } finally {
+        pending.delete(key);
+        controls(kind, id).forEach(function (el) {
+          var button = el.querySelector("button");
+          if (button) button.disabled = false;
+        });
+      }
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    collectionActions();
     document.body.addEventListener("htmx:afterRequest", function (e) {
       var el = e.detail.elt;
       var action = el && el.getAttribute ? el.getAttribute("action") || "" : "";

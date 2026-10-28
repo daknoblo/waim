@@ -136,11 +136,7 @@ templ SuggestionActions(t *i18n.Translator, link string) {
 	@MediaSources(t,link)
 	if target := Target(ctx,link); target.ID > 0 {
 		<div class="suggestion-actions mt-2">
-			if target.Watching {
-				<a href="/collection" class="text-xs text-indigo-300 hover:text-indigo-200">{ t.T("sources.alreadyTracked") }</a>
-			} else {
-				@collectionForm(t,target.Kind,target.ID,false)
-			}
+			@watchControl(t,target.Kind,target.ID,target.Watching,true)
 		</div>
 	}
 }

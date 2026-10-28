@@ -191,6 +191,7 @@
   "sources.watch": "Beobachten",
   "sources.unwatch": "Nicht mehr beobachten",
   "sources.alreadyTracked": "Bereits in der virtuellen Sammlung",
+  "sources.watchFailed": "Der Titel konnte nicht zur virtuellen Sammlung hinzugefügt werden. Bitte erneut versuchen.",
   "sources.fullyOwned": "Vollständig in Medienquellen vorhanden",
   "sources.fullyOwnedSeries": "Laut letztem bestätigten Abgleich sind alle bisher veröffentlichten Folgen vorhanden, auch quellenübergreifend. Die Einstellung für Specials wird berücksichtigt.",
   "sources.removeVirtualHint": "Du kannst den virtuellen Eintrag unten entfernen und den Titel nur noch über deine Medienquellen verfolgen. Dateien in den Medienbibliotheken bleiben unverändert.",
