@@ -32,6 +32,9 @@ templ logsBody(d LogPageData) {
 			</label>
 			<noscript><button type="submit" class="btn-ghost">{ d.Layout.T.T("logs.filter") }</button></noscript>
 		</form>
+		if d.LogCapacity > 0 {
+			<p class="text-xs text-slate-400">{ d.Layout.T.T("logs.retention",d.LogCapacity) }</p>
+		}
 		<div
 			id="log"
 			hx-get="/partials/log"

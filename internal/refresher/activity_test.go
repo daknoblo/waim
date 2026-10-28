@@ -1,9 +1,11 @@
 package refresher
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
+	"github.com/daknoblo/waim/internal/logbuf"
 	"github.com/daknoblo/waim/internal/store"
 )
 
@@ -67,7 +70,10 @@ func TestCacheActivityReportsActualBatchAndSafePaths(t *testing.T) {
 		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
 	})
 	defer func() { http.DefaultTransport = original }()
-	r := New(cfg, st, nil, tracker)
+	var stdout bytes.Buffer
+	logs := logbuf.New(10)
+	logger := slog.New(logbuf.NewHandler(slog.NewTextHandler(&stdout, nil), logs))
+	r := New(cfg, st, logger, tracker)
 	done := make(chan struct{})
 	go func() { defer close(done); r.refreshBatch(ctx) }()
 	for i := range 2 {
@@ -102,6 +108,14 @@ func TestCacheActivityReportsActualBatchAndSafePaths(t *testing.T) {
 	}
 	if len(s.Diagnostics) != 1 || s.Diagnostics[0].Reason != activity.CacheUnavailable || s.Diagnostics[0].Query != "/search/movie" {
 		t.Fatalf("failed cache request lacks a safe concrete reason: %+v", s.Diagnostics)
+	}
+	entries := logs.Entries()
+	if len(entries) != 2 || entries[0].Level != "WARN" || !strings.Contains(entries[0].Message, "path=/search/movie") ||
+		!strings.Contains(entries[0].Message, "returned 503") || !strings.Contains(entries[1].Message, "failed=1") {
+		t.Fatalf("cache failure/detail not visible at default INFO level: %+v", entries)
+	}
+	if strings.Contains(stdout.String(), "private-search") || strings.Contains(stdout.String(), "secret-key") {
+		t.Fatal("cache refresh logging leaked query/credentials")
 	}
 }
 

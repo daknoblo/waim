@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -225,10 +226,14 @@ func (r *Refresher) refresh(ctx context.Context, manual bool) {
 			return
 		}
 		if err := td.RefreshKey(ctx, key); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			run.Report(activity.Diagnostic{Reason: activity.CacheUnavailable, Severity: activity.Error, Query: key})
 			run.Advance(true, false)
 			failed++
-			r.log.Debug("refresher: refresh failed", "key", key, "error", err)
+			path, _, _ := strings.Cut(key, "?")
+			r.log.Warn("refresher: refresh failed", "path", path, "error", err)
 			continue
 		}
 		refreshed++

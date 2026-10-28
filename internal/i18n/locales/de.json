@@ -10,6 +10,7 @@
   "diagnostics.recordedAt": "Abgleich/Quellstand:",
   "diagnostics.timeUnknown": "Zeitpunkt nicht gespeichert",
   "logs.output": "Output-Log",
+  "logs.retention": "Die letzten %d WAIM-Anwendungslogs seit diesem Start, mit dem eingestellten Logging-Level. Zugangsdaten und Antwortinhalte werden ausgeblendet. Keine Docker-/Host-Historie.",
   "logs.level": "Log-Level",
   "logs.allLevels": "Alle",
   "logs.noMatches": "Keine Protokolleinträge für dieses Log-Level.",

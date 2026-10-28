@@ -180,6 +180,7 @@ type SuggestionsData struct {
 
 // LogPageData is the model for the dedicated activity-log page.
 type LogPageData struct {
+	LogCapacity int
 	Level       string
 	Layout      Layout
 	Logs        []LogEntryView

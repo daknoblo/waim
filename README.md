@@ -159,6 +159,19 @@ The output log includes date/time and an **All / DEBUG / INFO / WARN / ERROR**
 dropdown. Selecting a level shows only that exact level; polling retains the
 selection without changing the configured logging verbosity or the log buffer.
 
+The output log mirrors WAIM's application log records, including structured
+fields such as request path, error reason and refreshed/failed counters, rather
+than just the message text. Standard-library and HTTP-server errors use the
+same logging pipeline. Individual cache-request failures are WARN records,
+visible at the default INFO logging level; DEBUG records require DEBUG in
+Settings → Other. Credentials, URL queries/userinfo, raw response bodies and
+arbitrary objects are redacted before both stdout and UI capture.
+
+The UI retains the latest 300 application records since process startup.
+Filtering does not recover evicted records, previous container runs, Docker
+daemon logs or output after the process has terminated. Use the container
+platform's logs for that history; WAIM does not require access to the Docker socket.
+
 The diagnostic expander is outside the two-second activity swap. Its contents
 poll independently and unchanged details return 204, so reading/expanded state
 does not reset as progress advances. A small circled exclamation after

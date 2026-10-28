@@ -10,6 +10,7 @@
   "diagnostics.recordedAt": "Comparison/source snapshot:",
   "diagnostics.timeUnknown": "Time not recorded",
   "logs.output": "Output log",
+  "logs.retention": "The latest %d WAIM application logs since this startup, at the configured logging level. Credentials and response bodies are omitted. No Docker/host history.",
   "logs.level": "Log level",
   "logs.allLevels": "All",
   "logs.noMatches": "No log entries for this level.",
