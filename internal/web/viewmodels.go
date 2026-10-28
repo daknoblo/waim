@@ -180,6 +180,7 @@ type SuggestionsData struct {
 
 // LogPageData is the model for the dedicated activity-log page.
 type LogPageData struct {
+	Level       string
 	Layout      Layout
 	Logs        []LogEntryView
 	Activities  []ActivityView
@@ -283,12 +284,19 @@ func Regions(current string) []LangChoice {
 }
 
 // BuildLogViews converts buffered log entries (newest first) into view models.
-func BuildLogViews(entries []logbuf.Entry) []LogEntryView {
+func BuildLogViews(entries []logbuf.Entry, levels ...string) []LogEntryView {
+	level := ""
+	if len(levels) > 0 {
+		level = levels[0]
+	}
 	out := make([]LogEntryView, 0, len(entries))
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
+		if level != "" && e.Level != level {
+			continue
+		}
 		out = append(out, LogEntryView{
-			Time:    e.Time.Local().Format("15:04:05"),
+			Time:    FormatTimeValue(e.Time),
 			Level:   e.Level,
 			Message: e.Message,
 		})

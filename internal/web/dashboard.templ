@@ -246,9 +246,13 @@ templ sortHeader(label, col, curSort, curDir string) {
 	</th>
 }
 
-templ LogPanel(t *i18n.Translator, logs []LogEntryView) {
+templ LogPanel(t *i18n.Translator, logs []LogEntryView, levels ...string) {
 	if len(logs) == 0 {
-		<p class="text-sm text-slate-500">{ t.T("dashboard.noLog") }</p>
+		if len(levels) > 0 && levels[0] != "" {
+			<p class="text-sm text-slate-500">{ t.T("logs.noMatches") }</p>
+		} else {
+			<p class="text-sm text-slate-500">{ t.T("dashboard.noLog") }</p>
+		}
 	} else {
 		<div class="font-mono text-xs leading-relaxed">
 			for _, e := range logs {

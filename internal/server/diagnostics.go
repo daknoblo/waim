@@ -96,7 +96,7 @@ func (s *Server) diagnosticSnapshot(ctx context.Context) (web.DiagnosticsData, [
 			data.Items = append(data.Items, web.DiagnosticView{Diagnostic: d, Persisted: true, Job: activity.Scan})
 		}
 		if basis.Finished.HasError || basis.Finished.Status == store.StatusError {
-			add(activity.Diagnostic{Reason: activity.ScanFailed, Severity: activity.Error})
+			add((activity.Diagnostic{Reason: activity.ScanFailed, Severity: activity.Error}).WithFallbackTime(diagnosticTime(basis.Finished.Finished)))
 		}
 		if basis.Successful.ID > 0 {
 			cached := s.diagnosticCache.run
@@ -117,7 +117,7 @@ func (s *Server) diagnosticSnapshot(ctx context.Context) (web.DiagnosticsData, [
 			} else {
 				meta := cached.metadata
 				if meta.Basis == "" {
-					add(activity.Diagnostic{Reason: activity.LegacyCatalog, Severity: activity.Warning})
+					add((activity.Diagnostic{Reason: activity.LegacyCatalog, Severity: activity.Warning}).WithFallbackTime(diagnosticTime(basis.Successful.Finished)))
 				}
 				if meta.SourcesToken != settings.SourcesToken() || meta.Revision != basis.Revision || meta.Pending {
 					add(activity.Diagnostic{Reason: activity.PendingCatalog, Severity: activity.Warning})
@@ -125,7 +125,7 @@ func (s *Server) diagnosticSnapshot(ctx context.Context) (web.DiagnosticsData, [
 				data.Truncated = data.Truncated || cached.payload.truncated
 				data.Severity = promote(data.Severity, cached.payload.severity)
 				for _, d := range cached.payload.details {
-					add(d)
+					add(d.WithFallbackTime(diagnosticTime(basis.Successful.Finished)))
 				}
 			}
 		}
@@ -144,12 +144,12 @@ func (s *Server) diagnosticSnapshot(ctx context.Context) (web.DiagnosticsData, [
 			if saved.Fingerprint != src.Fingerprint() || saved.Succeeded == "" {
 				delete(s.diagnosticCache.sources, src.ID)
 				if settings.TMDB.APIKey != "" || saved.Attempted != "" {
-					add(activity.Diagnostic{Reason: activity.SourceUnknown, Severity: activity.Warning, Phase: activity.Inventory, Subject: name})
+					add((activity.Diagnostic{Reason: activity.SourceUnknown, Severity: activity.Warning, Phase: activity.Inventory, Subject: name}).WithFallbackTime(diagnosticTime(saved.Attempted)))
 				}
 				continue
 			}
 			if saved.Failed {
-				add(activity.Diagnostic{Reason: activity.SourceStale, Severity: activity.Warning, Phase: activity.Inventory, Subject: name})
+				add((activity.Diagnostic{Reason: activity.SourceStale, Severity: activity.Warning, Phase: activity.Inventory, Subject: name}).WithFallbackTime(diagnosticTime(saved.Attempted)))
 			}
 			cached, ok := s.diagnosticCache.sources[src.ID]
 			var e error
@@ -170,7 +170,7 @@ func (s *Server) diagnosticSnapshot(ctx context.Context) (web.DiagnosticsData, [
 			data.Truncated = data.Truncated || cached.payload.truncated
 			data.Severity = promote(data.Severity, cached.payload.severity)
 			for _, d := range cached.payload.details {
-				add(d)
+				add(d.WithFallbackTime(diagnosticTime(saved.Succeeded)))
 			}
 			if basis.Successful.ID > 0 && basis.Successful.Finished != "" {
 				attempt, attemptErr := time.Parse(time.RFC3339Nano, saved.Attempted)
@@ -243,6 +243,9 @@ func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.D
 			out.Unavailable = true
 		}
 		for _, d := range state.Diagnostics {
+			if !d.Previous {
+				d = d.WithFallbackTime(state.StartedAt)
+			}
 			add(web.DiagnosticView{Diagnostic: d, Job: state.Job})
 		}
 	}
@@ -253,12 +256,17 @@ func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.D
 		saved := reconcileIdentityWarnings(s.suggest.SavedDiagnostics(), resolvedAt)
 		out.Truncated = out.Truncated || saved.DiagnosticsTruncated
 		for _, d := range saved.Diagnostics {
+			d = d.WithFallbackTime(saved.EndedAt)
 			add(web.DiagnosticView{Diagnostic: d, Job: activity.Suggestions, Persisted: true})
 		}
 	}
 	unfinishedRetry := basis.Latest.Status == store.StatusRunning && basis.Unfinished.ID > basis.Finished.ID
 	if basis.Latest.Status == store.StatusRunning && (!scanRunning || unfinishedRetry) {
-		add(web.DiagnosticView{Diagnostic: activity.Diagnostic{Reason: activity.UnfinishedScan, Severity: activity.Warning}, Job: activity.Scan, Persisted: true})
+		started := basis.Latest.Started
+		if unfinishedRetry {
+			started = basis.Unfinished.Started
+		}
+		add(web.DiagnosticView{Diagnostic: (activity.Diagnostic{Reason: activity.UnfinishedScan, Severity: activity.Warning}).WithFallbackTime(diagnosticTime(started)), Job: activity.Scan, Persisted: true})
 		out.Retrying = out.Retrying || (scanRunning && unfinishedRetry)
 	}
 	out.Severity = promote(out.Severity, persisted.Severity)
@@ -270,6 +278,11 @@ func (s *Server) combineDiagnostics(persisted web.DiagnosticsData, basis store.D
 		out.Truncated = true
 	}
 	return out, states
+}
+
+func diagnosticTime(value string) time.Time {
+	at, _ := time.Parse(time.RFC3339Nano, value)
+	return at
 }
 
 func storageDiagnostics() web.DiagnosticsData {

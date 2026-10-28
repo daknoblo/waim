@@ -2,6 +2,7 @@ package web
 
 import "github.com/daknoblo/waim/internal/activity"
 import "github.com/daknoblo/waim/internal/i18n"
+import "time"
 
 templ HealthIndicator(t *i18n.Translator, severity activity.Severity) {
 	if severity != "" {
@@ -48,6 +49,19 @@ templ DiagnosticsPanel(t *i18n.Translator,d DiagnosticsData) {
 					}
 					if item.Previous {
 						<span>· { t.T("diagnostics.previous") }</span>
+					}
+					if !item.OccurredAt.IsZero() {
+						<span>
+							·
+							if item.TimeApproximate {
+								{ t.T("diagnostics.recordedAt") }
+							} else {
+								{ t.T("diagnostics.occurredAt") }
+							}
+							<time datetime={ item.OccurredAt.Format(time.RFC3339Nano) }>{ FormatTimeValue(item.OccurredAt) }</time>
+						</span>
+					} else {
+						<span>· { t.T("diagnostics.timeUnknown") }</span>
 					}
 				</div>
 				<p class={ "mt-1 break-words text-sm",item.Tone() }>{ t.T(item.ReasonKey()) }</p>

@@ -148,6 +148,17 @@ counter-only attempts say that details are unavailable rather than inventing
 reasons. Known persisted scan/source warnings are localized; unknown legacy
 warning bodies are replaced by an explicit safe fallback notice.
 
+Diagnostics show the recorded date and time of the event. Older scan/source
+warnings without their own timestamp use the saved comparison/snapshot time,
+explicitly labeled as such; an unavailable time is never replaced with the
+current polling time. Saved suggestion diagnostics retain their timestamps
+across restarts. Dates use the application's local timezone, as elsewhere in
+the UI.
+
+The output log includes date/time and an **All / DEBUG / INFO / WARN / ERROR**
+dropdown. Selecting a level shows only that exact level; polling retains the
+selection without changing the configured logging verbosity or the log buffer.
+
 The diagnostic expander is outside the two-second activity swap. Its contents
 poll independently and unchanged details return 204, so reading/expanded state
 does not reset as progress advances. A small circled exclamation after

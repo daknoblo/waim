@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const MaxDiagnostics = 100
@@ -51,6 +52,8 @@ type Diagnostic struct {
 	Phase                   Phase
 	Subject, Current, Query string
 	Previous                bool
+	OccurredAt              time.Time
+	TimeApproximate         bool
 }
 
 func cleanDiagnostic(d Diagnostic) Diagnostic {
@@ -85,6 +88,9 @@ func cleanDiagnostic(d Diagnostic) Diagnostic {
 // A repeated event is shown once, even when observed in more than one phase.
 func (r *Run) Report(d Diagnostic) {
 	r.update(func(s *State) {
+		if d.OccurredAt.IsZero() {
+			d.OccurredAt = time.Now()
+		}
 		if d.Phase == "" {
 			d.Phase = s.Phase
 		}
@@ -119,6 +125,15 @@ func (r *Run) Report(d Diagnostic) {
 		}
 		s.Diagnostics = append(s.Diagnostics, d)
 	})
+}
+
+// Older persisted warnings have only a containing run/snapshot timestamp.
+// Never present that fallback as the exact time of the original event.
+func (d Diagnostic) WithFallbackTime(at time.Time) Diagnostic {
+	if d.OccurredAt.IsZero() && !at.IsZero() {
+		d.OccurredAt, d.TimeApproximate = at, true
+	}
+	return d
 }
 
 // Problem records the currently displayed operation without copying error text.

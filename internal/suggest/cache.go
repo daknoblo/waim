@@ -59,7 +59,7 @@ func (s *Service) loadCache() {
 	tracker := activity.New()
 	run := tracker.Start(activity.Suggestions)
 	for _, diagnostic := range cached.Diagnostics {
-		run.Report(diagnostic)
+		run.Report(diagnostic.WithFallbackTime(cached.AttemptedAt))
 	}
 	run.Finish(ctx, activity.Completed, 0)
 	s.savedDiagnostics = tracker.Snapshot()[2]

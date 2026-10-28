@@ -22,9 +22,14 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	level, ok := logFilter(w, r)
+	if !ok {
+		return
+	}
 	d := web.LogPageData{
+		Level:       level,
 		Layout:      s.layout(r, web.NavLogs),
-		Logs:        web.BuildLogViews(s.logs.Entries()),
+		Logs:        web.BuildLogViews(s.logs.Entries(), level),
 		Activities:  s.activityViews(r.Context()),
 		Diagnostics: s.diagnostics(r.Context()),
 	}
@@ -211,8 +216,23 @@ func (s *Server) handlePartialFindings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
+	level, ok := logFilter(w, r)
+	if !ok {
+		return
+	}
 	t := s.translator(r)
-	s.renderPartial(w, r, web.LogPanel(t, web.BuildLogViews(s.logs.Entries())))
+	s.renderPartialPlain(w, r, web.LogPanel(t, web.BuildLogViews(s.logs.Entries(), level), level))
+}
+
+func logFilter(w http.ResponseWriter, r *http.Request) (string, bool) {
+	level := r.URL.Query().Get("level")
+	switch level {
+	case "", "DEBUG", "INFO", "WARN", "ERROR":
+		return level, true
+	default:
+		http.Error(w, "invalid log level filter", http.StatusBadRequest)
+		return "", false
+	}
 }
 
 func (s *Server) handlePartialSeriesDetail(w http.ResponseWriter, r *http.Request) {

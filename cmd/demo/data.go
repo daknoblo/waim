@@ -360,7 +360,7 @@ func demoLogs(t *i18n.Translator) web.LogPageData {
 		Logs:   web.BuildLogViews(entries),
 		Diagnostics: web.DiagnosticsData{
 			Severity: activity.Error,
-			Items:    []web.DiagnosticView{{Job: activity.Cache, Diagnostic: activity.Diagnostic{Reason: activity.CacheUnavailable, Severity: activity.Error, Phase: activity.Refresh, Query: "/movie/301"}}},
+			Items:    []web.DiagnosticView{{Job: activity.Cache, Diagnostic: activity.Diagnostic{Reason: activity.CacheUnavailable, Severity: activity.Error, Phase: activity.Refresh, Query: "/movie/301", OccurredAt: now.Add(-20 * time.Second)}}},
 		},
 		Activities: web.BuildActivities([]activity.State{
 			{Job: activity.Scan, Status: activity.Running, Phase: activity.Metadata, Current: "Chronicles of the Deep", Subject: "Living room · Series", Query: "/tv/901/season/4", Known: true, Done: 42, Total: 60, StartedAt: now.Add(-94 * time.Second)},
