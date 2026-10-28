@@ -34,7 +34,7 @@ all: generate css build
 ## Install the local toolchain (run once): the templ CLI and the Tailwind
 ## standalone binary.
 tools:
-	go install github.com/a-h/templ/cmd/templ@v0.3.1020
+	go install github.com/a-h/templ/cmd/templ@v0.3.1100
 	@$(MAKE) --no-print-directory $(TAILWIND)
 
 # Fetch the platform-matching Tailwind standalone build. CI downloads its own

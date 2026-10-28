@@ -34,7 +34,7 @@ jobs:
           cache: true
 
       - name: "\U0001F4E6 Install templ code generator"
-        run: go install github.com/a-h/templ/cmd/templ@v0.3.1020
+        run: go install github.com/a-h/templ/cmd/templ@v0.3.1100
 
       - name: "\U0001F50D Check generated templ code is committed"
         run: |
