@@ -20,7 +20,7 @@ templ ActivityPanel(t *i18n.Translator, activities []ActivityView) {
 }
 
 templ activityCard(t *i18n.Translator, a ActivityView) {
-	<article class={ "activity-card", a.Tone() } data-job={ string(a.Job) } data-state={ string(a.Status) }>
+	<article class={ "activity-card flex flex-col", a.Tone() } data-job={ string(a.Job) } data-state={ string(a.Status) }>
 		<div class="flex min-w-0 flex-wrap items-center justify-between gap-2">
 			<h3 class="min-w-0 text-sm font-semibold text-slate-100">{ t.T(a.JobKey()) }</h3>
 			<span class="activity-status">{ t.T(a.StatusKey()) }</span>
@@ -118,6 +118,16 @@ templ activityCard(t *i18n.Translator, a ActivityView) {
 		}
 		if len(a.Diagnostics)>0 || a.DiagnosticsTruncated || a.PreviousSeverity!="" {
 			<a href="/logs#diagnostics" data-diagnostics-link="true" class="mt-2 inline-block text-xs underline">{ t.T("diagnostics.heading") }</a>
+		}
+		if a.HasStartAction() {
+			<form method="post" action={ "/activity/"+string(a.Job)+"/start" }
+				hx-post={ "/activity/"+string(a.Job)+"/start" } hx-target="#activity" hx-swap="innerHTML"
+				hx-disabled-elt="find button" class="mt-auto pt-3">
+				@MutationEpoch()
+				<button type="submit" class="btn-ghost w-full" disabled?={ !a.CanStart }
+					aria-label={ t.T("activity.start")+" · "+t.T("activity.job."+string(a.Job)) }
+					title={ t.T("activity.startHint."+string(a.Job)) }>{ t.T("activity.start") }</button>
+			</form>
 		}
 	</article>
 }

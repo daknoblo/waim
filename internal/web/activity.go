@@ -10,7 +10,8 @@ import (
 
 type ActivityView struct {
 	activity.State
-	Elapsed string
+	Elapsed  string
+	CanStart bool
 }
 
 func BuildActivities(states []activity.State, configured bool, now time.Time) []ActivityView {
@@ -85,4 +86,8 @@ func (v ActivityView) ScopeKey() string {
 		return "activity.empty"
 	}
 	return "activity.indeterminate"
+}
+
+func (v ActivityView) HasStartAction() bool {
+	return v.Job == activity.Scan || v.Job == activity.Cache || v.Job == activity.Suggestions
 }

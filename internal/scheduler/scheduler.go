@@ -54,6 +54,7 @@ type Scheduler struct {
 	sourceRequests  map[string]int64
 	sourceSchedules map[string]sourceSchedule
 	running         atomic.Bool
+	fullScanPending atomic.Int64
 	progress        *progressState
 	tmdbFactory     func(config.Settings) scanner.TMDBAPI
 	sourceFactory   source.Factory
@@ -164,6 +165,10 @@ func (s *Scheduler) Status() Status {
 // Running reports whether a scan is currently executing.
 func (s *Scheduler) Running() bool { return s.running.Load() }
 
+// Busy includes the full scan queue, so repeated manual requests cannot enqueue
+// a second pass in the short interval before the worker starts.
+func (s *Scheduler) Busy() bool { return s.running.Load() || s.fullScanPending.Load() != 0 }
+
 // Trigger requests an immediate scan. It is non-blocking; if a scan is already
 // queued or running, the request is coalesced.
 func (s *Scheduler) Trigger() {
@@ -173,9 +178,14 @@ func (s *Scheduler) Trigger() {
 		return
 	}
 	defer release()
+	epoch := s.cfg.Gate().Epoch()
+	if s.running.Load() || !s.fullScanPending.CompareAndSwap(0, epoch+1) {
+		return
+	}
 	select {
-	case s.triggerCh <- s.cfg.Gate().Epoch():
+	case s.triggerCh <- epoch:
 	default:
+		s.fullScanPending.CompareAndSwap(epoch+1, 0)
 	}
 }
 
@@ -263,6 +273,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.syncSchedule(timer, &schedule, time.Now(), nil)
 			refreshed := s.runSources(ctx, true, nil, epoch)
 			s.syncSchedule(timer, &schedule, time.Now(), refreshed)
+			s.fullScanPending.CompareAndSwap(epoch+1, 0)
 		case <-s.sourceTriggerCh:
 			ids, epoch := s.takeSourceRequests()
 			s.syncSchedule(timer, &schedule, time.Now(), nil)

@@ -191,6 +191,16 @@ is persisted so an unrelated later outage does not revive the old warning.
 Successfully completed activity cards show a green **OK**. Tasks that have never
 run remain **Ready**, rather than claiming a verified success.
 
+The Source scan, Cache maintenance and Suggestions cards each have a **Start
+manually** button. Source scan refreshes all enabled media sources; Suggestions
+updates the recommendation cache. Cache maintenance refreshes one batch using
+the configured percentage, not the whole cache and not an orphan cleanup.
+Manual cache refresh also works when scheduled refresh is disabled, without
+changing that setting. Buttons are disabled while their task is running/queued
+or TMDB setup is missing. Actions stay on Logs, retain the output-log filter,
+and use the same background workers, progress tracker and reset protections as
+automatic work.
+
 The interface language is configured exclusively under **Settings → Interface**.
 It applies to all pages and clients, including partial updates. The header has
 no separate language selector; old browser language cookies no longer override

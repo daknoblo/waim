@@ -123,7 +123,7 @@ func run() error {
 	go func() { defer workers.Done(); suggestSvc.Run(ctx) }()
 	defer func() { stop(); workers.Wait() }()
 
-	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar, activities)
+	srv := server.New(cfg, st, sched, suggestSvc, logBuf, catalog, logger, levelVar, activities).WithRefresher(ref)
 	httpServer := &http.Server{
 		Addr:              envDefault("WAIM_ADDR", ":8080"),
 		Handler:           srv.Handler(),

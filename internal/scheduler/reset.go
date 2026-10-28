@@ -11,6 +11,7 @@ func (s *Scheduler) ResetState() {
 	clear(s.sourceRequests)
 	s.mu.Unlock()
 	s.progress.reset(time.Time{})
+	s.fullScanPending.Store(0)
 	select {
 	case <-s.triggerCh:
 	default:

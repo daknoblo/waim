@@ -20,6 +20,7 @@ import (
 	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/i18n"
 	"github.com/daknoblo/waim/internal/logbuf"
+	"github.com/daknoblo/waim/internal/refresher"
 	"github.com/daknoblo/waim/internal/scheduler"
 	"github.com/daknoblo/waim/internal/source"
 	"github.com/daknoblo/waim/internal/store"
@@ -39,6 +40,7 @@ type Server struct {
 	store           *store.Store
 	sched           *scheduler.Scheduler
 	suggest         *suggest.Service
+	refresher       *refresher.Refresher
 	logs            *logbuf.Buffer
 	catalog         *i18n.Catalog
 	log             *slog.Logger
@@ -70,6 +72,13 @@ func New(cfg *config.Manager, st *store.Store, sched *scheduler.Scheduler, sug *
 	return s
 }
 
+// WithRefresher connects manual cache actions to the managed worker.
+// Configure before serving requests.
+func (s *Server) WithRefresher(r *refresher.Refresher) *Server {
+	s.refresher = r
+	return s
+}
+
 // computeAssetVersion returns a token used to cache-bust static assets. It uses
 // the build commit/version when available and falls back to the process start
 // time so each container start serves fresh assets during development.
@@ -98,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /suggestions/generate", s.handleGenerateSuggestions)
 	mux.HandleFunc("GET /partials/suggestions", s.handlePartialSuggestions)
 	mux.HandleFunc("GET /logs", s.handleLogs)
+	mux.HandleFunc("POST /activity/{job}/start", s.handleStartActivity)
 	mux.HandleFunc("GET /settings", s.handleSettings)
 	mux.HandleFunc("POST /settings", s.handleSaveSettings)
 	mux.HandleFunc("POST /settings/reset", s.handleReset)

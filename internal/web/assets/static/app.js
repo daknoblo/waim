@@ -719,6 +719,17 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    document.body.addEventListener("htmx:afterRequest", function (e) {
+      var el = e.detail.elt;
+      var action = el && el.getAttribute ? el.getAttribute("action") || "" : "";
+      if (!action.startsWith("/activity/") || !action.endsWith("/start")) return;
+      var feedback = document.getElementById("activity-start-feedback");
+      if (!feedback) return;
+      var xhr = e.detail.xhr;
+      var success = xhr && xhr.status >= 200 && xhr.status < 300;
+      feedback.hidden = !!success;
+      feedback.textContent = success ? "" : (xhr && xhr.responseText ? xhr.responseText : feedback.dataset.failed);
+    });
     document.addEventListener("click", function (e) {
       var link = e.target.closest ? e.target.closest("a[data-diagnostics-link]") : null;
       var panel = document.getElementById("diagnostics");

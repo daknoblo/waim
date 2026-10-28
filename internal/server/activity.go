@@ -11,11 +11,66 @@ import (
 
 func (s *Server) activityViews(ctx context.Context) []web.ActivityView {
 	_, states := s.diagnosticSnapshot(ctx)
-	return web.BuildActivities(states, s.cfg.Get().TMDB.APIKey != "", time.Now())
+	configured := s.cfg.Get().TMDB.APIKey != ""
+	views := web.BuildActivities(states, configured, time.Now())
+	for i := range views {
+		switch views[i].Job {
+		case activity.Scan:
+			views[i].CanStart = configured && s.sched != nil && !s.sched.Busy()
+		case activity.Cache:
+			views[i].CanStart = configured && s.refresher != nil && !s.refresher.Busy()
+		case activity.Suggestions:
+			views[i].CanStart = configured && s.suggest != nil && !s.suggest.Running()
+		}
+		views[i].CanStart = views[i].CanStart && !views[i].IsRunning()
+	}
+	return views
 }
 
 func (s *Server) handlePartialActivity(w http.ResponseWriter, r *http.Request) {
+	r = r.WithContext(web.WithMutationEpoch(r.Context(), s.cfg.Gate().Token()))
 	s.renderPartialPlain(w, r, web.ActivityPanel(s.translator(r), s.activityViews(r.Context())))
+}
+
+func (s *Server) handleStartActivity(w http.ResponseWriter, r *http.Request) {
+	job := activity.Job(r.PathValue("job"))
+	if job != activity.Scan && job != activity.Cache && job != activity.Suggestions {
+		http.Error(w, "unknown activity", http.StatusBadRequest)
+		return
+	}
+	if s.cfg.Get().TMDB.APIKey == "" {
+		http.Error(w, s.translator(r).T("sources.tmdbRequired"), http.StatusConflict)
+		return
+	}
+	switch job {
+	case activity.Scan:
+		if s.sched == nil || s.sched.Busy() {
+			http.Error(w, s.translator(r).T("activity.startBusy"), http.StatusConflict)
+			return
+		}
+		s.sched.Trigger()
+	case activity.Cache:
+		if s.refresher == nil {
+			http.Error(w, s.translator(r).T("activity.startUnavailable"), http.StatusServiceUnavailable)
+			return
+		}
+		if err := s.refresher.Trigger(); err != nil {
+			s.log.Warn("manual cache refresh rejected", "err", err)
+			http.Error(w, s.translator(r).T("activity.startBusy"), http.StatusConflict)
+			return
+		}
+	case activity.Suggestions:
+		if s.suggest == nil || s.suggest.Running() {
+			http.Error(w, s.translator(r).T("activity.startBusy"), http.StatusConflict)
+			return
+		}
+		s.suggest.Generate()
+	}
+	if isHTMX(r) {
+		s.handlePartialActivity(w, r)
+		return
+	}
+	http.Redirect(w, r, "/logs", http.StatusSeeOther)
 }
 
 func (s *Server) activityStates(resolvedAt time.Time) []activity.State {

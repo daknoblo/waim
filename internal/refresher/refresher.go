@@ -4,11 +4,14 @@ package refresher
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/config"
+	"github.com/daknoblo/waim/internal/maintenance"
 	"github.com/daknoblo/waim/internal/store"
 	"github.com/daknoblo/waim/internal/tmdb"
 	"github.com/daknoblo/waim/internal/tmdbcache"
@@ -20,6 +23,9 @@ type Refresher struct {
 	store      *store.Store
 	log        *slog.Logger
 	activities *activity.Tracker
+	triggerCh  chan int64
+	pending    atomic.Bool
+	working    atomic.Bool
 }
 
 // cleanupHour is the local hour of day (24h) at which the nightly orphan
@@ -31,11 +37,51 @@ func New(cfg *config.Manager, st *store.Store, log *slog.Logger, activities ...*
 	if log == nil {
 		log = slog.Default()
 	}
-	r := &Refresher{cfg: cfg, store: st, log: log}
+	r := &Refresher{cfg: cfg, store: st, log: log, triggerCh: make(chan int64, 1)}
 	if len(activities) > 0 {
 		r.activities = activities[0]
 	}
 	return r
+}
+
+// Trigger queues one manual batch, even when automatic refresh is disabled.
+// The worker owns its lifetime; no HTTP request or unjoined goroutine does.
+func (r *Refresher) Trigger() error {
+	release, err := r.cfg.Gate().Enter()
+	if err != nil {
+		return err
+	}
+	defer release()
+	if r.cfg.Get().TMDB.APIKey == "" {
+		return errors.New("TMDB must be configured")
+	}
+	if r.working.Load() || !r.pending.CompareAndSwap(false, true) {
+		return maintenance.ErrBusy
+	}
+	select {
+	case r.triggerCh <- r.cfg.Gate().Epoch():
+		return nil
+	default:
+		r.pending.Store(false)
+		return maintenance.ErrBusy
+	}
+}
+
+func (r *Refresher) Busy() bool { return r.pending.Load() || r.working.Load() }
+
+func (r *Refresher) manual(ctx context.Context, epoch int64) {
+	defer r.pending.Store(false)
+	release, err := r.cfg.Gate().Enter()
+	if err != nil {
+		r.log.Info("manual cache refresh skipped during maintenance")
+		return
+	}
+	defer release()
+	if ctx.Err() != nil || epoch != r.cfg.Gate().Epoch() {
+		r.log.Info("queued cache refresh discarded after reset or shutdown")
+		return
+	}
+	r.refresh(ctx, true)
 }
 
 // Run blocks until ctx is cancelled, refreshing a batch of the oldest cache
@@ -52,6 +98,8 @@ func (r *Refresher) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case epoch := <-r.triggerCh:
+			r.manual(ctx, epoch)
 		case due := <-refreshTimer.C:
 			r.scheduled(ctx, due, r.refreshBatch)
 			resetTimer(refreshTimer, r.nextInterval())
@@ -101,6 +149,15 @@ func resetTimer(t *time.Timer, d time.Duration) {
 
 // refreshBatch re-fetches the oldest RefreshPercent share of cache entries.
 func (r *Refresher) refreshBatch(ctx context.Context) {
+	r.refresh(ctx, false)
+}
+
+func (r *Refresher) refresh(ctx context.Context, manual bool) {
+	if !r.working.CompareAndSwap(false, true) {
+		r.log.Info("cache refresh already running")
+		return
+	}
+	defer r.working.Store(false)
 	release, err := r.cfg.Gate().Enter()
 	if err != nil {
 		r.log.Warn("cache refresh skipped during maintenance")
@@ -109,7 +166,7 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 	defer release()
 	settings := r.cfg.Get()
 	cache := settings.Cache
-	if !cache.RefreshEnabled {
+	if !manual && !cache.RefreshEnabled {
 		return
 	}
 	run := r.activities.Start(activity.Cache)
@@ -184,6 +241,11 @@ func (r *Refresher) refreshBatch(ctx context.Context) {
 // cleanup removes cache entries that have not been used by a scan or suggestion
 // for the configured number of days.
 func (r *Refresher) cleanup(ctx context.Context) {
+	if !r.working.CompareAndSwap(false, true) {
+		r.log.Info("cache maintenance already running")
+		return
+	}
+	defer r.working.Store(false)
 	release, err := r.cfg.Gate().Enter()
 	if err != nil {
 		r.log.Warn("cache cleanup skipped during maintenance")
