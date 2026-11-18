@@ -97,8 +97,8 @@ func TestCollectionFindingsShowReferencesOnlyInLibraryColumn(t *testing.T) {
 			t.Fatalf("unwanted collection context or per-movie watch action: %s", forbidden)
 		}
 	}
-	if strings.Count(html, `class="link-tmdb"`) != 1 || strings.Contains(html, "tt1234567") {
-		t.Fatal("only the collection itself should have a link")
+	if strings.Count(html, `class="link-tmdb"`) != 2 || !strings.Contains(html, `href="https://www.imdb.com/title/tt1234567/"`) || !strings.Contains(html, `href="https://www.themoviedb.org/movie/2"`) {
+		t.Fatal("expected distinct collection and per-film provider links")
 	}
 	for _, keep := range []string{"Missing movie", "7.5", "https://www.themoviedb.org/collection/100"} {
 		if !strings.Contains(html, keep) {

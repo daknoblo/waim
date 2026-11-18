@@ -77,6 +77,7 @@ type FindingRow struct {
 	MissingCount      int
 	PosterURL         string
 	JellyfinLink      string
+	CollectionLink    string
 }
 
 type detailPayload struct {
@@ -104,10 +105,10 @@ type detailPayload struct {
 // findings are grouped so each series appears once with its season gaps listed.
 func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources FindingSources, stats []store.MediaStat) []FindingRow {
 	var rows []FindingRow
-	series := map[int64]*store.MediaStat{}
+	titles := map[string]*store.MediaStat{}
 	for i := range stats {
-		if stats[i].Type == store.MediaSeries && stats[i].TMDBID > 0 {
-			series[stats[i].TMDBID] = &stats[i]
+		if stats[i].TMDBID > 0 {
+			titles[media.Key(stats[i].Type, stats[i].TMDBID)] = &stats[i]
 		}
 	}
 	groups := map[string]*FindingRow{}
@@ -123,9 +124,14 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 		if !sources.TMDB {
 			d.PosterPath = ""
 		}
+		stat := titles[media.Key(f.MediaType, f.TMDBID)]
+		collection := ""
+		if sources.TMDB && stat != nil && stat.CollectionID > 0 {
+			collection = tmdbLink("collection", stat.CollectionID)
+		}
 		switch f.Kind {
 		case store.KindMissingMovie:
-			rows = append(rows, FindingRow{LibraryReferences: findingReferences(f), LibraryIDs: findingLibraries(f), KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), FindingMetadata: sources.metadata("", "", d.Rating, d.IMDbRating)})
+			rows = append(rows, FindingRow{LibraryReferences: findingReferences(f), LibraryIDs: findingLibraries(f), KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), FindingMetadata: sources.metadata(tmdbLink("movie", f.TMDBID), imdbURL(d.IMDbID), d.Rating, d.IMDbRating), CollectionLink: collection, JellyfinLink: findingLink(f, "")})
 		case store.KindMissingCollection:
 			row := FindingRow{
 				LibraryReferences: findingReferences(f),
@@ -149,7 +155,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 				if p.Year != "" {
 					text += " (" + p.Year + ")"
 				}
-				item := DetailItem{Text: text, FindingMetadata: sources.metadata("", "", p.Rating, p.IMDbRating)}
+				item := DetailItem{Text: text, FindingMetadata: sources.metadata(tmdbLink("movie", p.TMDBID), imdbURL(p.IMDbID), p.Rating, p.IMDbRating)}
 				item.CopyText = p.Title
 				if p.Year != "" {
 					item.CopyText += " " + p.Year
@@ -172,6 +178,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 					LibraryColor:    LibraryColor(f.LibraryID),
 					FindingMetadata: sources.metadata(tmdbLink("tv", f.TMDBID), imdbURL(d.IMDbID), 0, 0),
 					JellyfinLink:    findingLink(f, ""),
+					CollectionLink:  collection,
 				}
 				groups[key] = g
 				groupOrder = append(groupOrder, key)
@@ -194,13 +201,19 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 				sortKey:  d.SeasonNumber,
 				CopyText: fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber),
 			}
-			if stat := series[f.TMDBID]; stat != nil {
+			if base := g.TMDBLink; base != "" && d.SeasonNumber >= 0 {
+				line.TMDBLink = fmt.Sprintf("%s/season/%d", base, d.SeasonNumber)
+			}
+			if base := g.IMDbURL; base != "" && d.SeasonNumber >= 0 {
+				line.IMDbURL = fmt.Sprintf("%sepisodes/?season=%d", base, d.SeasonNumber)
+			}
+			if stat != nil {
 				g.FindingMetadata = sources.metadata(tmdbLink("tv", f.TMDBID), imdbURL(d.IMDbID), stat.Rating, stat.IMDbRating)
 				for _, season := range stat.Seasons {
 					if season.Number != d.SeasonNumber {
 						continue
 					}
-					line.FindingMetadata = sources.metadata("", "", season.Rating, season.IMDbRating)
+					line.FindingMetadata = sources.metadata(line.TMDBLink, line.IMDbURL, season.Rating, season.IMDbRating)
 					break
 				}
 			}

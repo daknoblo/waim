@@ -441,6 +441,7 @@
   "finding.missingSeason": "Staffel %d fehlt komplett — %d Folge(n)",
   "finding.missingEpisodes": "Staffel %d: %d Folge(n) fehlen",
   "finding.missingOfTotal": "Staffel %d – %d/%d Folgen fehlen",
+  "finding.collectionLink": "TMDB · Sammlung",
   "finding.missingCollection": "%d Eintrag/Einträge der Sammlung fehlen",
   "finding.kind.missing_season": "Fehlende Staffel",
   "finding.kind.missing_episodes": "Fehlende Folgen",

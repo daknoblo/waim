@@ -256,7 +256,9 @@ The optional AI settings remain below the tile grid and are not part of the
 TMDB dialog. Metadata language and region are still configured under Interface.
 Dashboard findings show links and ratings only for configured metadata providers.
 TMDB scores are blue; a season score is the mean of its rated episodes.
-The dashboard links to the collection or series, not each film or season.
+Each missing film or season has its own provider links on the right, aligned
+with its title. The collection or series link stays on the summary line.
+Standalone titles also link to their collection when the scan has identified one.
 A season gap shows one line with its rating (if known) and the number of
 missing released episodes out of the season total. Individual episodes remain
 on the statistics page.

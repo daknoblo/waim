@@ -17,7 +17,7 @@ func TestFindingRatingsRespectProviderAndMissingEpisodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr := catalog.For("de")
-	findings := []store.Finding{{Kind: store.KindMissingEpisodes, TMDBID: 42, Title: "Serie",
+	findings := []store.Finding{{Kind: store.KindMissingEpisodes, MediaType: store.MediaSeries, TMDBID: 42, Title: "Serie",
 		Details: `{"seasonNumber":1,"episodeCount":8,"missingEpisodes":[1,2,3,4,5,6],"imdbId":"tt1234567"}`}}
 	stats := []store.MediaStat{{Type: store.MediaSeries, TMDBID: 42, Rating: 8.1, IMDbRating: 9.0,
 		Seasons: []store.SeasonStat{{Number: 1, Rating: 7.3, Ratings: []store.EpisodeRating{
@@ -30,10 +30,10 @@ func TestFindingRatingsRespectProviderAndMissingEpisodes(t *testing.T) {
 			t.Fatal(err)
 		}
 		html := b.String()
-		if !strings.Contains(html, "Staffel 1 – 6/8 Folgen fehlen") || strings.Contains(html, "Pilot") || strings.Contains(html, "Finale") || strings.Contains(html, "/season/1") || strings.Contains(html, "TMDB ★") {
+		if !strings.Contains(html, "Staffel 1 – 6/8 Folgen fehlen") || strings.Contains(html, "Pilot") || strings.Contains(html, "Finale") || strings.Contains(html, "TMDB ★") {
 			t.Fatal("wrong season gap or episode list")
 		}
-		for _, label := range []string{"★ 8.1", "★ 7.3", `href="https://www.themoviedb.org/tv/42"`} {
+		for _, label := range []string{"★ 8.1", "★ 7.3", `href="https://www.themoviedb.org/tv/42"`, `href="https://www.themoviedb.org/tv/42/season/1"`} {
 			if strings.Contains(html, label) != sources.TMDB {
 				t.Fatalf("TMDB=%v: %s", sources.TMDB, label)
 			}
@@ -43,6 +43,22 @@ func TestFindingRatingsRespectProviderAndMissingEpisodes(t *testing.T) {
 		}
 		if sources.IMDb && strings.Index(html, `class="link-imdb"`) < strings.Index(html, `data-label="Links"`) {
 			t.Fatal("IMDb link rendered before the links column")
+		}
+	}
+}
+
+func TestStandaloneMovieLinkDoesNotRequireCollection(t *testing.T) {
+	f := store.Finding{Kind: store.KindMissingMovie, MediaType: store.MediaMovie, TMDBID: 42, Title: "Film"}
+	for _, id := range []int64{0, 77} {
+		stats := []store.MediaStat{{Type: store.MediaMovie, TMDBID: 42, CollectionID: id}}
+		rows := BuildFindingRows(testTranslator(t), []store.Finding{f}, FindingSources{TMDB: true}, stats)
+		var b bytes.Buffer
+		if err := FindingsTable(testTranslator(t), rows, SortTitle, DirAsc, DataReady).Render(t.Context(), &b); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(b.String(), `href="https://www.themoviedb.org/movie/42"`) ||
+			strings.Contains(b.String(), `href="https://www.themoviedb.org/collection/77"`) != (id != 0) {
+			t.Fatalf("incorrect movie/collection destinations for collection ID %d", id)
 		}
 	}
 }

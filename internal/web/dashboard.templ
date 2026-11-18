@@ -151,32 +151,40 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 										}
 									</div>
 								</td>
-								<td class="px-3 py-2 text-slate-300" data-label={ t.T("finding.col.detail") }>
+								<td colspan="2" class="px-3 py-2 text-slate-300" data-label={ t.T("finding.col.detail") }>
+									<div class="flex items-start justify-between gap-2">
 									<div class="font-bold text-slate-100">{ r.Detail }</div>
-									if len(r.DetailItems) > 0 {
-										<ul class="mt-1 space-y-0.5 text-slate-400">
-											for _, di := range r.DetailItems {
-												<li class="flex flex-wrap items-center gap-2">
-													if di.CopyText != "" {
-														<button type="button" class="copy-name" data-copy={ di.CopyText } title={ t.T("finding.copyHint") }>{ di.Text }</button>
-													} else {
-														<span>{ di.Text }</span>
-													}
-													@findingRatings(di.FindingMetadata)
-												</li>
-											}
-										</ul>
-									}
-								</td>
-								<td class="px-3 py-2" data-label={ t.T("finding.col.links") }>
-									<div class="flex flex-wrap items-center gap-2 sm:justify-end">
+									<div class="flex flex-wrap justify-end gap-2" data-label={ t.T("finding.col.links") }>
 										@findingLinks(r.Title,r.FindingMetadata)
+										if r.CollectionLink != "" {
+											<a class="link-tmdb" href={ r.CollectionLink } target="_blank" rel="noreferrer noopener">{ t.T("finding.collectionLink") }</a>
+										}
 										for _, ref := range InstanceRefs(Target(ctx,r.JellyfinLink).References) {
 											if ref.URL != "" && ref.Type == "jellyfin" {
 												<a class="link-jellyfin" href={ ref.URL } target="_blank" rel="noreferrer noopener">{ ref.Name }</a>
 											}
 										}
 									</div>
+									</div>
+									if len(r.DetailItems) > 0 {
+										<ul class="mt-1 space-y-0.5 text-slate-400">
+											for _, di := range r.DetailItems {
+												<li class="flex items-start justify-between gap-2">
+													<div class="flex min-w-0 flex-wrap items-center gap-2">
+													if di.CopyText != "" {
+														<button type="button" class="copy-name" data-copy={ di.CopyText } title={ t.T("finding.copyHint") }>{ di.Text }</button>
+													} else {
+														<span>{ di.Text }</span>
+													}
+													@findingRatings(di.FindingMetadata)
+													</div>
+													<div class="flex flex-wrap justify-end gap-2">
+														@findingLinks(di.CopyText,di.FindingMetadata)
+													</div>
+												</li>
+											}
+										</ul>
+									}
 								</td>
 							</tr>
 						}
