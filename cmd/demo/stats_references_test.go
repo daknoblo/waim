@@ -38,6 +38,15 @@ func TestStatisticsAndPartialsOmitRepeatedServerReferences(t *testing.T) {
 				}
 			}
 			if name == "page" {
+				last := -1
+				for _, section := range []string{"library", "gaps", "series", "ratings", "profile"} {
+					id := "stats-" + section
+					pos := strings.Index(html, `id="`+id+`"`)
+					if pos <= last || strings.Count(html, `href="#`+id+`"`) != 1 || strings.Count(html, `id="`+id+`"`) != 1 {
+						t.Fatalf("%s: missing, ambiguous or out-of-order statistics destination %s", locale, id)
+					}
+					last = pos
+				}
 				if !strings.Contains(html, `href="`+run.Media[0].References[0].URL+`"`) {
 					t.Fatal("statistics title links were lost")
 				}

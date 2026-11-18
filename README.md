@@ -71,7 +71,9 @@ Huntarr or Missingarr.
   Each finding shows its TMDB link and a media-server link only when that leads
   to a different destination; virtual titles do not repeat the TMDB link.
   The desktop dashboard content is 10% wider to give the findings table more room.
-- **Statistics** page: completeness per library, most incomplete series and
+- **Statistics** page: jump directly to My library, Gaps & releases, Series in
+  detail, Ratings, or Collection profile & records. Rankings expand per library.
+  The page includes completeness per library, most incomplete series and
   collections, top/lowest rated titles per library — in separate sections for
   owned media and for missing ones (movies *and* series, so you can decide
   what's worth getting), each expandable up to 50 entries.
