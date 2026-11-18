@@ -76,6 +76,8 @@
   "activity.scope": "Unabhängige Aufgaben · Fortschritt je Phase",
   "activity.currentPhase": "Aktuelle Phase",
   "activity.remaining": "verbleibend",
+  "activity.ringIdle": "Warten",
+  "activity.processed": "bearbeitet",
   "activity.indeterminate": "Gesamtzahl noch offen · in Arbeit",
   "activity.empty": "Keine Arbeit in dieser Phase",
   "activity.elapsed": "vergangen",

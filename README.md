@@ -122,7 +122,9 @@ The activity panel polls every two seconds, independently of the three-second
 log refresh. Unchanged partials return HTTP 204; progress never replaces the log
 window. No extra upstream requests are made to measure progress.
 
-The ring and remaining percentage apply **only to the current phase**, not the
+Every card keeps its ring visible. When no job is running it reads **Idle**;
+during a counted phase it fills from 0% to 100% as units are processed.
+The percentage applies **only to the current phase**, not the
 whole job or the other workers. Metadata evaluation counts unique catalog titles,
 not duplicated library memberships; identity resolution counts the current
 catalog before newly resolved identities are merged. Cache refresh counts the

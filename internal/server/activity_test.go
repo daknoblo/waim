@@ -40,6 +40,7 @@ func TestActivityLogsAndIndependentPartialLocalized(t *testing.T) {
 				tr.T("activity.job.scan"), tr.T("activity.job.cache"), tr.T("activity.job.suggestions"),
 				tr.T("activity.currentPhase"), tr.T("activity.phase.ai"), "Distinctive current title",
 				`aria-valuenow="10"`, `aria-valuenow="50"`, `aria-valuetext="` + tr.T("activity.indeterminate") + `"`,
+				`>10<span class="text-xs">%</span>`, tr.T("activity.processed"),
 				`data-job="scan"`, `data-job="cache"`, `data-job="suggestions"`,
 			} {
 				if !strings.Contains(html, text) {
@@ -72,6 +73,9 @@ func TestActivityLogsAndIndependentPartialLocalized(t *testing.T) {
 		return w
 	}
 	first := request("/partials/activity", "")
+	if strings.Count(first.Body.String(), `class="activity-ring"`) != 3 || strings.Contains(first.Body.String(), `role="progressbar"`) {
+		t.Fatal("finished jobs must keep their rings without reporting active progress")
+	}
 	tag := first.Header().Get(viewTagHeader)
 	if tag == "" || request("/partials/activity", tag).Code != http.StatusNoContent {
 		t.Fatal("unchanged activity did not return 204")
@@ -111,6 +115,9 @@ func TestActivityWaitingSetupAndIdleLocalization(t *testing.T) {
 			}
 			if strings.Count(w.Body.String(), s.catalog.For(locale).T(key)) != 3 || strings.Contains(w.Body.String(), "aria-valuenow") {
 				t.Fatalf("bad %s idle/setup state: %s", locale, w.Body.String())
+			}
+			if strings.Count(w.Body.String(), `class="activity-ring"`) != 3 || strings.Count(w.Body.String(), `>`+s.catalog.For(locale).T("activity.ringIdle")+`<`) != 3 {
+				t.Fatal("every resting tile must display its idle ring")
 			}
 			if strings.Contains(w.Body.String(), `href="/settings"`) {
 				t.Fatal("activity repeated the global setup instruction")

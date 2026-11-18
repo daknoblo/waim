@@ -1,8 +1,8 @@
 package web
 
 import (
-	"strconv"
 	"github.com/daknoblo/waim/internal/i18n"
+	"strconv"
 )
 
 templ ActivityPanel(t *i18n.Translator, activities []ActivityView) {
@@ -28,37 +28,51 @@ templ activityCard(t *i18n.Translator, a ActivityView) {
 		if a.Resolved > 0 {
 			<p class="mt-2 text-xs text-emerald-300">{ t.T("activity.resolved") }</p>
 		}
-		if a.IsRunning() {
-			<div class="mt-4 flex min-w-0 items-center gap-4">
-				<div class="activity-ring" role="progressbar" aria-label={ t.T(a.JobKey()) + " · " + t.T("activity.currentPhase") + " · " + t.T(a.PhaseKey()) }
+		<div class="mt-4 flex min-w-0 items-center gap-4">
+			<div
+				class="activity-ring"
+				if a.IsRunning() {
+					role="progressbar"
+					aria-label={ t.T(a.JobKey()) + " · " + t.T("activity.currentPhase") + " · " + t.T(a.PhaseKey()) }
+				}
+				if a.HasProgress() {
+					aria-valuemin="0"
+					aria-valuemax="100"
+					aria-valuenow={ strconv.Itoa(a.Percent()) }
+				}
+				else
+				if a.IsRunning() {
+					aria-valuetext={ t.T(a.ScopeKey()) }
+				}
+			>
+				<svg viewBox="0 0 80 80" class="h-20 w-20" aria-hidden="true">
+					<circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="5" class="text-slate-800"></circle>
 					if a.HasProgress() {
-						aria-valuemin="0"
-						aria-valuemax="100"
-						aria-valuenow={ strconv.Itoa(a.Percent()) }
-					} else {
-						aria-valuetext={ t.T(a.ScopeKey()) }
+						<circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="5" pathLength="100" stroke-dasharray={ a.RingValue() } transform="rotate(-90 40 40)" stroke-linecap="round"></circle>
+					} else if a.IsRunning() && !a.Known {
+						<circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="5" pathLength="100" stroke-dasharray="22 78" stroke-linecap="round" class="activity-indeterminate"></circle>
+					}
+				</svg>
+				<div
+					class="absolute inset-0 flex flex-col items-center justify-center text-center"
+					if a.IsRunning() {
+						aria-hidden="true"
 					}
 				>
-					<svg viewBox="0 0 80 80" class="h-20 w-20" aria-hidden="true">
-						<circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="5" class="text-slate-800"></circle>
-						if a.HasProgress() {
-							<circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="5" pathLength="100" stroke-dasharray={ a.RingValue() } transform="rotate(-90 40 40)" stroke-linecap="round"></circle>
-						} else if !a.Known {
-							<circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" stroke-width="5" pathLength="100" stroke-dasharray="22 78" stroke-linecap="round" class="activity-indeterminate"></circle>
-						}
-					</svg>
-					<div class="absolute inset-0 flex flex-col items-center justify-center text-center" aria-hidden="true">
-						if a.HasProgress() {
-							<span class="text-lg font-semibold tabular-nums">{ strconv.Itoa(a.RemainingPercent()) }<span class="text-xs">%</span></span>
-							<span class="text-[9px] text-slate-400">{ t.T("activity.remaining") }</span>
-						} else if a.Known {
-							<span class="text-xl">—</span>
-						} else {
-							<span class="text-xl">…</span>
-						}
-					</div>
+					if !a.IsRunning() {
+						<span class="text-xs font-medium text-slate-400">{ t.T("activity.ringIdle") }</span>
+					} else if a.HasProgress() {
+						<span class="text-lg font-semibold tabular-nums">{ strconv.Itoa(a.Percent()) }<span class="text-xs">%</span></span>
+						<span class="text-[9px] text-slate-400">{ t.T("activity.processed") }</span>
+					} else if a.Known {
+						<span class="text-xl">—</span>
+					} else {
+						<span class="text-xl">…</span>
+					}
 				</div>
-				<div class="min-w-0 flex-1">
+			</div>
+			<div class="min-w-0 flex-1">
+				if a.IsRunning() {
 					if a.HasProgress() && a.Done < a.Total {
 						<p class="text-base font-semibold tabular-nums text-slate-100">{ t.T("activity.currentTask", a.Done+1, a.Total) }</p>
 					}
@@ -79,8 +93,25 @@ templ activityCard(t *i18n.Translator, a ActivityView) {
 					if a.Page > 0 {
 						<p class="mt-1 text-xs text-slate-400">{ t.T("activity.page") } { strconv.Itoa(a.Page) }</p>
 					}
-				</div>
+				} else {
+					if a.Status == "idle" || a.Status == "completed" {
+						<p class="text-xs leading-relaxed text-slate-400">{ t.T("activity.detail." + string(a.Status)) }</p>
+					}
+					if a.Phase != "" && !a.IsWaiting() {
+						<p class="mt-2 text-xs text-slate-400">
+							{ t.T(a.PhaseKey()) }
+							if a.Known {
+								<span class="tabular-nums">· { strconv.Itoa(a.Done) } / { strconv.Itoa(a.Total) }</span>
+							}
+							if a.Elapsed != "" {
+								<span class="tabular-nums">· { a.Elapsed } { t.T("activity.elapsed") }</span>
+							}
+						</p>
+					}
+				}
 			</div>
+		</div>
+		if a.IsRunning() {
 			<div class="mt-3 flex flex-wrap justify-between gap-2 border-t border-slate-800 pt-3 text-xs text-slate-400">
 				if a.HasProgress() {
 					<span class="tabular-nums">{ strconv.Itoa(a.Done) } / { strconv.Itoa(a.Total) } · { strconv.Itoa(a.Remaining()) } { t.T("activity.remaining") }</span>
@@ -89,31 +120,25 @@ templ activityCard(t *i18n.Translator, a ActivityView) {
 				}
 				<span class="tabular-nums">{ a.Elapsed } { t.T("activity.elapsed") }</span>
 			</div>
-		} else {
-			if a.Status == "idle" || a.Status == "completed" {
-				<p class="mt-3 text-xs leading-relaxed text-slate-400">
-					{ t.T("activity.detail." + string(a.Status)) }
-				</p>
-			}
-			if a.Phase != "" && !a.IsWaiting() {
-				<p class="mt-2 text-xs text-slate-400">{ t.T(a.PhaseKey()) }
-					if a.Known {
-						<span class="tabular-nums"> · { strconv.Itoa(a.Done) } / { strconv.Itoa(a.Total) }</span>
-					}
-					if a.Elapsed != "" {
-						<span class="tabular-nums"> · { a.Elapsed } { t.T("activity.elapsed") }</span>
-					}
-				</p>
-			}
 		}
 		if a.HasStartAction() {
-			<form method="post" action={ "/activity/"+string(a.Job)+"/start" }
-				hx-post={ "/activity/"+string(a.Job)+"/start" } hx-target="#activity" hx-swap="innerHTML"
-				hx-disabled-elt="find button" class="mt-auto pt-3">
+			<form
+				method="post"
+				action={ "/activity/" + string(a.Job) + "/start" }
+				hx-post={ "/activity/" + string(a.Job) + "/start" }
+				hx-target="#activity"
+				hx-swap="innerHTML"
+				hx-disabled-elt="find button"
+				class="mt-auto pt-3"
+			>
 				@MutationEpoch()
-				<button type="submit" class="btn-ghost w-full" disabled?={ !a.CanStart }
-					aria-label={ t.T("activity.start")+" · "+t.T("activity.job."+string(a.Job)) }
-					title={ t.T("activity.startHint."+string(a.Job)) }>{ t.T("activity.start") }</button>
+				<button
+					type="submit"
+					class="btn-ghost w-full"
+					disabled?={ !a.CanStart }
+					aria-label={ t.T("activity.start") + " · " + t.T("activity.job."+string(a.Job)) }
+					title={ t.T("activity.startHint." + string(a.Job)) }
+				>{ t.T("activity.start") }</button>
 			</form>
 		}
 	</article>
