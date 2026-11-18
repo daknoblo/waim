@@ -210,7 +210,10 @@ Successfully completed activity cards show a green **OK**. Tasks that have never
 run remain **Ready**, rather than claiming a verified success.
 
 The Source scan, Cache maintenance and Suggestions cards each have a **Start
-manually** button. Source scan refreshes all enabled media sources; Suggestions
+now** button. During counted phases they show the current task number. Warning
+details appear below the cards; title-specific TMDB queries link to the public
+title or season page, using the cached title when available.
+Source scan refreshes all enabled media sources; Suggestions
 updates the recommendation cache. Cache maintenance refreshes one batch using
 the configured percentage, not the whole cache and not an orphan cleanup.
 Manual cache refresh also works when scheduled refresh is disabled, without

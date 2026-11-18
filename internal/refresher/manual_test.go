@@ -48,6 +48,36 @@ func manualFixture(t *testing.T) (*Refresher, *activity.Tracker) {
 	return New(cfg, st, nil, tracker), tracker
 }
 
+func TestFailedSeasonRefreshUsesCachedSeriesTitle(t *testing.T) {
+	r, tracker := manualFixture(t)
+	ctx := t.Context()
+	if err := r.store.TMDBCachePut(ctx, "/tv/42?language=de-DE", []byte(`{"name":"Beispielserie"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.store.TMDBCachePut(ctx, "/tv/42/season/2?language=de-DE", []byte(`{"name":"Staffel 2"}`)); err != nil {
+		t.Fatal(err)
+	}
+	settings := r.cfg.Get()
+	settings.Cache.RefreshPercent = 100
+	if err := r.cfg.Save(settings); err != nil {
+		t.Fatal(err)
+	}
+	old := http.DefaultTransport
+	defer func() { http.DefaultTransport = old }()
+	http.DefaultTransport = cacheTransport(func(req *http.Request) (*http.Response, error) {
+		status := http.StatusOK
+		if strings.HasSuffix(req.URL.Path, "/season/2") {
+			status = http.StatusNotFound
+		}
+		return &http.Response{StatusCode: status, Request: req, Body: io.NopCloser(strings.NewReader(`{"name":"Beispielserie"}`))}, nil
+	})
+	r.refresh(ctx, true)
+	d := tracker.Snapshot()[1].Diagnostics
+	if len(d) != 1 || d[0].Current != "Beispielserie" || d[0].Query != "/tv/42/season/2" {
+		t.Fatalf("missing series context in diagnostic: %+v", d)
+	}
+}
+
 func TestFailedOldestKeyDoesNotStarveNextRefresh(t *testing.T) {
 	r, tracker := manualFixture(t)
 	settings := r.cfg.Get()

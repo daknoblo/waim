@@ -1,6 +1,9 @@
 package web
 
-import "github.com/daknoblo/waim/internal/activity"
+import (
+	"github.com/daknoblo/waim/internal/activity"
+	"github.com/daknoblo/waim/internal/tmdb"
+)
 
 type DiagnosticView struct {
 	activity.Diagnostic
@@ -14,8 +17,14 @@ type DiagnosticsData struct {
 }
 
 func (d DiagnosticView) ReasonKey() string { return "diagnostics.reason." + string(d.Reason) }
-func (d DiagnosticView) PhaseKey() string  { return "activity.phase." + string(d.Phase) }
-func (d DiagnosticView) JobKey() string    { return "activity.job." + string(d.Job) }
+func (d DiagnosticView) TitleURL() string {
+	if _, page := tmdb.TitlePaths(d.Query); page != "" {
+		return "https://www.themoviedb.org" + page
+	}
+	return ""
+}
+func (d DiagnosticView) PhaseKey() string { return "activity.phase." + string(d.Phase) }
+func (d DiagnosticView) JobKey() string   { return "activity.job." + string(d.Job) }
 func (d DiagnosticView) Tone() string {
 	if d.Severity == activity.Error {
 		return "text-rose-300"

@@ -68,7 +68,15 @@ templ DiagnosticsPanel(t *i18n.Translator,d DiagnosticsData) {
 				if item.Subject != "" {
 					<p class="mt-1 break-words text-sm text-slate-300">{ item.Subject }</p>
 				}
-				if item.Current != "" {
+				if link := item.TitleURL(); link != "" {
+					<a class="mt-1 inline-block break-words text-sm font-medium text-sky-300 underline" href={ link } target="_blank" rel="noopener noreferrer">
+						if item.Current != "" {
+							{ item.Current } · TMDB ↗
+						} else {
+							{ t.T("diagnostics.openTitle") } ↗
+						}
+					</a>
+				} else if item.Current != "" {
 					<p class="mt-1 break-words font-medium text-slate-100">{ item.Current }</p>
 				}
 				if item.Query != "" {

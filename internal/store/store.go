@@ -172,6 +172,17 @@ func (s *Store) TMDBCacheGet(ctx context.Context, key string) ([]byte, bool, err
 	}
 }
 
+// TMDBCacheTitle reads a label for diagnostics without extending cache retention.
+func (s *Store) TMDBCacheTitle(ctx context.Context, key string) (string, error) {
+	var title string
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(json_extract(payload,'$.title'),json_extract(payload,'$.name'),'')
+		FROM tmdb_cache WHERE cache_key=? AND json_valid(payload)`, key).Scan(&title)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return title, err
+}
+
 // TMDBCachePut stores or refreshes the payload for key, stamping fetched_at now.
 // On insert last_used_at is set to now; on refresh (conflict) last_used_at is
 // preserved, so background refreshes do not keep orphaned entries "used".

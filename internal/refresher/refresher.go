@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -229,10 +230,22 @@ func (r *Refresher) refresh(ctx context.Context, manual bool) {
 			if ctx.Err() != nil {
 				return
 			}
-			run.Report(activity.Diagnostic{Reason: activity.CacheUnavailable, Severity: activity.Error, Query: key})
+			path, query, _ := strings.Cut(key, "?")
+			title := ""
+			if parent, _ := tmdb.TitlePaths(path); parent != "" {
+				params, _ := url.ParseQuery(query)
+				if lang := params.Get("language"); lang != "" {
+					parent += "?" + url.Values{"language": {lang}}.Encode()
+				}
+				var lookupErr error
+				title, lookupErr = r.store.TMDBCacheTitle(ctx, parent)
+				if lookupErr != nil {
+					r.log.Warn("refresher: title lookup failed", "path", path, "error", lookupErr)
+				}
+			}
+			run.Report(activity.Diagnostic{Reason: activity.CacheUnavailable, Severity: activity.Error, Query: key, Current: title})
 			run.Advance(true, false)
 			failed++
-			path, _, _ := strings.Cut(key, "?")
 			r.log.Warn("refresher: refresh failed", "path", path, "error", err)
 			if err := r.store.TMDBCacheRefreshFailed(ctx, key); err != nil {
 				r.log.Warn("refresher: record failed attempt", "path", path, "error", err)

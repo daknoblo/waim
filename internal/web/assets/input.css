@@ -36,7 +36,7 @@
     @apply border-emerald-500/30 text-emerald-300;
   }
   .activity-status {
-    @apply shrink-0 rounded-full border border-current px-2 py-0.5 text-[10px] font-medium;
+    @apply inline-flex min-h-10 items-center justify-center rounded-full border-2 border-current px-4 py-1 text-xl font-semibold leading-tight;
   }
   .activity-ring {
     @apply relative h-20 w-20 shrink-0;
