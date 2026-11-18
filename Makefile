@@ -21,6 +21,11 @@ COVERAGE_DIR ?= coverage
 # multi-line release notes survive instead of breaking the shell command.
 export MESSAGE
 export NOTES
+export PUSH
+
+ifeq ($(SEED_FORCE),1)
+SEED_FORCE_FLAG := -force
+endif
 
 LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Version=$(VERSION) \
@@ -81,7 +86,7 @@ demo:
 ## Jellyfin server, e.g. `make seed` or `make seed SEED_OUT=/tmp/waim`. Refuses
 ## to clobber an existing database unless SEED_FORCE=1.
 seed:
-	go run ./cmd/seed -out $(SEED_OUT) $(if $(SEED_FORCE),-force,)
+	go run ./cmd/seed -out "$(SEED_OUT)" $(SEED_FORCE_FLAG)
 
 ## Point the pinned image examples in the docs at a release, e.g.
 ## `make docs-version VERSION=1.3.0`. Update through a PR after publishing;
@@ -133,7 +138,7 @@ release:
 		git tag -a "$$v"; \
 	fi; \
 	echo; \
-	if [ -n "$(PUSH)" ]; then \
+	if [ "$$PUSH" = 1 ]; then \
 		git push origin "refs/tags/$$v"; \
 	else \
 		echo "tag $$v created. Publish with:"; \

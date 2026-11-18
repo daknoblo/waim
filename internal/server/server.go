@@ -101,8 +101,8 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 
-	mux.HandleFunc("GET /{$}", s.handleDashboard)
-	mux.HandleFunc("GET /stats", s.handleStats)
+	mux.HandleFunc("GET /{$}", s.withScanView(s.handleDashboard))
+	mux.HandleFunc("GET /stats", s.withScanView(s.handleStats))
 	mux.HandleFunc("GET /suggestions", s.handleSuggestions)
 	mux.HandleFunc("POST /suggestions/generate", s.handleGenerateSuggestions)
 	mux.HandleFunc("GET /partials/suggestions", s.handlePartialSuggestions)
@@ -126,7 +126,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /scan", s.handleScan)
 
 	mux.HandleFunc("GET /partials/status", s.handlePartialStatus)
-	mux.HandleFunc("GET /partials/findings", s.handlePartialFindings)
+	mux.HandleFunc("GET /partials/findings", s.withScanView(s.handlePartialFindings))
 	mux.HandleFunc("GET /partials/log", s.handlePartialLog)
 	mux.HandleFunc("GET /partials/activity", s.handlePartialActivity)
 	mux.HandleFunc("GET /partials/health-indicator", s.handleHealthIndicator)
@@ -222,6 +222,13 @@ func (s *Server) renderPartialPlain(w http.ResponseWriter, r *http.Request, comp
 func (s *Server) provenanceRequest(r *http.Request) *http.Request {
 	ctx := web.WithActionTranslator(r.Context(), s.translator(r))
 	ctx = web.WithMutationEpoch(ctx, s.cfg.Gate().Token())
+	if v, ok := ctx.Value(scanViewKey{}).(*scanView); ok {
+		if v.err != nil {
+			s.log.Error("scan presentation failed", "err", v.err)
+			return r.WithContext(ctx)
+		}
+		return r.WithContext(web.WithProvenance(ctx, v.catalog, v.saved))
+	}
 	catalog, err := source.Catalog(ctx, s.store, s.cfg.Get(), false, nil)
 	if err != nil {
 		s.log.Error("catalog presentation failed", "err", err)

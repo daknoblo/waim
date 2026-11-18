@@ -11,6 +11,42 @@ import (
 	"github.com/daknoblo/waim/internal/store"
 )
 
+func TestFindingRatingsRespectProviderAndMissingEpisodes(t *testing.T) {
+	catalog, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := catalog.For("de")
+	findings := []store.Finding{{Kind: store.KindMissingEpisodes, TMDBID: 42, Title: "Serie",
+		Details: `{"seasonNumber":1,"episodeCount":8,"missingEpisodes":[1,2,3,4,5,6],"imdbId":"tt1234567"}`}}
+	stats := []store.MediaStat{{Type: store.MediaSeries, TMDBID: 42, Rating: 8.1, IMDbRating: 9.0,
+		Seasons: []store.SeasonStat{{Number: 1, Rating: 7.3, Ratings: []store.EpisodeRating{
+			{Number: 1, Title: "Pilot", Rating: 8.2}, {Number: 8, Title: "Finale", Rating: 6.1},
+		}}}}}
+	for _, sources := range []FindingSources{{}, {TMDB: true}, {TMDB: true, IMDb: true}} {
+		rows := BuildFindingRows(tr, findings, sources, stats)
+		var b bytes.Buffer
+		if err := FindingsTable(tr, rows, SortTitle, DirAsc, DataReady).Render(t.Context(), &b); err != nil {
+			t.Fatal(err)
+		}
+		html := b.String()
+		if !strings.Contains(html, "Staffel 1 – 6/8 Folgen fehlen") || strings.Contains(html, "Finale") {
+			t.Fatal("wrong season gap or episode list")
+		}
+		for _, label := range []string{"TMDB ★ 8.1", "TMDB ★ 7.3", "TMDB ★ 8.2", "S01E01 Pilot", "/tv/42/season/1"} {
+			if strings.Contains(html, label) != sources.TMDB {
+				t.Fatalf("TMDB=%v: %s", sources.TMDB, label)
+			}
+		}
+		if strings.Contains(html, "IMDb ★ 9.0") != sources.IMDb || strings.Contains(html, "tt1234567") != sources.IMDb {
+			t.Fatal("IMDb rating or link not gated by source")
+		}
+		if sources.IMDb && strings.Index(html, `class="link-imdb"`) < strings.Index(html, `data-label="Links"`) {
+			t.Fatal("IMDb link rendered before the links column")
+		}
+	}
+}
+
 func TestFindingLinksAvoidDuplicateDestinations(t *testing.T) {
 	catalog, err := i18n.Load()
 	if err != nil {
@@ -40,7 +76,7 @@ func TestFindingLinksAvoidDuplicateDestinations(t *testing.T) {
 			{"no source link", []media.Item{virtual}, "", false},
 		} {
 			ctx := WithProvenance(context.Background(), media.Catalog{Items: tc.items}, previous)
-			row := FindingRow{Title: virtual.Name, TMDBLink: tmdbURL, JellyfinLink: tc.sourceURL, LibraryReferences: tc.items[0].References}
+			row := FindingRow{Title: virtual.Name, FindingMetadata: FindingMetadata{TMDBLink: tmdbURL}, JellyfinLink: tc.sourceURL, LibraryReferences: tc.items[0].References}
 			var b bytes.Buffer
 			if err := FindingsTable(tr, []FindingRow{row}, SortTitle, DirAsc, DataReady).Render(ctx, &b); err != nil {
 				t.Fatal(err)

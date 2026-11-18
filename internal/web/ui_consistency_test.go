@@ -47,7 +47,7 @@ func TestVirtualLibraryDisplayNamesAreLocalizedWithoutMutatingData(t *testing.T)
 			if localRun.Libraries[1].Name != "Watch collection" || localRun.Media[1].LibraryName != "Watch collection" {
 				t.Fatal("user-provided library name was translated")
 			}
-			for _, row := range BuildFindingRows(tr, findings, "") {
+			for _, row := range BuildFindingRows(tr, findings, FindingSources{TMDB: true}, nil) {
 				if row.Library != LibraryDisplayName(tr, row.LibraryID, "Watch collection") {
 					t.Fatalf("unlocalized finding row: %+v", row)
 				}

@@ -44,18 +44,32 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) statsData(r *http.Request) web.StatsData {
 	t := s.translator(r)
 	ctx := r.Context()
-	run, _ := s.currentRun(ctx)
+	v := s.scanView(ctx)
+	run := v.run
+	state := s.viewDataState(v)
+	layout := s.layout(r, web.NavStats)
+	if v.err != nil {
+		return web.StatsData{Layout: layout, DataState: web.DataUnavailable}
+	}
 	var findings []store.Finding
 	if run != nil {
-		findings, _ = s.currentFindings(ctx, run)
+		var err error
+		findings, err = s.currentFindings(ctx, run)
+		if err != nil {
+			s.log.Error("statistics findings unavailable", "err", err)
+			return web.StatsData{Layout: layout, DataState: web.DataUnavailable}
+		}
 	}
 	libTypes := map[string]string{}
-	for _, src := range s.cfg.Get().Sources {
+	for _, src := range v.settings.Sources {
 		for _, l := range src.Libraries {
 			libTypes[media.Qualify(src.ID, l.ID)] = l.Type
 		}
 	}
-	history, _ := s.store.SuccessfulRunTotals(ctx, 12)
+	history, historyErr := s.store.SuccessfulRunTotals(ctx, 12)
+	if historyErr != nil {
+		s.log.Error("statistics history unavailable", "err", historyErr)
+	}
 	d := web.BuildStats(t, web.StatsInput{
 		Run:         run,
 		Findings:    findings,
@@ -63,8 +77,9 @@ func (s *Server) statsData(r *http.Request) web.StatsData {
 		History:     history,
 		JellyfinURL: "",
 	})
-	d.Layout = s.layout(r, web.NavStats)
-	d.DataState = s.dataState(ctx)
+	d.Layout = layout
+	d.HistoryUnavailable = historyErr != nil
+	d.DataState = state
 	d.Unconfirmed = d.Unconfirmed || d.DataState != web.DataReady
 	if d.Unconfirmed {
 		d.EpisodePct = -1
@@ -122,24 +137,21 @@ func scanConfigured(settings config.Settings) bool {
 // dataState explains why a view might have nothing to show, so an empty list is
 // never presented as a statement about the library.
 func (s *Server) dataState(ctx context.Context) string {
-	if !scanConfigured(s.cfg.Get()) {
+	return s.viewDataState(s.scanView(ctx))
+}
+
+func (s *Server) viewDataState(v *scanView) string {
+	if v.err != nil {
+		return web.DataUnavailable
+	}
+	if !scanConfigured(v.settings) {
 		return web.DataUnconfigured
 	}
-	if run, err := s.currentRun(ctx); err == nil && run != nil {
+	if run := v.run; run != nil {
 		if run.Metadata.Basis == "" {
 			return web.DataLegacy
 		}
-		if run.Metadata.Pending {
-			return web.DataIncomplete
-		}
-		if run.Metadata.SourcesToken != s.cfg.Get().SourcesToken() {
-			return web.DataIncomplete
-		}
-		catalog, err := source.Catalog(ctx, s.store, s.cfg.Get(), false, nil)
-		if err != nil || len(catalog.Warnings) > 0 || len(run.Metadata.Warnings) > 0 || catalog.Revision != run.Metadata.Revision {
-			return web.DataIncomplete
-		}
-		if run.FinishedAt != nil && catalog.UpdatedAt.After(*run.FinishedAt) {
+		if run.Metadata.Pending || len(v.catalog.Warnings) > 0 || len(run.Metadata.Warnings) > 0 {
 			return web.DataIncomplete
 		}
 		return web.DataReady
@@ -213,7 +225,8 @@ func (s *Server) handlePartialFindings(w http.ResponseWriter, r *http.Request) {
 	t := s.translator(r)
 	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
 	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
-	s.renderPartial(w, r, web.FindingsTable(t, s.findingRows(r.Context(), t, sortKey, dir), sortKey, dir, s.dataState(r.Context())))
+	rows, state := s.findingRows(r.Context(), t, sortKey, dir)
+	s.renderPartial(w, r, web.FindingsTable(t, rows, sortKey, dir, state))
 }
 
 func (s *Server) handlePartialLog(w http.ResponseWriter, r *http.Request) {
@@ -265,15 +278,16 @@ func (s *Server) dashboardData(r *http.Request) web.DashboardData {
 	t := s.translator(r)
 	sortKey := web.NormalizeSort(r.URL.Query().Get("sort"))
 	dir := web.NormalizeDir(r.URL.Query().Get("dir"))
+	rows, state := s.findingRows(r.Context(), t, sortKey, dir)
 	return web.DashboardData{
 		Layout:    s.layout(r, web.NavDashboard),
 		Status:    s.statusView(r.Context(), t),
-		Findings:  s.findingRows(r.Context(), t, sortKey, dir),
+		Findings:  rows,
 		Libraries: s.libraryFilters(t),
 		Logs:      web.BuildLogViews(s.logs.Entries()),
 		Sort:      sortKey,
 		Dir:       dir,
-		DataState: s.dataState(r.Context()),
+		DataState: state,
 	}
 }
 
@@ -297,18 +311,20 @@ func (s *Server) libraryFilters(t *i18n.Translator) []web.LibraryFilter {
 	return out
 }
 
-func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, dir string) []web.FindingRow {
-	run, err := s.currentRun(ctx)
-	if err != nil || run == nil {
-		return nil
+func (s *Server) findingRows(ctx context.Context, t *i18n.Translator, sortKey, dir string) ([]web.FindingRow, string) {
+	v := s.scanView(ctx)
+	state := s.viewDataState(v)
+	if v.err != nil || v.run == nil {
+		return nil, state
 	}
-	fs, err := s.currentFindings(ctx, run)
+	fs, err := s.currentFindings(ctx, v.run)
 	if err != nil {
-		return nil
+		s.log.Error("dashboard findings unavailable", "err", err)
+		return nil, web.DataUnavailable
 	}
-	rows := web.BuildFindingRows(t, fs, "")
+	rows := web.BuildFindingRows(t, fs, web.FindingSources{TMDB: v.settings.TMDB.APIKey != ""}, v.run.Media)
 	web.SortFindingRows(rows, sortKey, dir)
-	return rows
+	return rows, state
 }
 
 func (s *Server) statusView(ctx context.Context, t *i18n.Translator) web.StatusView {

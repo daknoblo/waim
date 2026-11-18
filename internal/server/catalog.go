@@ -2,17 +2,60 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"sort"
 
+	"github.com/daknoblo/waim/internal/config"
 	"github.com/daknoblo/waim/internal/media"
 	"github.com/daknoblo/waim/internal/source"
 	"github.com/daknoblo/waim/internal/store"
 )
 
+type scanView struct {
+	settings config.Settings
+	catalog  media.Catalog
+	saved    *store.ScanRun
+	run      *store.ScanRun
+	err      error
+}
+
+type scanViewKey struct{}
+
+func (s *Server) scanView(ctx context.Context) *scanView {
+	if v, ok := ctx.Value(scanViewKey{}).(*scanView); ok {
+		return v
+	}
+	v := &scanView{settings: s.cfg.Get()}
+	v.saved, v.err = s.store.LatestSuccessfulRun(ctx)
+	if v.err == nil {
+		v.catalog, v.err = source.Catalog(ctx, s.store, v.settings, false, nil)
+	}
+	if v.err == nil {
+		v.run = v.saved
+		if v.saved != nil && v.saved.Metadata.Basis != "" {
+			// Preserve the saved reference list for links to older scan results.
+			run := *v.saved
+			overlayMembership(&run, v.settings, v.catalog)
+			v.run = &run
+		}
+	}
+	return v
+}
+
+// Keep the view request-local: the next poll must observe mutations and new scans.
+func (s *Server) withScanView(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		next(w, r.WithContext(context.WithValue(r.Context(), scanViewKey{}, s.scanView(r.Context()))))
+	}
+}
+
 // currentRun overlays live membership on saved metadata without a server or
 // TMDB request. Deletions/disablement affect ownership immediately; gap and
 // release evaluations remain explicitly pending until recomputation finishes.
 func (s *Server) currentRun(ctx context.Context) (*store.ScanRun, error) {
+	if v, ok := ctx.Value(scanViewKey{}).(*scanView); ok {
+		return v.run, v.err
+	}
 	run, err := s.store.LatestSuccessfulRun(ctx)
 	if err != nil || run == nil || run.Metadata.Basis == "" {
 		return run, err
@@ -22,6 +65,11 @@ func (s *Server) currentRun(ctx context.Context) (*store.ScanRun, error) {
 	if err != nil {
 		return nil, err
 	}
+	overlayMembership(run, settings, catalog)
+	return run, nil
+}
+
+func overlayMembership(run *store.ScanRun, settings config.Settings, catalog media.Catalog) {
 	run.Metadata.Pending = run.Metadata.SourcesToken != settings.SourcesToken() || run.Metadata.Revision != catalog.Revision
 	if run.FinishedAt != nil && catalog.UpdatedAt.After(*run.FinishedAt) {
 		run.Metadata.Pending = true
@@ -199,7 +247,6 @@ func (s *Server) currentRun(ctx context.Context) (*store.ScanRun, error) {
 		}
 	}
 	run.Upcoming = upcoming
-	return run, nil
 }
 
 func sameMemberships(a, b []media.Reference) bool {

@@ -234,6 +234,11 @@ func (r *Refresher) refresh(ctx context.Context, manual bool) {
 			failed++
 			path, _, _ := strings.Cut(key, "?")
 			r.log.Warn("refresher: refresh failed", "path", path, "error", err)
+			if err := r.store.TMDBCacheRefreshFailed(ctx, key); err != nil {
+				r.log.Warn("refresher: record failed attempt", "path", path, "error", err)
+				run.Problem(activity.StorageUnavailable, activity.Error)
+				return
+			}
 			continue
 		}
 		refreshed++

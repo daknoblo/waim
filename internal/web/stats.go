@@ -16,6 +16,8 @@ import (
 
 // StatsData is the model for the statistics page.
 type StatsData struct {
+	HistoryUnavailable bool
+
 	Unresolved      []StatsRated
 	Unconfirmed     bool
 	TrackingTitles  int
@@ -224,6 +226,13 @@ type StatsInput struct {
 	History     []store.RunTotals
 	JellyfinURL string
 	Now         time.Time // zero value falls back to the current time
+}
+
+func (d StatsData) growthEmptyMessage() string {
+	if d.HistoryUnavailable {
+		return d.Layout.T.T("common.stateUnavailable")
+	}
+	return d.Layout.T.T("stats.noGrowth")
 }
 
 // BuildStats computes the statistics view from the latest run and its findings.

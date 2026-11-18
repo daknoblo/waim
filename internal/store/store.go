@@ -179,7 +179,7 @@ func (s *Store) TMDBCachePut(ctx context.Context, key string, payload []byte) er
 	now := time.Now().UTC().Format(timeLayout)
 	_, err := s.db.ExecContext(ctx, `
         INSERT INTO tmdb_cache(cache_key, payload, fetched_at, last_used_at) VALUES(?, ?, ?, ?)
-        ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at`,
+        ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at, last_attempt_at = NULL`,
 		key, string(payload), now, now)
 	if err != nil {
 		return fmt.Errorf("store: tmdb cache put: %w", err)
@@ -196,13 +196,20 @@ func (s *Store) TMDBCacheCount(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-// TMDBCacheOldestKeys returns up to limit cache keys with the oldest fetched_at.
+// TMDBCacheRefreshFailed advances refresh order without changing freshness or usage.
+func (s *Store) TMDBCacheRefreshFailed(ctx context.Context, key string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE tmdb_cache SET last_attempt_at = ? WHERE cache_key = ?`,
+		time.Now().UTC().Format(timeLayout), key)
+	return err
+}
+
+// TMDBCacheOldestKeys returns up to limit keys ordered by last attempt or fetch.
 func (s *Store) TMDBCacheOldestKeys(ctx context.Context, limit int) ([]string, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT cache_key FROM tmdb_cache ORDER BY fetched_at ASC LIMIT ?`, limit)
+		`SELECT cache_key FROM tmdb_cache ORDER BY COALESCE(last_attempt_at, fetched_at), cache_key LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: tmdb cache oldest: %w", err)
 	}

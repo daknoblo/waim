@@ -160,7 +160,7 @@ templ statsBody(d StatsData) {
 				@genreRatingCard(d.Layout.T.T("stats.genreRatings"), d.Layout.T.T("stats.genreRatingsHint"), d.GenreRatings, d.Layout.T.T("stats.noMedia"))
 			</div>
 
-			@growthCard(d.Layout.T.T("stats.growth"), d.Layout.T.T("stats.growthHint"), d.Growth, d.Layout.T.T("stats.noGrowth"))
+			@growthCard(d.Layout.T.T("stats.growth"), d.Layout.T.T("stats.growthHint"), d.Growth, d.growthEmptyMessage())
 
 			@completionCard(d.Layout.T, d.Completion, d.EpisodePct)
 

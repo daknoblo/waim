@@ -268,7 +268,7 @@ func demoDashboard(t *i18n.Translator, run *store.ScanRun, findings []store.Find
 				{Name: "Series", Color: web.LibraryColor(libSeries), Scanned: 6, Total: 6, Missing: 15},
 			},
 		},
-		Findings: web.BuildFindingRows(t, findings, ""),
+		Findings: web.BuildFindingRows(t, findings, web.FindingSources{TMDB: true}, run.Media),
 		Libraries: []web.LibraryFilter{
 			{ID: libMovies, Name: "Movies"},
 			{ID: libSeries, Name: "Series"},
@@ -312,9 +312,8 @@ func demoSuggestions(t *i18n.Translator) web.SuggestionsData {
 		Layout:     demoLayout(t, web.NavSuggestions),
 		Configured: true,
 		Result: &suggest.Result{
-			GeneratedAt:  time.Now().Add(-12 * time.Minute),
-			BasedOnRunID: 42,
-			AIEnabled:    true,
+			GeneratedAt: time.Now().Add(-12 * time.Minute),
+			AIEnabled:   true,
 			Trending: []suggest.Item{
 				item("movie", "Lantern Bay", "2026", "7.8", "A lighthouse keeper uncovers a decades-old shipwreck manifest.", 501),
 				item("tv", "Grid Nine", "2025", "8.1", "Engineers race to keep a failing power grid alive.", 502),

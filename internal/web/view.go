@@ -29,16 +29,42 @@ const (
 
 // DetailItem is a single missing part/episode line, with an optional rating.
 type DetailItem struct {
-	TMDBLink string
+	FindingMetadata
 	Text     string
-	Rating   string
 	CopyText string
-	IMDbURL  string
+	Episodes []DetailItem
 	sortKey  int
+}
+
+type FindingMetadata struct {
+	TMDBLink, IMDbURL      string
+	TMDBRating, IMDbRating string
+}
+
+type FindingSources struct {
+	TMDB, IMDb bool
+}
+
+func (s FindingSources) metadata(tmdbURL, imdbURL string, tmdbRating, imdbRating float64) FindingMetadata {
+	var m FindingMetadata
+	if s.TMDB {
+		m.TMDBLink = tmdbURL
+		if tmdbRating > 0 {
+			m.TMDBRating = fmt.Sprintf("%.1f", tmdbRating)
+		}
+	}
+	if s.IMDb {
+		m.IMDbURL = imdbURL
+		if imdbRating > 0 {
+			m.IMDbRating = fmt.Sprintf("%.1f", imdbRating)
+		}
+	}
+	return m
 }
 
 // FindingRow is a display-ready representation of a store.Finding.
 type FindingRow struct {
+	FindingMetadata
 	LibraryReferences []media.Reference
 	LibraryIDs        []string
 	KindLabel         string
@@ -51,11 +77,12 @@ type FindingRow struct {
 	DetailItems       []DetailItem
 	MissingCount      int
 	PosterURL         string
-	TMDBLink          string
 	JellyfinLink      string
 }
 
 type detailPayload struct {
+	Rating          float64           `json:"rating"`
+	IMDbRating      float64           `json:"imdbRating"`
 	ReleaseDate     string            `json:"releaseDate"`
 	SeasonNumber    int               `json:"seasonNumber"`
 	EpisodeCount    int               `json:"episodeCount"`
@@ -68,6 +95,7 @@ type detailPayload struct {
 		Title       string  `json:"title"`
 		Year        string  `json:"year"`
 		Rating      float64 `json:"rating"`
+		IMDbRating  float64 `json:"imdbRating"`
 		IMDbID      string  `json:"imdbId"`
 		ReleaseDate string  `json:"releaseDate"`
 	} `json:"missingParts"`
@@ -75,9 +103,14 @@ type detailPayload struct {
 
 // BuildFindingRows converts findings into localised rows for the UI. Series
 // findings are grouped so each series appears once with its season gaps listed.
-// jellyfinURL is used to build deep links to the originating Jellyfin item.
-func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL string) []FindingRow {
+func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources FindingSources, stats []store.MediaStat) []FindingRow {
 	var rows []FindingRow
+	series := map[int64]*store.MediaStat{}
+	for i := range stats {
+		if stats[i].Type == store.MediaSeries && stats[i].TMDBID > 0 {
+			series[stats[i].TMDBID] = &stats[i]
+		}
+	}
 	groups := map[string]*FindingRow{}
 	var groupOrder []string
 
@@ -88,9 +121,12 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			_ = json.Unmarshal([]byte(f.Details), &d)
 		}
 
+		if !sources.TMDB {
+			d.PosterPath = ""
+		}
 		switch f.Kind {
 		case store.KindMissingMovie:
-			rows = append(rows, FindingRow{LibraryReferences: findingReferences(f), LibraryIDs: findingLibraries(f), KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), TMDBLink: tmdbLink("movie", f.TMDBID)})
+			rows = append(rows, FindingRow{LibraryReferences: findingReferences(f), LibraryIDs: findingLibraries(f), KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), FindingMetadata: sources.metadata(tmdbLink("movie", f.TMDBID), imdbURL(d.IMDbID), d.Rating, d.IMDbRating)})
 		case store.KindMissingCollection:
 			row := FindingRow{
 				LibraryReferences: findingReferences(f),
@@ -101,11 +137,10 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				Library:           f.LibraryName,
 				LibraryID:         f.LibraryID,
 				LibraryColor:      LibraryColor(f.LibraryID),
-				JellyfinLink:      "",
 				PosterURL:         posterURL(d.PosterPath),
 				Detail:            t.T("finding.missingCollection", len(d.MissingParts)),
 				MissingCount:      len(d.MissingParts),
-				TMDBLink:          tmdbLink("collection", f.TMDBID),
+				FindingMetadata:   sources.metadata(tmdbLink("collection", f.TMDBID), "", 0, 0),
 			}
 			sort.SliceStable(d.MissingParts, func(i, j int) bool {
 				return yearValue(d.MissingParts[i].Year) < yearValue(d.MissingParts[j].Year)
@@ -115,15 +150,11 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 				if p.Year != "" {
 					text += " (" + p.Year + ")"
 				}
-				item := DetailItem{Text: text, TMDBLink: tmdbLink("movie", p.TMDBID)}
-				if p.Rating > 0 {
-					item.Rating = fmt.Sprintf("%.1f", p.Rating)
-				}
+				item := DetailItem{Text: text, FindingMetadata: sources.metadata(tmdbLink("movie", p.TMDBID), imdbURL(p.IMDbID), p.Rating, p.IMDbRating)}
 				item.CopyText = p.Title
 				if p.Year != "" {
 					item.CopyText += " " + p.Year
 				}
-				item.IMDbURL = imdbURL(p.IMDbID)
 				row.DetailItems = append(row.DetailItems, item)
 			}
 			rows = append(rows, row)
@@ -133,15 +164,15 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			g := groups[key]
 			if g == nil {
 				g = &FindingRow{
-					LibraryIDs:   findingLibraries(f),
-					KindLabel:    t.T("finding.kind.series"),
-					MediaIcon:    mediaIcon(store.MediaSeries),
-					Title:        f.Title,
-					Library:      f.LibraryName,
-					LibraryID:    f.LibraryID,
-					LibraryColor: LibraryColor(f.LibraryID),
-					JellyfinLink: findingLink(f, jellyfinURL),
-					TMDBLink:     tmdbLink("tv", f.TMDBID),
+					LibraryIDs:      findingLibraries(f),
+					KindLabel:       t.T("finding.kind.series"),
+					MediaIcon:       mediaIcon(store.MediaSeries),
+					Title:           f.Title,
+					Library:         f.LibraryName,
+					LibraryID:       f.LibraryID,
+					LibraryColor:    LibraryColor(f.LibraryID),
+					FindingMetadata: sources.metadata(tmdbLink("tv", f.TMDBID), imdbURL(d.IMDbID), 0, 0),
+					JellyfinLink:    findingLink(f, ""),
 				}
 				groups[key] = g
 				groupOrder = append(groupOrder, key)
@@ -152,17 +183,44 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, jellyfinURL 
 			g.LibraryReferences = append(g.LibraryReferences, findingReferences(f)...)
 			g.LibraryIDs = append(g.LibraryIDs, findingLibraries(f)...)
 			var text string
-			if f.Kind == store.KindMissingSeason {
+			if n := len(d.MissingEpisodes); n > 0 && d.EpisodeCount >= n {
+				text = t.T("finding.missingOfTotal", d.SeasonNumber, n, d.EpisodeCount)
+			} else if f.Kind == store.KindMissingSeason {
 				text = t.T("finding.missingSeason", d.SeasonNumber, len(d.MissingEpisodes))
 			} else {
 				text = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
 			}
-			g.DetailItems = append(g.DetailItems, DetailItem{
-				Text:     text,
-				sortKey:  d.SeasonNumber,
-				CopyText: fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber),
-				IMDbURL:  imdbSeasonURL(d.IMDbID, d.SeasonNumber),
-			})
+			seasonURL := ""
+			if g.TMDBLink != "" {
+				seasonURL = fmt.Sprintf("%s/season/%d", g.TMDBLink, d.SeasonNumber)
+			}
+			line := DetailItem{
+				Text:            text,
+				sortKey:         d.SeasonNumber,
+				CopyText:        fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber),
+				FindingMetadata: sources.metadata(seasonURL, imdbSeasonURL(d.IMDbID, d.SeasonNumber), 0, 0),
+			}
+			if stat := series[f.TMDBID]; stat != nil {
+				g.FindingMetadata = sources.metadata(tmdbLink("tv", f.TMDBID), imdbURL(d.IMDbID), stat.Rating, stat.IMDbRating)
+				for _, season := range stat.Seasons {
+					if season.Number != d.SeasonNumber {
+						continue
+					}
+					line.FindingMetadata = sources.metadata(seasonURL, line.IMDbURL, season.Rating, season.IMDbRating)
+					missing := map[int]bool{}
+					for _, n := range d.MissingEpisodes {
+						missing[n] = true
+					}
+					for _, ep := range season.Ratings {
+						m := sources.metadata("", "", ep.Rating, ep.IMDbRating)
+						if missing[ep.Number] && (m.TMDBRating != "" || m.IMDbRating != "") {
+							line.Episodes = append(line.Episodes, DetailItem{Text: strings.TrimSpace(fmt.Sprintf("S%02dE%02d %s", season.Number, ep.Number, ep.Title)), FindingMetadata: m})
+						}
+					}
+					break
+				}
+			}
+			g.DetailItems = append(g.DetailItems, line)
 			g.MissingCount += len(d.MissingEpisodes)
 		}
 	}

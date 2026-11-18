@@ -24,6 +24,7 @@ type LibrarySummary struct {
 
 // MediaStat captures TMDB metadata of an owned title for statistics.
 type MediaStat struct {
+	IMDbRating float64 `json:"imdbRating,omitempty"`
 	Provenance
 	LibraryAvailability *LibraryAvailability `json:"libraryAvailability,omitempty"`
 	MetadataUnavailable bool                 `json:"metadataUnavailable,omitempty"`
@@ -59,20 +60,22 @@ type LibraryAvailability struct {
 // SeasonStat captures how many episodes of a season are owned and, when episode
 // ratings are enabled, how each episode of that season is rated.
 type SeasonStat struct {
-	Number   int             `json:"number"`
-	Episodes int             `json:"episodes"`
-	Total    int             `json:"total"`
-	Rating   float64         `json:"rating,omitempty"` // average episode rating
-	Ratings  []EpisodeRating `json:"ratings,omitempty"`
+	IMDbRating float64         `json:"imdbRating,omitempty"`
+	Number     int             `json:"number"`
+	Episodes   int             `json:"episodes"`
+	Total      int             `json:"total"`
+	Rating     float64         `json:"rating,omitempty"` // average episode rating
+	Ratings    []EpisodeRating `json:"ratings,omitempty"`
 }
 
 // EpisodeRating is the TMDB rating of a single episode.
 type EpisodeRating struct {
-	Number  int     `json:"number"`
-	Title   string  `json:"title,omitempty"`
-	Rating  float64 `json:"rating"`
-	Minutes int     `json:"minutes,omitempty"`
-	Owned   bool    `json:"owned,omitempty"`
+	IMDbRating float64 `json:"imdbRating,omitempty"`
+	Number     int     `json:"number"`
+	Title      string  `json:"title,omitempty"`
+	Rating     float64 `json:"rating"`
+	Minutes    int     `json:"minutes,omitempty"`
+	Owned      bool    `json:"owned,omitempty"`
 }
 
 // UpcomingItem is an announced release derived from a title already in the

@@ -70,7 +70,6 @@ type Result struct {
 	AI             []AIItem
 	AIEnabled      bool
 	GeneratedAt    time.Time
-	BasedOnRunID   int64
 	Errors         []string
 }
 
@@ -226,9 +225,6 @@ func (s *Service) build(ctx context.Context) *Result {
 	run := activity.FromContext(ctx)
 	run.Phase(activity.Inventory, -1)
 	res := &Result{GeneratedAt: s.now()}
-	if run, err := s.store.LatestSuccessfulRun(ctx); err == nil && run != nil {
-		res.BasedOnRunID = run.ID
-	}
 	settings := s.cfg.Get()
 	res.SourcesToken = settings.SourcesToken()
 

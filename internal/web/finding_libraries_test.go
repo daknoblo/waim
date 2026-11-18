@@ -77,7 +77,7 @@ func TestCollectionFindingsShowReferencesOnlyInLibraryColumn(t *testing.T) {
 		LibraryID: "a/movies", LibraryName: "Films", Provenance: store.Provenance{ContextReferences: []media.Reference{ref, ref}},
 		Details: `{"missingParts":[{"tmdbId":2,"title":"Missing movie","year":"2025","rating":7.5,"imdbId":"tt1234567"}]}`,
 	}}
-	rows := BuildFindingRows(tr, findings, "")
+	rows := BuildFindingRows(tr, findings, FindingSources{TMDB: true, IMDb: true}, nil)
 	var b bytes.Buffer
 	if err := FindingsTable(tr, rows, SortTitle, DirAsc, DataReady).Render(context.Background(), &b); err != nil {
 		t.Fatal(err)
@@ -151,7 +151,7 @@ func TestGroupedSeriesAndVirtualFindingsKeepAllLibraryLabels(t *testing.T) {
 	second := base
 	second.References = []media.Reference{b}
 	v := store.VirtualEntry{Type: media.Movie, TMDBID: 2, Title: "Watched"}.Item()
-	rows := BuildFindingRows(tr, []store.Finding{base, second, {Kind: store.KindMissingMovie, MediaType: store.MediaMovie, TMDBID: 2, Title: "Watched", LibraryID: media.VirtualID, Provenance: store.Provenance{References: v.References}}}, "")
+	rows := BuildFindingRows(tr, []store.Finding{base, second, {Kind: store.KindMissingMovie, MediaType: store.MediaMovie, TMDBID: 2, Title: "Watched", LibraryID: media.VirtualID, Provenance: store.Provenance{References: v.References}}}, FindingSources{TMDB: true}, nil)
 	if len(rows) != 2 {
 		t.Fatalf("unexpected row count: %d", len(rows))
 	}

@@ -48,6 +48,41 @@ func manualFixture(t *testing.T) (*Refresher, *activity.Tracker) {
 	return New(cfg, st, nil, tracker), tracker
 }
 
+func TestFailedOldestKeyDoesNotStarveNextRefresh(t *testing.T) {
+	r, tracker := manualFixture(t)
+	settings := r.cfg.Get()
+	settings.Cache.RefreshPercent = 1 // one key per batch
+	if err := r.cfg.Save(settings); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := r.store.TMDBCacheOldestKeys(t.Context(), 2)
+	if err != nil || len(keys) != 2 {
+		t.Fatalf("initial queue: %v, %v", keys, err)
+	}
+	var paths []string
+	old := http.DefaultTransport
+	defer func() { http.DefaultTransport = old }()
+	http.DefaultTransport = cacheTransport(func(req *http.Request) (*http.Response, error) {
+		paths = append(paths, req.URL.Path)
+		status := http.StatusOK
+		if req.URL.Path == "/3"+keys[0] {
+			status = http.StatusNotFound
+		}
+		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(`{"id":2}`)), Request: req}, nil
+	})
+	r.refresh(t.Context(), true)
+	if tracker.Snapshot()[1].Failures != 1 {
+		t.Fatal("404 not reported")
+	}
+	r.refresh(t.Context(), true)
+	if len(paths) != 2 || paths[1] != "/3"+keys[1] || tracker.Snapshot()[1].Failures != 0 {
+		t.Fatalf("second batch did not advance: %v", paths)
+	}
+	if body, ok, err := r.store.TMDBCacheGet(t.Context(), keys[0]); err != nil || !ok || string(body) != "{}" {
+		t.Fatalf("failed refresh lost cached body: %q, %v", body, err)
+	}
+}
+
 func TestManualCacheRefreshUsesConfiguredBatchAndCoalesces(t *testing.T) {
 	r, tracker := manualFixture(t)
 	var calls atomic.Int64

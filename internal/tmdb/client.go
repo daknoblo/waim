@@ -1,6 +1,7 @@
 package tmdb
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 )
 
 const baseURL = "https://api.themoviedb.org/3"
+const maxResponseBytes = 4 << 20
 
 var budget = struct {
 	sync.Mutex
@@ -116,17 +118,17 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 	if err != nil {
 		return err
 	}
-	if c.cache != nil && out != nil && len(body) > 0 {
-		if err := c.cache.Put(ctx, key, body); err != nil {
-			// A failed write leaves the cache stale; surface it without failing the call.
-			slog.Default().Warn("tmdb: cache write failed", "key", key, "error", err)
-		}
-	}
 	if out == nil {
 		return nil
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("tmdb: decode %s: %w", path, err)
+	}
+	if c.cache != nil {
+		if err := c.cache.Put(ctx, key, body); err != nil {
+			// A failed write leaves the cache stale; surface it without failing the call.
+			slog.Default().Warn("tmdb: cache write failed", "key", key, "error", err)
+		}
 	}
 	return nil
 }
@@ -178,9 +180,16 @@ func (c *Client) fetchRaw(ctx context.Context, path string, q url.Values) ([]byt
 			"path", path, "status", resp.StatusCode, "body", strings.TrimSpace(string(body)))
 		return nil, fmt.Errorf("tmdb: %s returned %d", path, resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("tmdb: read %s: %w", path, err)
+	}
+	if len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("tmdb: response too large: %s", path)
+	}
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 || body[0] != '{' || !json.Valid(body) {
+		return nil, fmt.Errorf("tmdb: expected JSON object: %s", path)
 	}
 	return body, nil
 }

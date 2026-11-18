@@ -254,6 +254,12 @@ Save feedback and retry controls are visible inside the dialog. Closing via the
 button, Escape or backdrop waits for pending saves; failures preserve the edits.
 The optional AI settings remain below the tile grid and are not part of the
 TMDB dialog. Metadata language and region are still configured under Interface.
+Dashboard findings show links and ratings only for configured metadata providers.
+TMDB scores are blue; a season score is the mean of its rated episodes.
+Season and episode ratings appear when the scan has saved them. A season gap
+shows the number of missing released episodes out of the known season total.
+An IMDb ID from another provider does not enable IMDb badges or links.
+
 IMDb is only a clearly labeled future-provider placeholder: no IMDb requests,
 credentials, or enabled configuration actions are introduced.
 
@@ -324,7 +330,7 @@ scan or suggestion.
 | Collect episode ratings        | Loads every season of every series from TMDB so the statistics page can show the episode rating heatmap and exact series runtimes. The first scan takes noticeably longer (one request per season, bounded by the rate limit); afterwards the responses come from the local cache. Off by default. |
 | Refresh cached TMDB data       | Master switch for the background refresher.                                                          |
 | Refresh interval (minutes)     | How often a refresh batch runs.                                                                      |
-| Share refreshed per run (%)    | Percentage of the oldest cache entries re-fetched each run. The defaults (1% every 15 min) spread a full refresh across the day. The settings page previews the request volume and how long a full refresh takes. |
+| Share refreshed per run (%)    | Percentage of cache entries re-fetched each run, oldest attempt first. Failed refreshes preserve the last valid response and do not block other entries. The defaults (1% every 15 min) spread a full refresh across the day. The settings page previews the request volume and how long a full refresh takes. |
 | Remove orphaned entries nightly | Master switch for the nightly cleanup.                                                              |
 | Remove entries unused for (days) | Cache entries not requested by any scan or suggestion for this many days are deleted (e.g. media removed from the library). |
 

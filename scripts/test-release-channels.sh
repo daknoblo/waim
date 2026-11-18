@@ -65,12 +65,36 @@ if bash "$scripts/check-release-ready.sh" >/dev/null 2>&1; then
 fi
 
 git switch -q main
-git add README.md
+mkdir -p scripts
+cp "$scripts/check-release-ready.sh" scripts/
+cp "$scripts/../Makefile" .
+git add README.md Makefile scripts
 git -c commit.gpgsign=false commit -q -m documentation
 git init -q --bare "$fixture/origin.git"
 git remote add origin "$fixture/origin.git"
 git push -q origin main
 bash "$scripts/check-release-ready.sh"
+unset PUSH SEED_FORCE
+for flag in unset 0 1; do
+  args=()
+  version="3.0.0"
+  if [[ $flag != unset ]]; then
+    args=("PUSH=$flag" "SEED_FORCE=$flag")
+    version="3.1.$flag"
+  fi
+  seed=$(make -n seed ${args[@]+"${args[@]}"})
+  make release "VERSION=$version" MESSAGE=test ${args[@]+"${args[@]}"} >/dev/null
+  if [[ $flag == 1 ]]; then
+    [[ $seed == *' -force' ]]
+    git --git-dir="$fixture/origin.git" show-ref --verify --quiet "refs/tags/$version"
+  else
+    [[ $seed != *' -force'* ]]
+    if git --git-dir="$fixture/origin.git" show-ref --verify --quiet "refs/tags/$version"; then
+      echo "unexpectedly pushed release with PUSH=$flag" >&2
+      exit 1
+    fi
+  fi
+done
 printf '\ndirty\n' >> README.md
 if bash "$scripts/check-release-ready.sh" >/dev/null 2>&1; then
   echo "incorrectly allowed a release from a dirty main" >&2

@@ -23,7 +23,7 @@ func TestVirtualLabelsReplaceRedundantWatchOnlyHint(t *testing.T) {
 			item := (store.VirtualEntry{Type: kind, TMDBID: 42, Title: "Virtual title"}).Item()
 			ctx := WithProvenance(context.Background(), media.Catalog{Items: []media.Item{item}}, nil)
 			link := WatchURL(kind, 42)
-			row := FindingRow{Title: item.Name, TMDBLink: link, LibraryID: media.VirtualID, LibraryReferences: item.References}
+			row := FindingRow{Title: item.Name, FindingMetadata: FindingMetadata{TMDBLink: link}, LibraryID: media.VirtualID, LibraryReferences: item.References}
 			for _, component := range []templ.Component{
 				FindingsTable(tr, []FindingRow{row}, SortTitle, DirAsc, DataReady),
 				MediaSources(tr, link),
