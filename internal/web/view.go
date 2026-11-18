@@ -27,12 +27,11 @@ const (
 	DirDesc     = "desc"
 )
 
-// DetailItem is a single missing part/episode line, with an optional rating.
+// DetailItem describes one missing collection part or one season with gaps.
 type DetailItem struct {
 	FindingMetadata
 	Text     string
 	CopyText string
-	Episodes []DetailItem
 	sortKey  int
 }
 
@@ -126,7 +125,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 		}
 		switch f.Kind {
 		case store.KindMissingMovie:
-			rows = append(rows, FindingRow{LibraryReferences: findingReferences(f), LibraryIDs: findingLibraries(f), KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), FindingMetadata: sources.metadata(tmdbLink("movie", f.TMDBID), imdbURL(d.IMDbID), d.Rating, d.IMDbRating)})
+			rows = append(rows, FindingRow{LibraryReferences: findingReferences(f), LibraryIDs: findingLibraries(f), KindLabel: t.T("finding.kind.missing_movie"), MediaIcon: mediaIcon(store.MediaMovie), Title: f.Title, Library: f.LibraryName, LibraryID: f.LibraryID, LibraryColor: LibraryColor(f.LibraryID), Detail: t.T("finding.missingMovie"), MissingCount: 1, PosterURL: posterURL(d.PosterPath), FindingMetadata: sources.metadata("", "", d.Rating, d.IMDbRating)})
 		case store.KindMissingCollection:
 			row := FindingRow{
 				LibraryReferences: findingReferences(f),
@@ -150,7 +149,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 				if p.Year != "" {
 					text += " (" + p.Year + ")"
 				}
-				item := DetailItem{Text: text, FindingMetadata: sources.metadata(tmdbLink("movie", p.TMDBID), imdbURL(p.IMDbID), p.Rating, p.IMDbRating)}
+				item := DetailItem{Text: text, FindingMetadata: sources.metadata("", "", p.Rating, p.IMDbRating)}
 				item.CopyText = p.Title
 				if p.Year != "" {
 					item.CopyText += " " + p.Year
@@ -190,15 +189,10 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 			} else {
 				text = t.T("finding.missingEpisodes", d.SeasonNumber, len(d.MissingEpisodes))
 			}
-			seasonURL := ""
-			if g.TMDBLink != "" {
-				seasonURL = fmt.Sprintf("%s/season/%d", g.TMDBLink, d.SeasonNumber)
-			}
 			line := DetailItem{
-				Text:            text,
-				sortKey:         d.SeasonNumber,
-				CopyText:        fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber),
-				FindingMetadata: sources.metadata(seasonURL, imdbSeasonURL(d.IMDbID, d.SeasonNumber), 0, 0),
+				Text:     text,
+				sortKey:  d.SeasonNumber,
+				CopyText: fmt.Sprintf("%s S%02d", g.Title, d.SeasonNumber),
 			}
 			if stat := series[f.TMDBID]; stat != nil {
 				g.FindingMetadata = sources.metadata(tmdbLink("tv", f.TMDBID), imdbURL(d.IMDbID), stat.Rating, stat.IMDbRating)
@@ -206,17 +200,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 					if season.Number != d.SeasonNumber {
 						continue
 					}
-					line.FindingMetadata = sources.metadata(seasonURL, line.IMDbURL, season.Rating, season.IMDbRating)
-					missing := map[int]bool{}
-					for _, n := range d.MissingEpisodes {
-						missing[n] = true
-					}
-					for _, ep := range season.Ratings {
-						m := sources.metadata("", "", ep.Rating, ep.IMDbRating)
-						if missing[ep.Number] && (m.TMDBRating != "" || m.IMDbRating != "") {
-							line.Episodes = append(line.Episodes, DetailItem{Text: strings.TrimSpace(fmt.Sprintf("S%02dE%02d %s", season.Number, ep.Number, ep.Title)), FindingMetadata: m})
-						}
-					}
+					line.FindingMetadata = sources.metadata("", "", season.Rating, season.IMDbRating)
 					break
 				}
 			}
@@ -343,14 +327,6 @@ func imdbURL(id string) string {
 		return ""
 	}
 	return "https://www.imdb.com/title/" + id + "/"
-}
-
-func imdbSeasonURL(id string, season int) string {
-	id = strings.TrimSpace(id)
-	if !strings.HasPrefix(id, "tt") {
-		return ""
-	}
-	return fmt.Sprintf("https://www.imdb.com/title/%s/episodes/?season=%d", id, season)
 }
 
 // FormatRelative renders a time relative to now, e.g. "5 minutes ago" or

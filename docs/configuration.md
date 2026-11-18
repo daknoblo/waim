@@ -256,8 +256,10 @@ The optional AI settings remain below the tile grid and are not part of the
 TMDB dialog. Metadata language and region are still configured under Interface.
 Dashboard findings show links and ratings only for configured metadata providers.
 TMDB scores are blue; a season score is the mean of its rated episodes.
-Season and episode ratings appear when the scan has saved them. A season gap
-shows the number of missing released episodes out of the known season total.
+The dashboard links to the collection or series, not each film or season.
+A season gap shows one line with its rating (if known) and the number of
+missing released episodes out of the season total. Individual episodes remain
+on the statistics page.
 An IMDb ID from another provider does not enable IMDb badges or links.
 
 IMDb is only a clearly labeled future-provider placeholder: no IMDb requests,

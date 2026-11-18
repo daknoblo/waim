@@ -30,10 +30,10 @@ func TestFindingRatingsRespectProviderAndMissingEpisodes(t *testing.T) {
 			t.Fatal(err)
 		}
 		html := b.String()
-		if !strings.Contains(html, "Staffel 1 – 6/8 Folgen fehlen") || strings.Contains(html, "Finale") {
+		if !strings.Contains(html, "Staffel 1 – 6/8 Folgen fehlen") || strings.Contains(html, "Pilot") || strings.Contains(html, "Finale") || strings.Contains(html, "/season/1") || strings.Contains(html, "TMDB ★") {
 			t.Fatal("wrong season gap or episode list")
 		}
-		for _, label := range []string{"TMDB ★ 8.1", "TMDB ★ 7.3", "TMDB ★ 8.2", "S01E01 Pilot", "/tv/42/season/1"} {
+		for _, label := range []string{"★ 8.1", "★ 7.3", `href="https://www.themoviedb.org/tv/42"`} {
 			if strings.Contains(html, label) != sources.TMDB {
 				t.Fatalf("TMDB=%v: %s", sources.TMDB, label)
 			}

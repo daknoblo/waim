@@ -164,12 +164,6 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 													}
 													@findingRatings(di.FindingMetadata)
 												</li>
-												for _, ep := range di.Episodes {
-													<li class="ml-3 flex flex-wrap items-center gap-2 text-xs">
-														{ ep.Text }
-														@findingRatings(ep.FindingMetadata)
-													</li>
-												}
 											}
 										</ul>
 									}
@@ -183,14 +177,6 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 											}
 										}
 									</div>
-									for _, di := range r.DetailItems {
-										if di.TMDBLink != "" || di.IMDbURL != "" {
-											<div class="mt-1 flex flex-wrap items-center gap-2 sm:justify-end">
-												<span class="max-w-32 truncate text-xs text-slate-400" title={ di.CopyText }>{ di.CopyText }</span>
-												@findingLinks(di.CopyText,di.FindingMetadata)
-											</div>
-										}
-									}
 								</td>
 							</tr>
 						}
@@ -215,7 +201,7 @@ templ findingRatings(m FindingMetadata) {
 		<span class="whitespace-nowrap rounded bg-amber-500/15 px-1.5 text-xs text-amber-300">{ "IMDb ★ " + m.IMDbRating }</span>
 	}
 	if m.TMDBRating != "" {
-		<span class="whitespace-nowrap rounded bg-sky-500/15 px-1.5 text-xs text-sky-300">{ "TMDB ★ " + m.TMDBRating }</span>
+		<span title="TMDB" class="whitespace-nowrap rounded bg-sky-500/15 px-1.5 text-xs text-sky-300"><span class="sr-only">TMDB </span>{ "★ " + m.TMDBRating }</span>
 	}
 }
 
