@@ -10,6 +10,28 @@ import (
 	"github.com/daknoblo/waim/internal/i18n"
 )
 
+func TestActivityLastFinishedUsesEndNotStart(t *testing.T) {
+	catalog, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for _, locale := range []string{"de", "en"} {
+		tr := catalog.For(locale)
+		for _, age := range []time.Duration{7 * time.Minute, 3 * time.Hour} {
+			ended := now.Add(-age)
+			state := activity.State{Job: activity.Cache, Status: activity.Completed, StartedAt: ended.Add(-2 * time.Hour), EndedAt: ended}
+			var b strings.Builder
+			if err := ActivityPanel(tr, BuildActivities([]activity.State{state}, true, now)).Render(t.Context(), &b); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(b.String(), tr.T("activity.lastFinished", FormatRelative(tr, &ended))) || !strings.Contains(b.String(), ended.Format(time.RFC3339)) {
+				t.Fatalf("missing localized completion time (%s, %v)", locale, age)
+			}
+		}
+	}
+}
+
 func TestActivitySeparatesProgressFromTitleDiagnostics(t *testing.T) {
 	catalog, err := i18n.Load()
 	if err != nil {

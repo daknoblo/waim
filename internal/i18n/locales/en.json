@@ -81,6 +81,7 @@
   "activity.indeterminate": "No total yet · working",
   "activity.empty": "No work in this phase",
   "activity.elapsed": "elapsed",
+  "activity.lastFinished": "Last finished: %s",
   "activity.page": "Page",
   "activity.failures": "failed units",
   "activity.skipped": "skipped units",

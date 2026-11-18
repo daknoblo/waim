@@ -123,6 +123,8 @@ log refresh. Unchanged partials return HTTP 204; progress never replaces the log
 window. No extra upstream requests are made to measure progress.
 
 Every card keeps its ring visible. When no job is running it reads **Idle**;
+during state changes the ring, footer and start button keep their positions.
+After a run, the footer shows how long ago it ended (hover for the exact time);
 during a counted phase it fills from 0% to 100% as units are processed.
 The percentage applies **only to the current phase**, not the
 whole job or the other workers. Metadata evaluation counts unique catalog titles,
