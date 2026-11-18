@@ -52,7 +52,7 @@ func (v ActivityView) Tone() string {
 			return "activity-warning"
 		}
 		return "activity-running"
-	case activity.Completed:
+	case activity.Idle, activity.Completed:
 		if v.Severity() == "" {
 			return "activity-success"
 		}
@@ -73,7 +73,7 @@ func (v ActivityView) JobKey() string {
 	return "activity.job." + string(v.Job)
 }
 func (v ActivityView) StatusKey() string {
-	if v.Status == activity.Completed && v.Severity() == "" {
+	if (v.Status == activity.Idle || v.Status == activity.Completed) && v.Severity() == "" {
 		return "activity.status.ok"
 	}
 	return "activity.status." + string(v.Status)

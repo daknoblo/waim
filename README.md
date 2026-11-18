@@ -208,8 +208,8 @@ diagnostics and still-unconfirmed scans are not treated as resolved. The card
 notes when a newer scan resolved old title-matching warnings. That confirmation
 is persisted so an unrelated later outage does not revive the old warning.
 
-Successfully completed activity cards show a green **OK**. Tasks that have never
-run remain **Ready**, rather than claiming a verified success.
+A green **OK** means no known issue: a configured task shows it both before its
+first run and after a clean run. Missing setup, warnings and failures stay distinct.
 
 The Source scan, Cache maintenance and Suggestions cards each have a **Start
 now** button. During counted phases they show the current task number. Warning

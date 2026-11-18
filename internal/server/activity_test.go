@@ -111,7 +111,10 @@ func TestActivityWaitingSetupAndIdleLocalization(t *testing.T) {
 			s.Handler().ServeHTTP(w, r)
 			key := "activity.status.waiting"
 			if configured {
-				key = "activity.status.idle"
+				key = "activity.status.ok"
+				if strings.Count(w.Body.String(), "activity-success") != 3 {
+					t.Fatal("configured idle activities must all be green before their first run")
+				}
 			}
 			if strings.Count(w.Body.String(), s.catalog.For(locale).T(key)) != 3 || strings.Contains(w.Body.String(), "aria-valuenow") {
 				t.Fatalf("bad %s idle/setup state: %s", locale, w.Body.String())
