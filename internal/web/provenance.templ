@@ -1,0 +1,34 @@
+package web
+
+import "github.com/daknoblo/waim/internal/media"
+import "github.com/daknoblo/waim/internal/i18n"
+
+templ MediaSources(t *i18n.Translator, link string) {
+	if target := Target(ctx,link); len(target.References)>0 {
+		<div class="mt-1 flex flex-wrap items-center gap-1 text-xs">
+			@SourceBadges(t,target.References)
+		</div>
+	}
+}
+
+templ SourceBadges(t *i18n.Translator,refs []media.Reference) {
+	<div class="flex flex-wrap items-center gap-1 text-xs">
+		for _, ref := range InstanceRefs(refs) {
+			<a href={ templ.SafeURL(ref.URL) } class="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:text-white" title={ sourceLabel(t,ref) } aria-label={ sourceLabel(t,ref) } target="_blank" rel="noreferrer noopener">
+				if ref.Type == media.Virtual {
+					<span aria-hidden="true">☆ </span>{ t.T("sources.collection") }
+				} else {
+					<span aria-hidden="true">▣ </span>{ ref.Name }
+				}
+				if ref.Stale {
+					<span class="text-amber-200"> · { t.T("sources.stale") }</span>
+				}
+			</a>
+		}
+	</div>
+}
+
+func sourceLabel(t *i18n.Translator,ref media.Reference) string {
+	if ref.Type==media.Virtual {return t.T("sources.collection")}
+	return ref.Name
+}

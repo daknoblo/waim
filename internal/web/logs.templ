@@ -9,14 +9,42 @@ templ logsBody(d LogPageData) {
 		<div class="flex items-center justify-between">
 			<h1 class="text-lg font-semibold">{ d.Layout.T.T("nav.logs") }</h1>
 		</div>
+		<p id="activity-start-feedback" role="alert" class="text-sm text-rose-300" data-failed={ d.Layout.T.T("activity.startFailed") } hidden></p>
+		<div id="activity" hx-get="/partials/activity" hx-trigger="every 2s" hx-swap="innerHTML">
+			@ActivityPanel(d.Layout.T, d.Activities)
+		</div>
+		<details id="diagnostics" class="card scroll-mt-24" open>
+			<summary class="cursor-pointer text-sm font-semibold">{ d.Layout.T.T("diagnostics.heading") }</summary>
+			<div id="diagnostic-content" hx-get="/partials/diagnostics" hx-trigger="every 3s" hx-swap="innerHTML" class="mt-3">
+				@DiagnosticsPanel(d.Layout.T,d.Diagnostics)
+			</div>
+		</details>
+		<form method="get" action="/logs" hx-get="/partials/log" hx-trigger="change, submit" hx-target="#log" hx-swap="innerHTML" hx-sync="#log:replace" class="flex flex-wrap items-center justify-between gap-3">
+			<h2 class="text-sm font-semibold">{ d.Layout.T.T("logs.output") }</h2>
+			<label class="flex items-center gap-2 text-sm text-slate-400">
+				<span>{ d.Layout.T.T("logs.level") }</span>
+				<select id="log-level" name="level" class="select-filter">
+					<option value="" selected?={ d.Level == "" }>{ d.Layout.T.T("logs.allLevels") }</option>
+					for _, level := range []string{"DEBUG","INFO","WARN","ERROR"} {
+						<option value={ level } selected?={ d.Level == level }>{ level }</option>
+					}
+				</select>
+			</label>
+			<noscript><button type="submit" class="btn-ghost">{ d.Layout.T.T("logs.filter") }</button></noscript>
+		</form>
+		if d.LogCapacity > 0 {
+			<p class="text-xs text-slate-400">{ d.Layout.T.T("logs.retention",d.LogCapacity) }</p>
+		}
 		<div
 			id="log"
 			hx-get="/partials/log"
 			hx-trigger="every 3s"
 			hx-swap="innerHTML"
+			hx-include="#log-level"
+			hx-sync="this:replace"
 			class="card flex-1 overflow-y-auto bg-slate-950/60"
 		>
-			@LogPanel(d.Layout.T, d.Logs)
+			@LogPanel(d.Layout.T, d.Logs, d.Level)
 		</div>
 	</section>
 }

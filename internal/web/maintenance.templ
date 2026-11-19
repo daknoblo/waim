@@ -1,0 +1,31 @@
+package web
+
+import "github.com/daknoblo/waim/internal/i18n"
+
+templ MutationEpoch() {
+	<input type="hidden" name="_epoch" value={ mutationEpoch(ctx) }/>
+}
+
+templ dangerZone(t *i18n.Translator, demo bool) {
+	<section class="mt-6 rounded-xl border border-rose-500/40 bg-rose-500/5 p-5">
+		<h2 class="text-lg font-semibold text-rose-200">{ t.T("settings.reset.title") }</h2>
+		<p class="mt-2 text-sm text-slate-300">{ t.T("settings.reset.hint") }</p>
+		<div class="mt-4 grid gap-3">
+			for _, scope := range []string{"metadata", "media", "factory"} {
+				<details class="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
+					<summary class="cursor-pointer font-medium text-rose-200">{ t.T("settings.reset." + scope) }</summary>
+					<form method="post" action="/settings/reset" class="mt-4 grid gap-3">
+						<fieldset disabled?={ demo } class="grid gap-3">
+						@MutationEpoch()
+						<input type="hidden" name="scope" value={ scope }/>
+						<p class="text-sm text-slate-300">{ t.T("settings.reset." + scope + ".details") }</p>
+						<label class="flex items-start gap-2 text-sm"><input type="checkbox" name="confirm" value="yes" required class="checkbox"/>{ t.T("settings.reset.confirm") }</label>
+						<label class="grid gap-1 text-sm">{ t.T("settings.reset.type") }<input class="input max-w-xs" type="text" name="confirmation" pattern="RESET" required autocomplete="off"/></label>
+						<button class="btn-danger justify-self-start" type="submit">{ t.T("settings.reset." + scope) }</button>
+						</fieldset>
+					</form>
+				</details>
+			}
+		</div>
+	</section>
+}

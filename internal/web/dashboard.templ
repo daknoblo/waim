@@ -1,5 +1,7 @@
 package web
 
+import "strings"
+
 import "github.com/daknoblo/waim/internal/i18n"
 import "strconv"
 
@@ -8,7 +10,7 @@ templ Dashboard(d DashboardData) {
 }
 
 templ dashboardBody(d DashboardData) {
-	<section class="grid gap-4">
+	<section id="dashboard-content" class="grid min-w-0 gap-4 lg:-mx-[5%]">
 		@StatusCard(d.Layout.T, d.Status)
 
 		<div class="card">
@@ -46,7 +48,8 @@ templ StatusCard(t *i18n.Translator, s StatusView) {
 				</div>
 			</div>
 			<form hx-post="/scan" hx-target="#status-card" hx-swap="outerHTML" class="w-full sm:w-auto">
-				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ s.Running }>
+				@MutationEpoch()
+				<button type="submit" class="btn-primary w-full sm:w-auto" disabled?={ s.Running || s.SetupRequired }>
 					{ t.T("dashboard.scanNow") }
 				</button>
 			</form>
@@ -107,7 +110,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 		if len(rows) == 0 {
 			if state == DataReady {
 				<p class="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{ t.T("dashboard.noFindings") }</p>
-			} else {
+			} else if state != DataUnconfigured {
 				<p class="rounded-lg bg-slate-900/60 px-4 py-3 text-sm text-slate-400">{ t.T(dataStateKey(state)) }</p>
 			}
 		} else {
@@ -124,7 +127,7 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 					</thead>
 					<tbody class="divide-y divide-slate-800 align-top">
 						for _, r := range rows {
-							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID }>
+							<tr class="hover:bg-slate-900/40" data-library={ r.LibraryID } data-libraries={ strings.Join(r.LibraryIDs," ") }>
 								<td class="px-3 py-2">
 								<div class="flex items-center gap-2">
 									if r.PosterURL != "" {
@@ -133,40 +136,55 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 										<div class="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-slate-800 text-sm">{ r.MediaIcon }</div>
 									}
 									<span class="font-medium text-slate-100">{ r.Title }</span>
+									@findingRatings(r.FindingMetadata)
 								</div>
 							</td>
-								<td class="px-3 py-2"><span class={ "badge", r.LibraryColor }>{ r.Library }</span></td>
-								<td class="px-3 py-2 text-slate-300" data-label={ t.T("finding.col.detail") }>
+								<td class="px-3 py-2" data-label={ t.T("finding.col.library") }>
+									<div class="grid justify-items-start gap-1 overflow-x-auto sm:overflow-visible">
+										for _, label := range FindingLibraryLabels(t,r.LibraryReferences,r.LibraryID,r.Library) {
+											<span class={ "badge whitespace-nowrap", label.Color } title={ label.Name }>
+												{ label.Text }
+												if label.Stale {
+													<span class="text-amber-200"> · { t.T("sources.stale") }</span>
+												}
+											</span>
+										}
+									</div>
+								</td>
+								<td colspan="2" class="px-3 py-2 text-slate-300" data-label={ t.T("finding.col.detail") }>
+									<div class="flex items-start justify-between gap-2">
 									<div class="font-bold text-slate-100">{ r.Detail }</div>
+									<div class="flex flex-wrap justify-end gap-2" data-label={ t.T("finding.col.links") }>
+										@findingLinks(r.Title,r.FindingMetadata)
+										if r.CollectionLink != "" {
+											<a class="link-tmdb" href={ r.CollectionLink } target="_blank" rel="noreferrer noopener">{ t.T("finding.collectionLink") }</a>
+										}
+										for _, ref := range InstanceRefs(Target(ctx,r.JellyfinLink).References) {
+											if ref.URL != "" && ref.Type == "jellyfin" {
+												<a class="link-jellyfin" href={ ref.URL } target="_blank" rel="noreferrer noopener">{ ref.Name }</a>
+											}
+										}
+									</div>
+									</div>
 									if len(r.DetailItems) > 0 {
 										<ul class="mt-1 space-y-0.5 text-slate-400">
 											for _, di := range r.DetailItems {
-												<li class="flex flex-wrap items-center gap-2">
+												<li class="flex items-start justify-between gap-2">
+													<div class="flex min-w-0 flex-wrap items-center gap-2">
 													if di.CopyText != "" {
 														<button type="button" class="copy-name" data-copy={ di.CopyText } title={ t.T("finding.copyHint") }>{ di.Text }</button>
 													} else {
 														<span>{ di.Text }</span>
 													}
-													if di.Rating != "" {
-														<span class="rounded bg-amber-500/15 px-1.5 text-xs text-amber-300">{ "\u2605 " + di.Rating }</span>
-													}
-													if di.IMDbURL != "" {
-														<a class="link-imdb" href={ templ.SafeURL(di.IMDbURL) } target="_blank" rel="noreferrer noopener" title="IMDb">IMDb</a>
-													}
+													@findingRatings(di.FindingMetadata)
+													</div>
+													<div class="flex flex-wrap justify-end gap-2">
+														@findingLinks(di.CopyText,di.FindingMetadata)
+													</div>
 												</li>
 											}
 										</ul>
 									}
-								</td>
-								<td class="px-3 py-2">
-									<div class="flex flex-wrap items-center gap-2 sm:justify-end">
-										if r.TMDBLink != "" {
-											<a class="link-tmdb" href={ templ.SafeURL(r.TMDBLink) } target="_blank" rel="noreferrer noopener" title="TMDB">TMDB</a>
-										}
-										if r.JellyfinLink != "" {
-											<a class="link-jellyfin" href={ templ.SafeURL(r.JellyfinLink) } target="_blank" rel="noreferrer noopener" title="Jellyfin">Jellyfin</a>
-										}
-									</div>
 								</td>
 							</tr>
 						}
@@ -175,6 +193,24 @@ templ FindingsTable(t *i18n.Translator, rows []FindingRow, sortKey, dir, state s
 			</div>
 		}
 	</div>
+}
+
+templ findingLinks(title string, m FindingMetadata) {
+	if m.IMDbURL != "" {
+		<a class="link-imdb" href={ m.IMDbURL } target="_blank" rel="noreferrer noopener" aria-label={ title + " · IMDb" }>IMDb</a>
+	}
+	if m.TMDBLink != "" {
+		<a class="link-tmdb" href={ m.TMDBLink } target="_blank" rel="noreferrer noopener" aria-label={ title + " · TMDB" }>TMDB</a>
+	}
+}
+
+templ findingRatings(m FindingMetadata) {
+	if m.IMDbRating != "" {
+		<span class="whitespace-nowrap rounded bg-amber-500/15 px-1.5 text-xs text-amber-300">{ "IMDb ★ " + m.IMDbRating }</span>
+	}
+	if m.TMDBRating != "" {
+		<span title="TMDB" class="whitespace-nowrap rounded bg-sky-500/15 px-1.5 text-xs text-sky-300"><span class="sr-only">TMDB </span>{ "★ " + m.TMDBRating }</span>
+	}
 }
 
 // mobileSortBar replaces the clickable column headers on phones, where the
@@ -232,9 +268,13 @@ templ sortHeader(label, col, curSort, curDir string) {
 	</th>
 }
 
-templ LogPanel(t *i18n.Translator, logs []LogEntryView) {
+templ LogPanel(t *i18n.Translator, logs []LogEntryView, levels ...string) {
 	if len(logs) == 0 {
-		<p class="text-sm text-slate-500">{ t.T("dashboard.noLog") }</p>
+		if len(levels) > 0 && levels[0] != "" {
+			<p class="text-sm text-slate-500">{ t.T("logs.noMatches") }</p>
+		} else {
+			<p class="text-sm text-slate-500">{ t.T("dashboard.noLog") }</p>
+		}
 	} else {
 		<div class="font-mono text-xs leading-relaxed">
 			for _, e := range logs {

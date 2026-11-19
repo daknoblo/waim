@@ -15,25 +15,31 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 SEED_OUT ?= appdata
+COVERAGE_DIR ?= coverage
 
 # Passed through the environment rather than expanded into the recipe, so
 # multi-line release notes survive instead of breaking the shell command.
 export MESSAGE
 export NOTES
+export PUSH
+
+ifeq ($(SEED_FORCE),1)
+SEED_FORCE_FLAG := -force
+endif
 
 LDFLAGS := -s -w \
 	-X github.com/daknoblo/waim/internal/version.Version=$(VERSION) \
 	-X github.com/daknoblo/waim/internal/version.Commit=$(COMMIT) \
 	-X github.com/daknoblo/waim/internal/version.Date=$(DATE)
 
-.PHONY: all generate css build run test vet tidy tools clean docker demo docs-version seed release
+.PHONY: all generate css build run test coverage vet tidy tools clean docker demo docs-version seed release
 
 all: generate css build
 
 ## Install the local toolchain (run once): the templ CLI and the Tailwind
 ## standalone binary.
 tools:
-	go install github.com/a-h/templ/cmd/templ@v0.3.1020
+	go install github.com/a-h/templ/cmd/templ@v0.3.1100
 	@$(MAKE) --no-print-directory $(TAILWIND)
 
 # Fetch the platform-matching Tailwind standalone build. CI downloads its own
@@ -80,7 +86,7 @@ demo:
 ## Jellyfin server, e.g. `make seed` or `make seed SEED_OUT=/tmp/waim`. Refuses
 ## to clobber an existing database unless SEED_FORCE=1.
 seed:
-	go run ./cmd/seed -out $(SEED_OUT) $(if $(SEED_FORCE),-force,)
+	go run ./cmd/seed -out "$(SEED_OUT)" $(SEED_FORCE_FLAG)
 
 ## Point the pinned image examples in the docs at a release, e.g.
 ## `make docs-version VERSION=1.3.0`. Update through a PR after publishing;
@@ -132,7 +138,7 @@ release:
 		git tag -a "$$v"; \
 	fi; \
 	echo; \
-	if [ -n "$(PUSH)" ]; then \
+	if [ "$$PUSH" = 1 ]; then \
 		git push origin "refs/tags/$$v"; \
 	else \
 		echo "tag $$v created. Publish with:"; \
@@ -143,6 +149,10 @@ release:
 test:
 	go test $(PKG)
 	bash scripts/test-release-channels.sh
+
+## Measure cross-package coverage, with a separate handwritten-code report.
+coverage:
+	bash scripts/coverage.sh "$(COVERAGE_DIR)"
 
 ## Static analysis.
 vet:

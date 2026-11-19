@@ -27,6 +27,7 @@ type Country struct {
 
 // Movie is a subset of the /movie/{id} response.
 type Movie struct {
+	PosterPath          string         `json:"poster_path"`
 	ID                  int64          `json:"id"`
 	Title               string         `json:"title"`
 	IMDbID              string         `json:"imdb_id"`

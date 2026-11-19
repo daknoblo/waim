@@ -196,6 +196,12 @@ func pastItemsFromFindings(findings []store.Finding) ([]store.UpcomingItem, int)
 			_ = json.Unmarshal([]byte(f.Details), &d)
 		}
 		switch f.Kind {
+		case store.KindMissingMovie:
+			if d.ReleaseDate == "" {
+				undated++
+				continue
+			}
+			out = append(out, store.UpcomingItem{Provenance: f.Provenance, Kind: store.UpcomingMovie, MediaType: store.MediaMovie, Title: f.Title, SourceTitle: f.Title, TMDBID: f.TMDBID, ReleaseDate: d.ReleaseDate, PosterPath: d.PosterPath, LibraryID: f.LibraryID, LibraryName: f.LibraryName})
 		case store.KindMissingSeason, store.KindMissingEpisodes:
 			for _, ep := range d.MissingEpisodes {
 				date := d.AirDates[strconv.Itoa(ep)]
@@ -204,6 +210,7 @@ func pastItemsFromFindings(findings []store.Finding) ([]store.UpcomingItem, int)
 					continue
 				}
 				out = append(out, store.UpcomingItem{
+					Provenance:    f.Provenance,
 					Kind:          store.UpcomingEpisode,
 					MediaType:     store.MediaSeries,
 					SourceTitle:   f.Title,
@@ -465,6 +472,9 @@ func upcomingTitle(a *upcomingAgg) string {
 }
 
 func upcomingSub(t *i18n.Translator, a *upcomingAgg) string {
+	if a.item.Kind == store.UpcomingMovie {
+		return t.T("sources.movie")
+	}
 	if a.item.MediaType != store.MediaSeries {
 		return t.T("stats.upcomingPartOf", a.item.SourceTitle)
 	}

@@ -1,6 +1,7 @@
 package tmdb
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,14 +12,31 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
 
+	"github.com/daknoblo/waim/internal/activity"
 	"github.com/daknoblo/waim/internal/httpx"
 )
 
 const baseURL = "https://api.themoviedb.org/3"
+const maxResponseBytes = 4 << 20
+
+var budget = struct {
+	sync.Mutex
+	limiter *rate.Limiter
+}{limiter: rate.NewLimiter(1, 1)}
+
+// Search, scans, suggestions and refreshes share one process-wide rate budget.
+func sharedLimiter(rps float64, burst int) *rate.Limiter {
+	budget.Lock()
+	defer budget.Unlock()
+	budget.limiter.SetLimit(rate.Limit(rps))
+	budget.limiter.SetBurst(burst)
+	return budget.limiter
+}
 
 // Client talks to the TMDB API with a client-side rate limiter.
 type Client struct {
@@ -58,7 +76,7 @@ func New(apiKey, language, region string, rps float64) *Client {
 		language: language,
 		region:   region,
 		http:     httpx.NewClient(20 * time.Second),
-		limiter:  rate.NewLimiter(rate.Limit(rps), burst),
+		limiter:  sharedLimiter(rps, burst),
 	}
 }
 
@@ -72,6 +90,7 @@ func (c *Client) WithCache(cache Cache) *Client {
 // configured and out is non-nil, successful responses are served from and
 // written to the cache, so repeated calls avoid hitting the TMDB API.
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
+	activity.FromContext(ctx).Endpoint(path)
 	if q == nil {
 		q = url.Values{}
 	}
@@ -99,17 +118,17 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 	if err != nil {
 		return err
 	}
-	if c.cache != nil && out != nil && len(body) > 0 {
-		if err := c.cache.Put(ctx, key, body); err != nil {
-			// A failed write leaves the cache stale; surface it without failing the call.
-			slog.Default().Warn("tmdb: cache write failed", "key", key, "error", err)
-		}
-	}
 	if out == nil {
 		return nil
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("tmdb: decode %s: %w", path, err)
+	}
+	if c.cache != nil {
+		if err := c.cache.Put(ctx, key, body); err != nil {
+			// A failed write leaves the cache stale; surface it without failing the call.
+			slog.Default().Warn("tmdb: cache write failed", "key", key, "error", err)
+		}
 	}
 	return nil
 }
@@ -161,9 +180,16 @@ func (c *Client) fetchRaw(ctx context.Context, path string, q url.Values) ([]byt
 			"path", path, "status", resp.StatusCode, "body", strings.TrimSpace(string(body)))
 		return nil, fmt.Errorf("tmdb: %s returned %d", path, resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("tmdb: read %s: %w", path, err)
+	}
+	if len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("tmdb: response too large: %s", path)
+	}
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 || body[0] != '{' || !json.Valid(body) {
+		return nil, fmt.Errorf("tmdb: expected JSON object: %s", path)
 	}
 	return body, nil
 }
@@ -171,6 +197,7 @@ func (c *Client) fetchRaw(ctx context.Context, path string, q url.Values) ([]byt
 // RefreshKey re-fetches the cached entry identified by key (path?query) and
 // stores the fresh payload. Used by the background refresher.
 func (c *Client) RefreshKey(ctx context.Context, key string) error {
+	activity.FromContext(ctx).Endpoint(key)
 	if c.cache == nil {
 		return nil
 	}
@@ -221,6 +248,22 @@ func (c *Client) Season(ctx context.Context, tvID int64, seasonNumber int) (Seas
 }
 
 // SearchMovie searches movies by title and optional year (0 to ignore).
+// SearchTitles is deliberately bounded to TMDB's first page (at most 20).
+func (c *Client) SearchTitles(ctx context.Context, kind, query string) ([]MediaResult, error) {
+	path := "/search/movie"
+	if kind == "Series" {
+		path = "/search/tv"
+	}
+	var response struct {
+		Results []MediaResult `json:"results"`
+	}
+	err := c.get(ctx, path, url.Values{"query": {query}, "page": {"1"}, "include_adult": {"false"}}, &response)
+	if len(response.Results) > 20 {
+		response.Results = response.Results[:20]
+	}
+	return response.Results, err
+}
+
 func (c *Client) SearchMovie(ctx context.Context, title string, year int) ([]MovieSearchResult, error) {
 	q := url.Values{}
 	q.Set("query", title)
