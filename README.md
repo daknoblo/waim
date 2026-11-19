@@ -85,7 +85,8 @@ Huntarr or Missingarr.
 - General statistics: library facts (total runtime, average rating, episode
   completeness, specials share), biggest sagas and series binge times,
   genre/decade donut charts, rating distribution, original language and
-  production country, average rating per genre, growth per scan, a season
+  production country, average rating per genre, daily collection changes
+  (latest 5, 10 or all change days in the retained scan history), a season
   completion heatmap and a sankey chart of episodes per season for any series.
 - **Suggestions** page: what to watch next from TMDB trending and
   recommendations, upcoming releases matching your most-watched genres and

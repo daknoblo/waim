@@ -460,32 +460,32 @@ func buildGrowth(history []store.RunTotals) []StatsGrowth {
 		return nil
 	}
 	max := 0
+	// History is oldest first. Compare closing totals, not individual scans.
+	var days []StatsGrowth
 	for _, h := range history {
-		if h.ItemsScanned > max {
-			max = h.ItemsScanned
+		day := StatsGrowth{Date: h.FinishedAt.Local().Format("2006-01-02"), Titles: h.ItemsScanned}
+		if n := len(days); n > 0 && days[n-1].Date == day.Date {
+			days[n-1] = day
+		} else {
+			days = append(days, day)
 		}
 	}
-	out := make([]StatsGrowth, 0, len(history))
-	for i, h := range history {
-		g := StatsGrowth{
-			Date:   h.FinishedAt.Local().Format("2006-01-02"),
-			Titles: h.ItemsScanned,
-			Delta:  "\u2014",
+	for _, h := range days {
+		if h.Titles > max {
+			max = h.Titles
 		}
+	}
+	var out []StatsGrowth
+	for i := len(days) - 1; i > 0; i-- {
+		g := days[i]
+		diff := g.Titles - days[i-1].Titles
+		if diff == 0 {
+			continue
+		}
+		g.Delta = fmt.Sprintf("%+d", diff)
+		g.Up = diff > 0
 		if max > 0 {
-			g.Pct = h.ItemsScanned * 100 / max
-		}
-		if i > 0 {
-			d := h.ItemsScanned - history[i-1].ItemsScanned
-			switch {
-			case d > 0:
-				g.Delta = "+" + strconv.Itoa(d)
-				g.Up = true
-			case d < 0:
-				g.Delta = strconv.Itoa(d)
-			default:
-				g.Delta = "\u00b10"
-			}
+			g.Pct = g.Titles * 100 / max
 		}
 		out = append(out, g)
 	}

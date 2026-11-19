@@ -66,7 +66,7 @@ func (s *Server) statsData(r *http.Request) web.StatsData {
 			libTypes[media.Qualify(src.ID, l.ID)] = l.Type
 		}
 	}
-	history, historyErr := s.store.SuccessfulRunTotals(ctx, 12)
+	history, historyErr := s.store.SuccessfulRunTotals(ctx, 20)
 	if historyErr != nil {
 		s.log.Error("statistics history unavailable", "err", historyErr)
 	}

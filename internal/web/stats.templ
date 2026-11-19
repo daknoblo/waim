@@ -78,7 +78,7 @@ templ statsBody(d StatsData) {
 						</table>
 					</div>
 				</div>
-				@growthCard(d.Layout.T.T("stats.growth"), d.Layout.T.T("stats.growthHint"), d.Growth, d.growthEmptyMessage())
+				@growthCard(d.Layout.T, d.Growth, d.growthEmptyMessage())
 			}
 			@statsSection(d.Layout.T, "gaps") {
 				<div class="card">
@@ -427,16 +427,26 @@ templ genreRatingCard(title, hint string, items []StatsRatedGroup, empty string)
 	</div>
 }
 
-templ growthCard(title, hint string, items []StatsGrowth, empty string) {
+templ growthCard(t *i18n.Translator, items []StatsGrowth, empty string) {
 	<div class="card">
-		<h2 class="mb-1 text-lg font-semibold">{ title }</h2>
-		<p class="mb-3 text-sm text-slate-400">{ hint }</p>
+		<h2 class="mb-1 text-lg font-semibold">{ t.T("stats.growth") }</h2>
+		<p class="mb-3 text-sm text-slate-400">{ t.T("stats.growthHint") }</p>
 		if len(items) == 0 {
 			<p class="text-sm text-slate-500">{ empty }</p>
 		} else {
-			<div class="grid gap-1.5 text-sm">
-				for _, g := range items {
-					<div class="flex items-center gap-2">
+			if len(items) > 5 {
+				<label class="mb-3 flex items-center gap-2 text-xs text-slate-400">
+					{ t.T("stats.showCount") }
+					<select class="rated-limit lang-select">
+						<option value="5" selected>5</option>
+						<option value="10">10</option>
+						<option value={ strconv.Itoa(len(items)) }>{ t.T("stats.showAll") }</option>
+					</select>
+				</label>
+			}
+			<div class="rated-list grid gap-1.5 text-sm">
+				for i, g := range items {
+					<div class="rated-row flex items-center gap-2" hidden?={ i >= 5 }>
 						<span class="w-24 shrink-0 text-slate-400">{ g.Date }</span>
 						@meterBar(g.Pct, "fill-sky-500", "h-2 flex-1")
 						<span class="w-12 shrink-0 text-right text-xs text-slate-300">{ strconv.Itoa(g.Titles) }</span>
