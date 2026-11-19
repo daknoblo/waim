@@ -209,7 +209,7 @@
   "sources.metrics": "Ownership metrics exclude watch-only titles. Library/source memberships may overlap. Growth includes complete real refreshes only.",
   "sources.trackingRatings": "Watch-only ratings",
   "finding.kind.missing_movie": "Watched movie",
-  "finding.missingMovie": "Released movie is not owned",
+  "finding.missingMovie": "Already released · only in the virtual collection",
   "app.title": "waim",
   "app.tagline": "What am I missing?",
   "demo.banner": "Static demo with sample data — nothing is saved and no scan runs here.",

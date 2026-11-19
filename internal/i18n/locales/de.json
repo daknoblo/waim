@@ -209,7 +209,7 @@
   "sources.metrics": "Besitzmetriken schließen nur beobachtete Titel aus. Quellen-/Bibliotheksmitgliedschaften können sich überschneiden. Wachstum zählt nur vollständige echte Bestandsabfragen.",
   "sources.trackingRatings": "Bewertungen nur beobachteter Titel",
   "finding.kind.missing_movie": "Beobachteter Film",
-  "finding.missingMovie": "Veröffentlichter Film ist nicht vorhanden",
+  "finding.missingMovie": "Bereits erschienen · nur in der virtuellen Sammlung",
   "app.title": "waim",
   "app.tagline": "Was fehlt mir?",
   "demo.banner": "Statische Demo mit Beispieldaten — hier wird nichts gespeichert und kein Scan ausgeführt.",
