@@ -164,11 +164,12 @@ templ statsBody(d StatsData) {
 }
 
 templ statsRanking(label string) {
-	<details class="card">
-		<summary class="cursor-pointer font-semibold">{ label }</summary>
-		<div class="mt-3 grid gap-4 lg:grid-cols-2">{ children... }
-</div>
-	</details>
+	<section>
+		<h3 class="font-semibold">{ label }</h3>
+		<div class="mt-3 grid gap-4 lg:grid-cols-2">
+			{ children... }
+		</div>
+	</section>
 }
 
 templ statsSection(t *i18n.Translator, id string) {

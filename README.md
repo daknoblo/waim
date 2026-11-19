@@ -72,7 +72,8 @@ Huntarr or Missingarr.
   to a different destination; virtual titles do not repeat the TMDB link.
   The desktop dashboard content is 10% wider to give the findings table more room.
 - **Statistics** page: jump directly to My library, Gaps & releases, Series in
-  detail, Ratings, or Collection profile & records. Rankings expand per library.
+  detail, Ratings, or Collection profile & records. Ratings for owned and missing
+  titles are displayed directly, grouped by library.
   The page includes completeness per library, most incomplete series and
   collections, top/lowest rated titles per library — in separate sections for
   owned media and for missing ones (movies *and* series, so you can decide

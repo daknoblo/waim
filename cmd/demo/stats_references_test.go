@@ -38,6 +38,11 @@ func TestStatisticsAndPartialsOmitRepeatedServerReferences(t *testing.T) {
 				}
 			}
 			if name == "page" {
+				_, ratings, found := strings.Cut(html, `id="stats-ratings"`)
+				ratings, _, _ = strings.Cut(ratings, `id="stats-profile"`)
+				if !found || strings.Contains(ratings, "<details") {
+					t.Fatal("rating lists must be visible without expanding a section")
+				}
 				last := -1
 				for _, section := range []string{"library", "gaps", "series", "ratings", "profile"} {
 					id := "stats-" + section
