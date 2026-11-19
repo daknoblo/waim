@@ -12,6 +12,24 @@ import (
 	"github.com/daknoblo/waim/internal/store"
 )
 
+func TestCollectionFindingCountWording(t *testing.T) {
+	cat, err := i18n.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ details, de, en string }{
+		{`{"missingParts":[{}]}`, "1 Eintrag der Sammlung fehlt", "Missing 1 collection entry"},
+		{`{"missingParts":[{},{}]}`, "2 Einträge der Sammlung fehlen", "Missing 2 collection entries"},
+	} {
+		for locale, want := range map[string]string{"de": tc.de, "en": tc.en} {
+			rows := BuildFindingRows(cat.For(locale), []store.Finding{{Kind: store.KindMissingCollection, Details: tc.details}}, FindingSources{}, nil)
+			if got := rows[0].Detail; got != want {
+				t.Errorf("%s: got %q, want %q", locale, got, want)
+			}
+		}
+	}
+}
+
 func TestFindingLibraryLabelsIncludeTypeInstanceNameAndEachLibrary(t *testing.T) {
 	cat, err := i18n.Load()
 	if err != nil {

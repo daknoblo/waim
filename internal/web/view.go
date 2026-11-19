@@ -143,7 +143,7 @@ func BuildFindingRows(t *i18n.Translator, findings []store.Finding, sources Find
 				LibraryID:         f.LibraryID,
 				LibraryColor:      LibraryColor(f.LibraryID),
 				PosterURL:         posterURL(d.PosterPath),
-				Detail:            t.T("finding.missingCollection", len(d.MissingParts)),
+				Detail:            relUnit(t, len(d.MissingParts), "finding.missingCollection.one", "finding.missingCollection.other"),
 				MissingCount:      len(d.MissingParts),
 				FindingMetadata:   sources.metadata(tmdbLink("collection", f.TMDBID), "", 0, 0),
 			}
