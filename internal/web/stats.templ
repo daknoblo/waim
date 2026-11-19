@@ -204,6 +204,16 @@ templ ratedListLib(libName string, color []string, kind string, items []StatsRat
 		if len(items) == 0 {
 			<p class="text-sm text-slate-500">{ empty }</p>
 		} else {
+			if len(items) > 10 {
+				<label class="mb-3 flex items-center gap-2 text-xs text-slate-400">
+					{ showLabel }
+					<select class="rated-limit lang-select">
+						<option value="10" selected>10</option>
+						<option value="25">25</option>
+						<option value="50">50</option>
+					</select>
+				</label>
+			}
 			<ol class="rated-list grid gap-1.5 text-sm">
 				for i, it := range items {
 					<li class="rated-row flex min-w-0 items-center justify-between gap-2" hidden?={ i >= 10 }>
@@ -218,16 +228,6 @@ templ ratedListLib(libName string, color []string, kind string, items []StatsRat
 					</li>
 				}
 			</ol>
-			if len(items) > 10 {
-				<div class="mt-3 flex items-center justify-end gap-2 border-t border-slate-800 pt-2">
-					<label class="text-xs text-slate-400">{ showLabel }</label>
-					<select class="rated-limit lang-select">
-						<option value="10" selected>10</option>
-						<option value="25">25</option>
-						<option value="50">50</option>
-					</select>
-				</div>
-			}
 		}
 	</div>
 }
@@ -356,6 +356,7 @@ templ completionCard(t *i18n.Translator, rows []StatsCompletion, overall int) {
 		if len(rows) == 0 {
 			<p class="text-sm text-slate-500">{ t.T("stats.noSeriesData") }</p>
 		} else {
+			@listControls(t, completionSortOptions(t), len(rows))
 			<div class="rated-list grid gap-1.5 text-sm">
 				for i, r := range rows {
 					<div
@@ -382,14 +383,13 @@ templ completionCard(t *i18n.Translator, rows []StatsCompletion, overall int) {
 					</div>
 				}
 			</div>
-			@listControls(t, completionSortOptions(t), len(rows))
 		}
 	</div>
 }
 
 // listControls adds client-side sorting and an expandable row limit to a list.
 templ listControls(t *i18n.Translator, sorts []SortOption, total int) {
-	<div class="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-2 text-xs text-slate-400 sm:justify-end">
+	<div class="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
 		<span class="w-full sm:w-auto">{ t.T("stats.entries", total) }</span>
 		<label class="sm:ml-2">{ t.T("stats.sortBy") }</label>
 		<select class="sort-list lang-select" aria-label={ t.T("stats.sortBy") }>
@@ -564,6 +564,7 @@ templ seasonRatingCard(t *i18n.Translator, rows []StatsSeasonRatings) {
 		if len(rows) == 0 {
 			<p class="text-sm text-slate-500">{ t.T("stats.noEpisodeRatings") }</p>
 		} else {
+			@listControls(t, seasonSortOptions(t), len(rows))
 			<div class="rated-list grid gap-1.5 text-sm">
 				for i, r := range rows {
 					<div
@@ -588,7 +589,6 @@ templ seasonRatingCard(t *i18n.Translator, rows []StatsSeasonRatings) {
 					</div>
 				}
 			</div>
-			@listControls(t, seasonSortOptions(t), len(rows))
 		}
 	</div>
 }
@@ -727,23 +727,8 @@ templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
 		<div class="mb-3">
 			@upcomingDirectionToggle(t, u)
 		</div>
-		<div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
-			if u.Past {
-				@statCardCentered(t.T("stats.upcomingPastTotal"), strconv.Itoa(u.Total))
-			} else {
-				@statCardCentered(t.T("stats.upcomingTotal"), strconv.Itoa(u.Total))
-			}
-			@statCardCentered("\U0001F39E "+t.T("stats.upcomingEpisodes"), strconv.Itoa(u.Episodes))
-			@statCardCentered("\U0001F3AC "+t.T("stats.upcomingMovies"), strconv.Itoa(u.Movies))
-			if u.Past {
-				@statCardSub(t.T("stats.upcomingPastLatest"), orDash(u.NextLabel), u.NextTitle)
-			} else {
-				@statCardSub(t.T("stats.upcomingNext"), orDash(u.NextLabel), u.NextTitle)
-			}
-		</div>
-		@upcomingTimelineChart(t, u)
 		<input type="hidden" id="upcoming-direction" name="direction" value={ upcomingDirectionValue(u) }/>
-		<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3 text-xs text-slate-400">
+		<div class="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
 			<label for="upcoming-range">{ t.T("stats.upcomingRange") }</label>
 			<select
 				id="upcoming-range"
@@ -778,6 +763,21 @@ templ UpcomingContent(t *i18n.Translator, u StatsUpcoming) {
 				<span class="ml-auto">{ t.T("stats.upcomingTruncated", u.Truncated) }</span>
 			}
 		</div>
+		<div class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+			if u.Past {
+				@statCardCentered(t.T("stats.upcomingPastTotal"), strconv.Itoa(u.Total))
+			} else {
+				@statCardCentered(t.T("stats.upcomingTotal"), strconv.Itoa(u.Total))
+			}
+			@statCardCentered("\U0001F39E "+t.T("stats.upcomingEpisodes"), strconv.Itoa(u.Episodes))
+			@statCardCentered("\U0001F3AC "+t.T("stats.upcomingMovies"), strconv.Itoa(u.Movies))
+			if u.Past {
+				@statCardSub(t.T("stats.upcomingPastLatest"), orDash(u.NextLabel), u.NextTitle)
+			} else {
+				@statCardSub(t.T("stats.upcomingNext"), orDash(u.NextLabel), u.NextTitle)
+			}
+		</div>
+		@upcomingTimelineChart(t, u)
 		if !u.Available {
 			<p class="mt-3 text-sm text-slate-500">
 				if u.Past {

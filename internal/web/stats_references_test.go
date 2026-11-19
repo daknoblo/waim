@@ -12,6 +12,28 @@ import (
 	"github.com/daknoblo/waim/internal/store"
 )
 
+func TestStatsControlsPrecedeResults(t *testing.T) {
+	tr := testTranslator(t)
+	for _, tc := range []struct {
+		card             templ.Component
+		control, results string
+	}{
+		{ratedListLib("Library", nil, "Top", make([]StatsRated, 11), "", "Show"), "rated-limit", "rated-list"},
+		{completionCard(tr, []StatsCompletion{{}}, 50), "rated-limit", "rated-list"},
+		{seasonRatingCard(tr, []StatsSeasonRatings{{}}), "rated-limit", "rated-list"},
+		{UpcomingContent(tr, StatsUpcoming{HasAny: true}), `id="upcoming-type"`, "grid-cols-2"},
+	} {
+		var b bytes.Buffer
+		if err := tc.card.Render(t.Context(), &b); err != nil {
+			t.Fatal(err)
+		}
+		control, results := strings.Index(b.String(), tc.control), strings.Index(b.String(), tc.results)
+		if control < 0 || control >= results {
+			t.Errorf("%s must precede %s", tc.control, tc.results)
+		}
+	}
+}
+
 func TestStatsTitlesAndUpcomingTilesDoNotRepeatSourceBadges(t *testing.T) {
 	catalog, err := i18n.Load()
 	if err != nil {
